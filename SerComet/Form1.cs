@@ -207,20 +207,20 @@ namespace UartSlTest
                 lblDir, txtDir, btnLocations, btnBrowse, btnOpenDir, gbInfo, gbFiles, btnView, chkEof, chkAuto, btnConvert, btnAbort, btnSend, btnSendOther, btnRefreshFiles, btnDelete, btnTerminal, gbLog });
 
             // title row: everything else moves down by one row (40 px)
-            foreach (Control c in Controls) c.Top += 40;
+            foreach (Control c in Controls) c.Top += 52;
             {
                 const string titleText = "FILE TRANSFER TOOL FOR PC AND SHARP POCKET COMPUTERS";
-                var titleFont = new Font("Segoe UI", 11F, FontStyle.Bold);
+                var titleFont = new Font("Segoe UI", 12.5F, FontStyle.Bold);
                 Size ts = TextRenderer.MeasureText(titleText, titleFont);
-                int x0 = (ClientSize.Width - (32 + 8 + ts.Width)) / 2;
-                Controls.Add(new PictureBox { Image = Icons.Comet(32), SizeMode = PictureBoxSizeMode.AutoSize, Left = x0, Top = 4, Anchor = AnchorStyles.Top });
+                int x0 = (ClientSize.Width - (42 + 8 + ts.Width)) / 2;
+                Controls.Add(new PictureBox { Image = Icons.Comet(42), SizeMode = PictureBoxSizeMode.AutoSize, Left = x0, Top = 5, Anchor = AnchorStyles.Top });
                 Controls.Add(new Label
                 {
                     Text = titleText, AutoSize = true, Font = titleFont, ForeColor = Color.FromArgb(30, 70, 120),
-                    Left = x0 + 40, Top = 4 + (32 - ts.Height) / 2, Anchor = AnchorStyles.Top
+                    Left = x0 + 50, Top = 5 + (42 - ts.Height) / 2, Anchor = AnchorStyles.Top
                 });
                 // "by Alex F4VTS" to the right of the title, a round "?" button (About) on the left
-                var by = new Label { Text = "by Alex F4VTS", AutoSize = true, Font = new Font("Segoe UI", 9F, FontStyle.Bold | FontStyle.Italic), ForeColor = Color.FromArgb(90, 110, 140), Left = x0 + 40 + ts.Width + 10, Top = 4 + (32 - ts.Height) / 2 + 3, Anchor = AnchorStyles.Top };
+                var by = new Label { Text = "by Alex F4VTS", AutoSize = true, Font = new Font("Segoe UI", 9F, FontStyle.Bold | FontStyle.Italic), ForeColor = Color.FromArgb(90, 110, 140), Left = x0 + 50 + ts.Width + 10, Top = 5 + (42 - ts.Height) / 2 + 5, Anchor = AnchorStyles.Top };
                 Controls.Add(by);
                 var about = new RoundHelpButton { Left = 10, Top = 9, Width = 21, Height = 21, Anchor = AnchorStyles.Top | AnchorStyles.Left };
                 about.Click += delegate { using (var d = new AboutForm()) d.ShowDialog(this); };
@@ -393,7 +393,7 @@ namespace UartSlTest
 
         static string DefaultLocation(int i)
         {
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), new[] { "PC1500", "PC1600", "PC_15-pin", "FX-850", "TRS-80", "UART" }[i]);
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), new[] { "PC1500", "PC1600", "PC_15-pin", "Casio", "TRS-80", "UART" }[i]);
         }
 
         // ------------------------------------------------------------------ settings.ini
