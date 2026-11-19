@@ -97,7 +97,7 @@ namespace UartSlTest
             radio1500 = new RadioButton { Text = "Sharp PC-1500", Left = 8, Top = 24, Width = 100 };
             radio1600 = new RadioButton { Text = "Sharp PC-1600", Left = 122, Top = 24, Width = 100, Checked = true };
             radioOther = new RadioButton { Text = "Sharp (other)", Left = 238, Top = 24, Width = 112 };
-            radioFx = new RadioButton { Text = "Casio FX-850..70", Left = 8, Top = 54, Width = 100 };
+            radioFx = new RadioButton { Text = "Casio FX-850..870", Left = 8, Top = 54, Width = 112 };
             radioTrs = new RadioButton { Text = "NEC/TRS-80", Left = 122, Top = 54, Width = 100 };
             radioUart = new RadioButton { Text = "UART Other", Left = 238, Top = 54, Width = 112 };
             gbTarget.Controls.AddRange(new Control[] { radio1500, radio1600, radioOther, radioFx, radioTrs, radioUart });
@@ -210,19 +210,19 @@ namespace UartSlTest
             foreach (Control c in Controls) c.Top += 52;
             {
                 const string titleText = "FILE TRANSFER TOOL FOR PC AND SHARP POCKET COMPUTERS";
-                var titleFont = new Font("Segoe UI", 12.5F, FontStyle.Bold);
+                var titleFont = new Font("Segoe UI", 11F, FontStyle.Bold);
                 Size ts = TextRenderer.MeasureText(titleText, titleFont);
-                int x0 = (ClientSize.Width - (42 + 8 + ts.Width)) / 2;
-                Controls.Add(new PictureBox { Image = Icons.Comet(42), SizeMode = PictureBoxSizeMode.AutoSize, Left = x0, Top = 5, Anchor = AnchorStyles.Top });
+                int x0 = (ClientSize.Width - (32 + 8 + ts.Width)) / 2;
+                Controls.Add(new PictureBox { Image = Icons.Comet(32), SizeMode = PictureBoxSizeMode.AutoSize, Left = x0, Top = 10, Anchor = AnchorStyles.Top });
                 Controls.Add(new Label
                 {
                     Text = titleText, AutoSize = true, Font = titleFont, ForeColor = Color.FromArgb(30, 70, 120),
-                    Left = x0 + 50, Top = 5 + (42 - ts.Height) / 2, Anchor = AnchorStyles.Top
+                    Left = x0 + 40, Top = 10 + (32 - ts.Height) / 2, Anchor = AnchorStyles.Top
                 });
                 // "by Alex F4VTS" to the right of the title, a round "?" button (About) on the left
-                var by = new Label { Text = "by Alex F4VTS", AutoSize = true, Font = new Font("Segoe UI", 9F, FontStyle.Bold | FontStyle.Italic), ForeColor = Color.FromArgb(90, 110, 140), Left = x0 + 50 + ts.Width + 10, Top = 5 + (42 - ts.Height) / 2 + 5, Anchor = AnchorStyles.Top };
+                var by = new Label { Text = "by Alex F4VTS", AutoSize = true, Font = new Font("Segoe UI", 9F, FontStyle.Bold | FontStyle.Italic), ForeColor = Color.FromArgb(90, 110, 140), Left = x0 + 40 + ts.Width + 10, Top = 10 + (32 - ts.Height) / 2 + 3, Anchor = AnchorStyles.Top };
                 Controls.Add(by);
-                var about = new RoundHelpButton { Left = 10, Top = 9, Width = 21, Height = 21, Anchor = AnchorStyles.Top | AnchorStyles.Left };
+                var about = new RoundHelpButton { Left = 10, Top = 15, Width = 21, Height = 21, Anchor = AnchorStyles.Top | AnchorStyles.Left };
                 about.Click += delegate { using (var d = new AboutForm()) d.ShowDialog(this); };
                 tips.SetToolTip(about, "About SerComet: author, license and project page.");
                 Controls.Add(about);
