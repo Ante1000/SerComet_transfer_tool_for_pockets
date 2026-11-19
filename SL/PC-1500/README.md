@@ -30,14 +30,20 @@ Tested in a simulator (cycle counts of the [pc1500emu](https://github.com/pchamb
 cassette routines of the CE-150, from the keyboard of a freshly reset PC-1500 (no CLOAD):
 
 1. PRO mode: `NEW0`, then `NEW` followed by RAM start + `&200` (`&4200`; with a RAM that starts at `&0000`: `NEW &200`; `PEEK &7863` is the high byte of the RAM start).
-2. RUN mode, type **one line** (the interrupts are off between the calls) and press ENTER, then start the WAV (CE-150 audio input):
+2. Several commands separated by `:` are not accepted from the keyboard of the PC-1500, so the calls are typed as a small **BASIC program** (PRO mode, every line followed by ENTER):
 ```
-A=PEEK &7863*256+&C5 : POKE &7879,&80 : POKE &7B69,0 : CALL &BCE8 : CALL &BD3C,A : CALL &BBF5
+10 A=PEEK &7863*256+&C5
+20 POKE &7879,&80
+30 POKE &7B69,0
+40 CALL &BCE8
+50 CALL &BD3C,A
+60 CALL &BBF5
 ```
-3. `CALL &BCE8` finds the header (up to a minute), `CALL &BD3C,A` stores the data from the address `A` (RAM start + `&C5`). When the tape has ended (the
-   noise stops, about 27 s after the start) press **BREAK**: the line goes on with `CALL &BBF5` (ports and interrupts back). The 3 bytes after the code (`&1FD..&1FF`
-   from the RAM start) are overwritten by the end of the tape; they are not used.
-4. Check: `S=0 : FOR I=A TO A+311 : S=S+PEEK I : NEXT I : PRINT S` gives **34369** (PB2) or **34360** (PB0). Then LOAD is at RAM start + `&C5`, SAVE at RAM start + `&184`, exactly as after the installer.
+   Then RUN mode, `RUN` + ENTER and at once start the WAV (CE-150 audio input).
+3. Line 40 (`CALL &BCE8`) finds the header (up to a minute), line 50 (`CALL &BD3C,A`) stores the data from the address `A` (RAM start + `&C5`). When the tape has ended (the
+   noise stops, about 27 s after the start) press **BREAK** once. If the program goes on, line 60 (`CALL &BBF5`) puts the ports and interrupts back; if the BASIC stops with `BREAK IN 50`,
+   type `CALL &BBF5` + ENTER yourself. The 3 bytes after the code (`&1FD..&1FF` from the RAM start) are overwritten by the end of the tape; they are not used. Then PRO mode and `NEW` (the program is deleted, the routines stay).
+4. Check (type it as a program, too, or look at a few bytes): `PRINT PEEK 197, PEEK 198, PEEK 388` gives `253 190 253` with the RAM from `&0000` (add `&4000` to the three addresses for the RAM from `&4000`). The sum of the 312 bytes is **34369** (PB2) or **34360** (PB0). Then LOAD is at RAM start + `&C5`, SAVE at RAM start + `&184`, exactly as after the installer.
 
 The routines of the CE-150 (`BCE8` header, `BD3C` data block with a checksum every 80 bytes, `BBF5` end) are those of `CLOAD M`; the tape format was checked by decoding
 the recordings back (identical bytes). Not yet tried on a real PC-1500.
