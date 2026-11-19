@@ -6,44 +6,24 @@ for SerComet (target PC-1500, Software Serial). The routines work directly in th
 
 | File | Contents |
 |---|---|
-| `Basic/sl1500.txt` | the BASIC installer (34 lines; asks for the RX port, POKEs 312 bytes with a checksum) |
-| `wav/sl1500.wav` | the installer as a tape recording for `CLOAD` (CE-150) |
+| `Basic/sl1500.txt` | the BASIC installer (36 lines; asks for the RX port, shows INSTALLING..., POKEs 312 bytes with a checksum) |
+| `wav/sl1500.wav` | the installer as a tape recording for `CLOAD` (CE-150; name `SL1500`, about 2 minutes) |
 | `asm/uart1500_sl.asm` | the source (LH5801) of LOAD and SAVE |
 | `tools/lh5801asm.py`, `tools/build_sl1500.py` | a small LH5801 assembler and the installer builder |
 | `tools/verify_sl1500.py` | simulator test of SAVE, LOAD and the installer (about 90 s, Python 3 only) |
 
 ## Use
 
-1. PRO mode: `NEW0`, `NEW &4200` (RAM start + `&200`; other RAM: `PEEK &7863` is the high byte of the RAM start), `CLOAD` the tape (or type `sl1500.txt`), `RUN`;
-   ENTER for RX on PB2 (`0` for PB0). Then `NEW`: the routines stay.
-2. **Save** (PC-1500 to SerComet): `CALL &4184` (RUN mode). `X=0 : CALL &4184,X` gives X = 1 when done.
-3. **Load** (SerComet to the PC-1500): `NEW`, `CALL &40C5`, then Send in SerComet within 30 s. `X=0 : CALL &40C5,X`: 1 = loaded, 2 = checksum error,
+1. PRO mode: `NEW0`, `NEW &4300` (RAM start + `&300`; other RAM: `PEEK &7863` is the high byte of the RAM start; with the RAM from `&0000`: `NEW &300`), `CLOAD` the tape (or type `sl1500.txt`), `RUN`;
+   ENTER for RX on PB2 (`0` for PB0); it shows INSTALLING... and then the two calls. Then `NEW`: the routines stay.
+2. **Save** (PC-1500 to SerComet): `CALL &4200` (RUN mode). `X=0 : CALL &4200,X` gives X = 1 when done.
+3. **Load** (SerComet to the PC-1500): `NEW`, `CALL &4100`, then Send in SerComet within 30 s. `X=0 : CALL &4100,X`: 1 = loaded, 2 = checksum error,
    3 = nothing received, 4 = does not fit; after 2 or 4 the memory is left empty.
 
-Addresses are for a RAM that starts at `&4000`: LOAD at RAM start + `&C5`, SAVE at RAM start + `&184`; the installer prints them for other configurations.
+Addresses are for a RAM that starts at `&4000`: **LOAD at RAM start + `&100` (`&4100`), SAVE at RAM start + `&200` (`&4200`)**, BASIC from RAM start + `&300`; with the RAM from `&0000`: `CALL 256` (LOAD) and `CALL 512` (SAVE). The installer prints them for any configuration.
 Tested in a simulator (cycle counts of the [pc1500emu](https://github.com/pchambre/pc1500emu) opcode table); **not yet tried on a real PC-1500**.
 
-## Loading the Saver/Loader from tape without the BASIC installer (machine code, keyboard only)
+## Archive
 
-`ml/sl1500_pb2.bin` (RX = PB2) and `ml/sl1500_pb0.bin` (RX = PB0) are the 312 bytes of LOAD + SAVE as they are after the installer;
-`wav/sl1500_ml_pb2.wav` and `wav/sl1500_ml_pb0.wav` are tape recordings of them (a machine-language file, about 27 s). They are loaded with the
-cassette routines of the CE-150, from the keyboard of a freshly reset PC-1500 (no CLOAD):
-
-1. PRO mode: `NEW0`, then `NEW` followed by RAM start + `&200` (`&4200`; with a RAM that starts at `&0000`: `NEW &200`; `PEEK &7863` is the high byte of the RAM start).
-2. Several commands separated by `:` are not accepted from the keyboard of the PC-1500, so the calls are typed as a small **BASIC program** (PRO mode, every line followed by ENTER):
-```
-10 A=&C5
-20 POKE &7879,&80
-30 CALL &BBD6
-40 CALL &BCE8
-50 CALL &BD3C,A
-60 CALL &BBF5
-```
-   (`A` = RAM start + `&C5`: `&C5` with the RAM from `&0000`, `&40C5` with the RAM from `&4000`.) Then RUN mode, `RUN` + ENTER and at once start the WAV (CE-150 audio input).
-3. Line 20 sets the direction (load). Line 30 (`CALL &BBD6`) clears the header buffer `&7B60..&7BAF` (empty file name: any header is accepted) and writes there the 8 synchronisation bytes `10H..17H` that `BCE8` expects (without them it never finds the header). Line 40 (`CALL &BCE8`) finds the header (up to a minute), line 50 (`CALL &BD3C,A`) stores the data from the address `A` (RAM start + `&C5`). When the tape has ended (the
-   noise stops, about 27 s after the start) press **BREAK** once. If the program goes on, line 60 (`CALL &BBF5`) puts the ports and interrupts back; if the BASIC stops with `BREAK IN 50`,
-   type `CALL &BBF5` + ENTER yourself. The 3 bytes after the code (`&1FD..&1FF` from the RAM start) are overwritten by the end of the tape; they are not used. Then PRO mode and `NEW` (the program is deleted, the routines stay).
-4. Check (type it as a program, too, or look at a few bytes): `PRINT PEEK 197, PEEK 198, PEEK 388` gives `253 190 253` with the RAM from `&0000` (add `&4000` to the three addresses for the RAM from `&4000`). The sum of the 312 bytes is **34369** (PB2) or **34360** (PB0). Then LOAD is at RAM start + `&C5`, SAVE at RAM start + `&184`, exactly as after the installer.
-
-The routines of the CE-150 (`BCE8` header, `BD3C` data block with a checksum every 80 bytes, `BBF5` end) are those of `CLOAD M`; the tape format was checked by decoding
-the recordings back (identical bytes). Not yet tried on a real PC-1500.
+`archive/` keeps the earlier versions: `sl1500_v1.txt` / `sl1500_v1.wav` (installer with LOAD at RAM start + `&C5`, SAVE at + `&184`) and `sl1500_ml_pb2.*`, `sl1500_ml_pb0.*`
+(the 312 bytes of LOAD + SAVE as a machine-language file, with tape recordings, for loading with `CALL &BCE8` / `&BD3C`; **not working yet**, the header handling was not finished).

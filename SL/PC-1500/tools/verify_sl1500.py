@@ -185,13 +185,13 @@ def check(name, ok, info=''):
 
 def main():
     code, lab = assemble()
-    LOADA, SAVEA = 0x40C5, 0x40C5 + lab['SAVE']
-    start = 0x4200
+    LOADA, SAVEA = 0x4100, 0x4200
+    start = 0x4300
     # ---------------- SAVE
     for n in (0, 5, 60, 300, 700):
         p = prog(n) if n else b''
         m = memory(start, p + b'\xff', start + len(p))
-        m[LOADA:LOADA + len(code)] = code
+        m[LOADA:LOADA + lab['SAVE']] = code[:lab['SAVE']]; m[SAVEA:SAVEA + len(code) - lab['SAVE']] = code[lab['SAVE']:]
         c = Cpu(m); c.run(SAVEA)
         got, iss = decode(c.tx)
         exp = p + bytes([sum(p) & 255])
@@ -201,7 +201,7 @@ def main():
     def load(p, f=None, ramh=0x48, consts=None, rxmask=4, edge_kw=None, extra=(), maxc=300_000_000):
         cd, lb = assemble(consts)
         f = f if f is not None else p + bytes([sum(p) & 255])
-        m = memory(start, b'\xff', start, ramh); m[LOADA:LOADA + len(cd)] = cd
+        m = memory(start, b'\xff', start, ramh); m[LOADA:LOADA + lb['SAVE']] = cd[:lb['SAVE']]
         c = Cpu(m, list(extra) + edges(f, **(edge_kw or {})), rxmask); c.run(LOADA, maxc)
         return c, m
     for n in (0, 1, 80, 300, 700):
@@ -214,10 +214,11 @@ def main():
     c, m = load(p, f=p + bytes([(sum(p) + 1) & 255])); check('LOAD checksum error -> 2, memory empty', c.x == 2 and m[start] == 0xFF and m[0x7867:0x7869] == start.to_bytes(2, 'big'), 'X=%d' % c.x)
     p = prog(1700)
     c, m = load(p); check('LOAD too long -> 4, memory empty', c.x == 4 and m[start] == 0xFF and m[0x7867:0x7869] == start.to_bytes(2, 'big'), 'X=%d' % c.x)
-    p = bytearray(prog(1500))
-    while len(p) < 1535: p += b'\x01'
-    p = bytes(p[:1535])
-    c, m = load(p); check('LOAD exact fit (1536 bytes to &47FF)', c.x == 1 and m[0x7867:0x7869] == (0x47FF).to_bytes(2, 'big') and m[0x47FF] == 0xFF, 'X=%d' % c.x)
+    p = bytearray(prog(1200))
+    cap = 0x4800 - start
+    while len(p) < cap - 1: p += b'\x01'
+    p = bytes(p[:cap - 1])
+    c, m = load(p); check('LOAD exact fit (to &47FF)', c.x == 1 and m[0x7867:0x7869] == (0x47FF).to_bytes(2, 'big') and m[0x47FF] == 0xFF, 'X=%d' % c.x)
     p = prog(30)
     c, m = load(p, extra=[(60000, 0), (60040, 1)]); check('LOAD glitch before the start bit', c.x == 1 and bytes(m[start:start + len(p)]) == p)
     p = prog(80)
@@ -241,7 +242,7 @@ def main():
     diff = [i for i in range(len(c0)) if c0[i] != c1[i]]
     pk = re.findall(r'POKE L\+(\d+),', '\n'.join(txt))
     check('installer: the PB0 patches are exactly the bytes that differ', sorted(int(v) for v in pk) == diff, '(%s)' % diff)
-    print('\ncode %d bytes (LOAD %d + SAVE %d); LOAD at &C5, SAVE at &%X from the start of the RAM; ends at &%X' % (len(code), lab['SAVE'], len(code) - lab['SAVE'], 0xC5 + lab['SAVE'], 0xC5 + len(code)))
+    print('\ncode %d bytes (LOAD %d + SAVE %d); LOAD at RAM start + &100, SAVE at RAM start + &200 (NEW = RAM start + &300)' % (len(code), lab['SAVE'], len(code) - lab['SAVE']))
     print('ALL OK' if not FAILS else 'FAILED: ' + ', '.join(FAILS))
     return 1 if FAILS else 0
 

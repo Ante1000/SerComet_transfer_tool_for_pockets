@@ -8,8 +8,9 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 import lh5801asm as A
 
-LOAD_OFF = 0xC5            # LOAD at RAM start + &C5 (&40C5 on a PC-1500A); SAVE follows it directly (RAM start + &184)
-NEW_OFF = 0x200            # BASIC must start at RAM start + &200 or later (NEW &4200)
+LOAD_OFF = 0x100           # LOAD at RAM start + &100 (&4100 on a PC-1500A)
+SAVE_OFF = 0x200           # SAVE at RAM start + &200 (&4200 on a PC-1500A)
+NEW_OFF = 0x300            # BASIC must start at RAM start + &300 or later (NEW &4300)
 
 
 def assemble():
@@ -26,21 +27,23 @@ def assemble():
 def build():
     code, lab, db_pos, bm_pos = assemble()
     n = len(code)
-    assert LOAD_OFF + n <= NEW_OFF, 'code too long for NEW &4200: %d' % n
+    assert LOAD_OFF + lab['SAVE'] <= SAVE_OFF and SAVE_OFF + (n - lab['SAVE']) <= NEW_OFF, 'code does not fit'
     L = []
 
     def add(num, text):
         L.append((num, text))
     add(10, 'REM SL1500 4800 BPS')
-    add(20, 'A=(PEEK &7863)*256:L=A+%d:S=L+%d' % (LOAD_OFF, lab['SAVE']))
+    add(20, 'A=(PEEK &7863)*256:L=A+%d:S=A+%d' % (LOAD_OFF, SAVE_OFF))
     add(30, 'B=(PEEK &7865)*256+PEEK &7866')
-    add(40, 'IF B<A+%d PRINT "NEW &4200 IN PRO MODE!":BEEP 3:END' % NEW_OFF)
+    add(40, 'IF B<A+%d PRINT "NEW &4300 IN PRO MODE!":BEEP 3:END' % NEW_OFF)
     add(50, 'P=2:INPUT "RX PORT (DEFAULT PB2) ";P')
     add(60, 'M=0:IF P=0 LET M=1')
     add(70, 'IF P=2 LET M=4')
     add(80, 'IF M=0 BEEP 1:GOTO 50')
+    add(85, 'CLS:WAIT 0:PRINT "INSTALLING..."')
     add(90, 'RESTORE 1000:C=0')
-    add(100, 'FOR I=0 TO %d:READ V:POKE L+I,V:C=C+V:NEXT I' % (n - 1))
+    add(100, 'FOR I=0 TO %d:READ V:POKE L+I,V:C=C+V:NEXT I' % (lab['SAVE'] - 1))
+    add(105, 'FOR I=0 TO %d:READ V:POKE S+I,V:C=C+V:NEXT I' % (n - lab['SAVE'] - 1))
     add(110, 'READ V:IF V<>C PRINT "DATA ERROR":BEEP 3:END')
     add(120, 'POKE L+%d,255-M' % db_pos[0])
     pk = ':'.join('POKE L+%d,M' % p for p in bm_pos)
