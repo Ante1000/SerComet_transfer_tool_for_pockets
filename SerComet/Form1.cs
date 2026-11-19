@@ -689,8 +689,8 @@ namespace UartSlTest
         {
             txtLog.SelectionStart = txtLog.TextLength; txtLog.SelectionLength = 0;
             txtLog.SelectionFont = txtLog.Font; txtLog.SelectionColor = txtLog.ForeColor;
-            txtLog.AppendText(DateTime.Now.ToString("HH:mm:ss") + "  " + s + "\r\n");
-            txtLog.SelectionStart = txtLog.TextLength; txtLog.ScrollToCaret();
+            txtLog.AppendText((txtLog.TextLength > 0 ? "\r\n" : "") + DateTime.Now.ToString("HH:mm:ss") + "  " + s);       // no empty last line: the newest text is at the bottom edge
+            txtLog.SelectionStart = txtLog.TextLength; ScrollLogToEnd();
         }
 
         // an important message: bold and dark red
@@ -698,10 +698,10 @@ namespace UartSlTest
         {
             txtLog.SelectionStart = txtLog.TextLength; txtLog.SelectionLength = 0;
             txtLog.SelectionFont = new Font(txtLog.Font, FontStyle.Bold); txtLog.SelectionColor = Color.DarkRed;
-            txtLog.AppendText(DateTime.Now.ToString("HH:mm:ss") + "  " + s + "\r\n");
+            txtLog.AppendText((txtLog.TextLength > 0 ? "\r\n" : "") + DateTime.Now.ToString("HH:mm:ss") + "  " + s);       // no empty last line: the newest text is at the bottom edge
             txtLog.SelectionStart = txtLog.TextLength; txtLog.SelectionLength = 0;
             txtLog.SelectionFont = txtLog.Font; txtLog.SelectionColor = txtLog.ForeColor;
-            txtLog.ScrollToCaret();
+            ScrollLogToEnd();
         }
 
         // ---- wrong baud rate: framing errors of the PC UART (the stop bit is not where it should be) and garbage in a text transfer
@@ -1238,12 +1238,18 @@ namespace UartSlTest
         // keeps one log line up to date while a file is being sent: "SENDING name (n B) (37%)"
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-        const int WM_SETREDRAW = 0x000B;
+        const int WM_SETREDRAW = 0x000B, WM_VSCROLL = 0x0115, SB_BOTTOM = 7;
+
+        // scroll the log to its very end (the last line at the bottom edge of the box)
+        void ScrollLogToEnd()
+        {
+            SendMessage(txtLog.Handle, WM_VSCROLL, (IntPtr)SB_BOTTOM, IntPtr.Zero);
+        }
 
         void SetProgress(int pct)
         {
             if (txtLog.TextLength != progEnd) return;      // other messages were logged meanwhile: leave them alone
-            string line = DateTime.Now.ToString("HH:mm:ss") + "  " + progText + " (" + pct + "%)\r\n";
+            string line = "\r\n" + DateTime.Now.ToString("HH:mm:ss") + "  " + progText + " (" + pct + "%)";
             // no redraw while the last line is replaced: otherwise the log jumps up and down (the selection scrolls it)
             SendMessage(txtLog.Handle, WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
             try
@@ -1253,7 +1259,7 @@ namespace UartSlTest
                 txtLog.SelectedText = line;
                 progEnd = txtLog.TextLength;
                 txtLog.SelectionStart = txtLog.TextLength;
-                txtLog.ScrollToCaret();
+                ScrollLogToEnd();
             }
             finally
             {
