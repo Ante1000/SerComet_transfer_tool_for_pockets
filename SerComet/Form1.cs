@@ -213,7 +213,7 @@ namespace UartSlTest
                 const string titleText = "FILE TRANSFER TOOL FOR PC AND SHARP POCKET COMPUTERS";
                 var titleFont = new Font("Segoe UI", 11F, FontStyle.Bold);
                 Size ts = TextRenderer.MeasureText(titleText, titleFont);
-                int x0 = (ClientSize.Width - (32 + 8 + ts.Width)) / 2 - 22;
+                int x0 = (ClientSize.Width - (32 + 8 + ts.Width)) / 2 - 27;
                 Controls.Add(new PictureBox { Image = Icons.Comet(32), SizeMode = PictureBoxSizeMode.AutoSize, Left = x0, Top = 10, Anchor = AnchorStyles.Top });
                 Controls.Add(new Label
                 {
