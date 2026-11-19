@@ -1678,19 +1678,63 @@ namespace UartSlTest
             }
         }
 
-        // another computer with a UART: a small board with a chip and a row of pins
-        static void DrawUartBoard(Graphics g, int kx, int top)
+        // Casio FX-850P / FX-870P: a wide display on the left, coloured function keys and a numeric block with red BS / BRK on the right
+        static void DrawCasio(Graphics g, int kx, int top)
         {
-            FillRound(g, Color.FromArgb(20, 70, 40), kx - 80, top + 14, 160, 76, 6);
-            FillRound(g, Color.FromArgb(30, 110, 62), kx - 79, top + 12, 158, 76, 6);
-            using (var b = new SolidBrush(Color.FromArgb(25, 25, 28))) g.FillRectangle(b, kx - 30, top + 30, 60, 38);                      // chip
-            using (var p = new Pen(Color.FromArgb(200, 200, 160), 2f))
-                for (int i = 0; i < 6; i++) { g.DrawLine(p, kx - 24 + i * 10, top + 26, kx - 24 + i * 10, top + 30); g.DrawLine(p, kx - 24 + i * 10, top + 68, kx - 24 + i * 10, top + 72); }
-            using (var f = new Font("Consolas", 9F, FontStyle.Bold)) Text(g, "UART", f, Color.FromArgb(220, 220, 220), kx, top + 43);
-            using (var b = new SolidBrush(Color.FromArgb(225, 200, 70)))
-                for (int i = 0; i < 4; i++) g.FillRectangle(b, kx - 74, top + 22 + i * 12, 9, 5);                                           // TX RX GND pins
-            using (var f = new Font("Arial", 5.5F, FontStyle.Bold))
-            { Text(g, "TX", f, Color.White, kx - 54, top + 21); Text(g, "RX", f, Color.White, kx - 54, top + 33); Text(g, "GND", f, Color.White, kx - 52, top + 45); }
+            var state = g.Save();
+            g.TranslateTransform(kx, top + 60);
+            g.ScaleTransform(0.7F, 0.7F);
+            g.TranslateTransform(-kx, -(top + 60));
+            FillRound(g, Color.FromArgb(70, 70, 74), kx - 87, top + 10, 174, 82, 5);
+            FillRound(g, Color.FromArgb(196, 198, 200), kx - 86, top + 8, 172, 82, 5);                                  // light grey body
+            using (var b = new SolidBrush(Color.FromArgb(60, 60, 64))) g.FillRectangle(b, kx - 82, top + 12, 112, 36);     // display frame
+            using (var b = new SolidBrush(Color.FromArgb(150, 165, 150))) g.FillRectangle(b, kx - 76, top + 16, 100, 28);  // LCD
+            using (var b = new SolidBrush(Color.FromArgb(70, 85, 70)))
+                for (int c = 0; c < 70; c += 4) g.FillRectangle(b, kx - 68 + c, top + 24, 3, 5);
+            using (var f = new Font("Arial", 5.5F, FontStyle.Bold)) Text(g, "CASIO", f, Color.FromArgb(30, 30, 34), kx + 36, top + 12);
+            using (var bk = new SolidBrush(Color.FromArgb(40, 40, 44)))
+            using (var bg = new SolidBrush(Color.FromArgb(232, 232, 228)))
+            using (var bs = new SolidBrush(Color.FromArgb(120, 124, 128)))
+            using (var bb = new SolidBrush(Color.FromArgb(60, 110, 200)))
+            using (var bo = new SolidBrush(Color.FromArgb(235, 150, 40)))
+            using (var br = new SolidBrush(Color.FromArgb(190, 40, 45)))
+            {
+                g.FillRectangle(bo, kx + 36, top + 20, 9, 6); g.FillRectangle(bb, kx + 47, top + 20, 9, 6);                // CASL / Fx keys
+                for (int row = 0; row < 3; row++)
+                    for (int col = 0; col < 5; col++) g.FillRectangle(bs, kx + 36 + col * 10, top + 29 + row * 7, 8, 5);   // scientific keys
+                for (int i = 0; i < 8; i++) g.FillRectangle(bk, kx - 80 + i * 14, top + 52, 11, 5);                         // function row
+                for (int row = 0; row < 3; row++)
+                    for (int col = 0; col < 10; col++) g.FillRectangle(bk, kx - 80 + col * 11 + row * 3, top + 60 + row * 8, 9, 5);   // QWERTY
+                g.FillRectangle(bk, kx - 52, top + 84, 40, 4);
+                for (int row = 0; row < 4; row++)
+                    for (int col = 0; col < 4; col++)
+                        g.FillRectangle(col == 3 && row == 0 ? br : col == 2 && row == 0 ? br : bg, kx + 38 + col * 11, top + 50 + row * 9, 9, 7);   // numeric block, BS / BRK red
+            }
+            g.Restore(state);
+        }
+
+        // a generic pocket computer (for any computer with a UART): a one-line display, a key matrix and a cable on the side
+        static void DrawGenericPocket(Graphics g, int kx, int top)
+        {
+            var state = g.Save();
+            g.TranslateTransform(kx, top + 60);
+            g.ScaleTransform(0.7F, 0.7F);
+            g.TranslateTransform(-kx, -(top + 60));
+            FillRound(g, Color.FromArgb(20, 20, 24), kx - 86, top + 10, 172, 82, 7);
+            FillRound(g, Color.FromArgb(58, 62, 72), kx - 85, top + 8, 170, 82, 7);                                    // dark body
+            using (var b = new SolidBrush(Color.FromArgb(30, 32, 36))) g.FillRectangle(b, kx - 78, top + 14, 156, 28);    // display frame
+            using (var b = new SolidBrush(Color.FromArgb(170, 188, 160))) g.FillRectangle(b, kx - 74, top + 18, 148, 20); // LCD
+            using (var b = new SolidBrush(Color.FromArgb(62, 80, 58)))
+                for (int c = 0; c < 128; c += 5) g.FillRectangle(b, kx - 68 + c, top + 24, 3, 7);
+            using (var bk = new SolidBrush(Color.FromArgb(205, 208, 212)))
+            using (var bo = new SolidBrush(Color.FromArgb(235, 150, 40)))
+            {
+                for (int row = 0; row < 4; row++)
+                    for (int col = 0; col < 12; col++)
+                        g.FillRectangle(row == 3 && col == 11 ? bo : bk, kx - 76 + col * 13, top + 48 + row * 10, 10, 6);
+            }
+            using (var p = new Pen(Color.FromArgb(230, 200, 70), 2.5F)) g.DrawLine(p, kx - 85, top + 52, kx - 100, top + 52);   // the cable (TX / RX)
+            g.Restore(state);
         }
 
         static void DrawPc15pin(Graphics g, int kx, int top, string brand)
@@ -1802,9 +1846,9 @@ namespace UartSlTest
 
             if (Model == 0) DrawPc1500(g, kx, top);
             else if (Model == 2) DrawPc15pin(g, kx, top, "SHARP");
-            else if (Model == 3) DrawPc15pin(g, kx, top, "CASIO");
+            else if (Model == 3) DrawCasio(g, kx, top);
             else if (Model == 4) DrawTrs80(g, kx, top);
-            else if (Model == 5) DrawUartBoard(g, kx, top);
+            else if (Model == 5) DrawGenericPocket(g, kx, top);
             else DrawPc1600(g, kx, top);
 
             // captions
@@ -1924,7 +1968,7 @@ namespace UartSlTest
             MaximizeBox = MinimizeBox = false;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(W, 476);
+            ClientSize = new Size(W, 488);
 
             Controls.Add(new PictureBox { Image = Icons.Comet(72), SizeMode = PictureBoxSizeMode.AutoSize, Left = (W - 72) / 2, Top = 16 });
             AddLine("SerComet " + AppInfo.Version, 100, new Font("Segoe UI", 16F, FontStyle.Bold), Color.FromArgb(30, 70, 120));
@@ -1934,17 +1978,18 @@ namespace UartSlTest
             AddLine("Free for personal, non-commercial and educational use.", 218, new Font("Segoe UI", 9F, FontStyle.Bold), Color.Black);
             AddLine("License: PolyForm Noncommercial License 1.0.0", 240, new Font("Segoe UI", 8.5F), Color.Black);
             var tt = new WrapToolTip { AutoPopDelay = 9000, InitialDelay = 400, ShowAlways = true };
-            AddLink("Web: github.com/Ante1000", "https://github.com/Ante1000", 5, 19, 266, tt, "Open the project page in the browser.");
-            AddLink("YouTube: youtube.com/@anteamber", "https://www.youtube.com/@anteamber", 9, 24, 290, tt, "Open the YouTube channel in the browser.");
-            AddLine("Bug reports, suggestions, questions, contact:", 322, new Font("Segoe UI", 8.5F), Color.Black);
-            var mail = new LinkLabel { Text = "alex.f4vts@gmail.com", Left = 0, Top = 342, Width = W, Height = 20, TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 10F) };
+            AddLink("Program page: ante1000.github.io", "https://ante1000.github.io", 14, 20, 262, tt, "Open the SerComet page in the browser.");
+            AddLink("Web: github.com/Ante1000", "https://github.com/Ante1000", 5, 19, 284, tt, "Open the project page in the browser.");
+            AddLink("YouTube: youtube.com/@anteamber", "https://www.youtube.com/@anteamber", 9, 24, 306, tt, "Open the YouTube channel in the browser.");
+            AddLine("Bug reports, suggestions, questions, contact:", 336, new Font("Segoe UI", 8.5F), Color.Black);
+            var mail = new LinkLabel { Text = "alex.f4vts@gmail.com", Left = 0, Top = 356, Width = W, Height = 20, TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 10F) };
             mail.Links.Add(0, 20, "mailto:alex.f4vts@gmail.com");
             mail.LinkClicked += OpenLink;
             Controls.Add(mail);
             tt.SetToolTip(mail, "Write an e-mail.");
-            AddLine("BASIC token tables: \"Das Systemhandbuch f\u00FCr den PC-1600\"", 378, new Font("Segoe UI", 8.5F), Color.Black);
-            AddLine("by David von Oheimb. Thank you!", 398, new Font("Segoe UI", 8.5F), Color.Black);
-            var ok = new Button { Text = "OK", Left = (W - 80) / 2, Top = 436, Width = 80, DialogResult = DialogResult.OK };
+            AddLine("BASIC token tables: \"Das Systemhandbuch f\u00FCr den PC-1600\"", 388, new Font("Segoe UI", 8.5F), Color.Black);
+            AddLine("by David von Oheimb. Thank you!", 408, new Font("Segoe UI", 8.5F), Color.Black);
+            var ok = new Button { Text = "OK", Left = (W - 80) / 2, Top = 448, Width = 80, DialogResult = DialogResult.OK };
             Controls.Add(ok);
             AcceptButton = ok;
             tt.SetToolTip(ok, "Close this window.");
