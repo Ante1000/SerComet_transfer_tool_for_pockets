@@ -364,9 +364,14 @@ namespace UartSlTest
                 return "TRS-80 Model 100 / NEC PC-8201: DB-25 RS-232C, null-modem cable. OPEN \"COM:88N1E\" FOR OUTPUT AS 1 / FOR INPUT AS 2 (8 = 9600, 3 = 300, 9 = 19200).\r\n" +
                        "PRINT #1,..; LINE INPUT #2,A$; A$=INPUT$(n,2); CLOSE 1,2. Program (ASCII): SAVE \"COM:88N1E\" = Receive, LOAD \"COM:48N1E\" = Send.\r\n" +
                        "LOAD tokenizes while receiving: use 600 to 1200 bps; SAVE is stable up to 19200.";
+            if (curModel == 5 && radioSio.Checked)
+                return "UART Other, TTL: logic levels 0 / +5 V; 3.3 V CMOS devices work too, and so do Arduino and similar boards. Connect through a USB-TTL adapter and match its voltage (3.3 V or 5 V) to the device.\r\n" +
+                       "TX of one side goes to RX of the other, and the grounds are joined. Never connect RS-232 levels to a TTL input.\r\n" +
+                       "Text transfer (.bas) with the baud rate (up to 115200), flow control, line end and line delay set here (8N1). Use the Terminal for tests.";
             if (curModel == 5)
-                return "Any computer with a UART interface: TTL (3.3 / 5 V, through a USB-TTL adapter) or RS-232 (through a USB-RS232 cable; connect the lines crossed, null-modem).\r\n" +
-                       "Text transfer (.bas) with the baud rate, flow control, line end and line delay set here (8N1). Use the Terminal for tests. Never connect RS-232 levels to a TTL-only device.";
+                return "UART Other, RS-232: the signal swings between a negative and a positive voltage (about -5 to -15 V and +5 to +15 V). A device with 0 / +5 V logic needs a level converter (for example MAX232 / MAX3232) between it and the RS-232 adapter.\r\n" +
+                       "Connect through a USB-RS232 adapter with a null-modem cable (TX and RX crossed).\r\n" +
+                       "Text transfer (.bas) with the baud rate (up to 115200), flow control, line end and line delay set here (8N1). Use the Terminal for tests.";
             if (radioSio.Checked)
                 return "Compatible: PC-1350, PC-1360, PC-1450..90, PC-E500..650, PC-U6000, PC-2500 (15-pin, TTL-UART SIO via a USB/COM adapter).\r\n" +
                        "PC-1350 / PC-1360: OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send) or SAVE (SerComet: Receive).\r\n" +
@@ -625,7 +630,8 @@ namespace UartSlTest
         static readonly string[] TextBauds = { "300", "600", "1200", "2400", "4800", "9600", "19200" };
         static readonly string[] SoftBauds = { "1200", "2400", "4800", "9600", "19200" };
         static readonly string[] FxBauds = { "300", "600", "1200", "2400", "4800" };      // Casio FX-850P / 870P: BASIC offers 150 to 4800 bps
-        static string[] TextBaudsFor(int m) { return m == 3 ? FxBauds : TextBauds; }
+        static readonly string[] UartBauds = { "300", "600", "1200", "2400", "4800", "9600", "19200", "38400", "57600", "115200" };   // UART Other: up to 115200
+        static string[] TextBaudsFor(int m) { return m == 3 ? FxBauds : m == 5 ? UartBauds : TextBauds; }
 
         // the combo has all the speeds for the text modes and the five speeds of the SL installer for the Software UART
         void FillBaud(string[] list)
