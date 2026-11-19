@@ -1236,16 +1236,30 @@ namespace UartSlTest
         string progText;
 
         // keeps one log line up to date while a file is being sent: "SENDING name (n B) (37%)"
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+        const int WM_SETREDRAW = 0x000B;
+
         void SetProgress(int pct)
         {
             if (txtLog.TextLength != progEnd) return;      // other messages were logged meanwhile: leave them alone
             string line = DateTime.Now.ToString("HH:mm:ss") + "  " + progText + " (" + pct + "%)\r\n";
-            txtLog.Select(progStart, txtLog.TextLength - progStart);
-            txtLog.SelectionFont = txtLog.Font; txtLog.SelectionColor = txtLog.ForeColor;
-            txtLog.SelectedText = line;
-            progEnd = txtLog.TextLength;
-            txtLog.SelectionStart = txtLog.TextLength;
-            txtLog.ScrollToCaret();
+            // no redraw while the last line is replaced: otherwise the log jumps up and down (the selection scrolls it)
+            SendMessage(txtLog.Handle, WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
+            try
+            {
+                txtLog.Select(progStart, txtLog.TextLength - progStart);
+                txtLog.SelectionFont = txtLog.Font; txtLog.SelectionColor = txtLog.ForeColor;
+                txtLog.SelectedText = line;
+                progEnd = txtLog.TextLength;
+                txtLog.SelectionStart = txtLog.TextLength;
+                txtLog.ScrollToCaret();
+            }
+            finally
+            {
+                SendMessage(txtLog.Handle, WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
+                txtLog.Invalidate();
+            }
         }
 
         async void SendFile(string path)
