@@ -2017,7 +2017,7 @@ namespace UartSlTest
             AddLine("Free for personal, non-commercial and educational use.", 218, new Font("Segoe UI", 9F, FontStyle.Bold), Color.Black);
             AddLine("License: PolyForm Noncommercial License 1.0.0", 240, new Font("Segoe UI", 8.5F), Color.Black);
             var tt = new WrapToolTip { AutoPopDelay = 9000, InitialDelay = 400, ShowAlways = true };
-            AddLink("Program page: ante1000.github.io", "https://ante1000.github.io", 14, 20, 262, tt, "Open the SerComet page in the browser.");
+            AddLink("Program page: ante1000.github.io", "https://ante1000.github.io/sercomet/", 14, 20, 262, tt, "Open the SerComet page in the browser.");
             AddLink("Web: github.com/Ante1000", "https://github.com/Ante1000", 5, 19, 284, tt, "Open the project page in the browser.");
             AddLink("YouTube: youtube.com/@anteamber", "https://www.youtube.com/@anteamber", 9, 24, 306, tt, "Open the YouTube channel in the browser.");
             AddLine("Bug reports, suggestions, questions, contact:", 336, new Font("Segoe UI", 8.5F), Color.Black);
