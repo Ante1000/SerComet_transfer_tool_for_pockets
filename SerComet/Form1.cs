@@ -1627,9 +1627,9 @@ namespace UartSlTest
             }
         }
 
-        static void Arrow(Graphics g, int x1, int x2, int y, bool right, bool active, bool blink, bool white)
+        static void Arrow(Graphics g, int x1, int x2, int y, bool right, bool active, bool blink, bool white, bool open)
         {
-            Color c = white ? Color.White : active && blink ? Color.FromArgb(255, 150, 30) : Color.FromArgb(70, 120, 175);   // orange flash while data flows
+            Color c = white ? Color.White : active && blink ? Color.FromArgb(255, 150, 30) : open ? Color.FromArgb(102, 162, 215) : Color.FromArgb(46, 87, 135);   // port open: lighter blue, closed: darker blue; orange flash while data flows
             Point[] pts = right
                 ? new[] { new Point(x1, y - 5), new Point(x2 - 22, y - 5), new Point(x2 - 22, y - 12), new Point(x2, y), new Point(x2 - 22, y + 12), new Point(x2 - 22, y + 5), new Point(x1, y + 5) }
                 : new[] { new Point(x2, y - 5), new Point(x1 + 22, y - 5), new Point(x1 + 22, y - 12), new Point(x1, y), new Point(x1 + 22, y + 12), new Point(x1 + 22, y + 5), new Point(x2, y + 5) };
@@ -1881,8 +1881,8 @@ namespace UartSlTest
                 if (cometImg == null) cometImg = Icons.Comet(28);
                 g.DrawImage(cometImg, mid - g.MeasureString("SerComet", f).Width / 2 - 32, top - 6);
             }
-            Arrow(g, ax1, ax2, top + 44, true, Sending, Blink, FlashWhite);
-            Arrow(g, ax1, ax2, top + 74, false, Receiving, Blink, FlashWhite);
+            Arrow(g, ax1, ax2, top + 44, true, Sending, Blink, FlashWhite, PortOpen);
+            Arrow(g, ax1, ax2, top + 74, false, Receiving, Blink, FlashWhite, PortOpen);
             Color ok = PortOpen ? Color.FromArgb(70, 220, 90) : Color.FromArgb(90, 90, 100);
             Led(g, ok, mid - 18, top + 96);
             Led(g, ok, mid, top + 96);
