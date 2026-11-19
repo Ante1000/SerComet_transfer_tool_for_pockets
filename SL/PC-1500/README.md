@@ -6,7 +6,7 @@ for SerComet (target PC-1500, Software Serial). The routines work directly in th
 
 | File | Contents |
 |---|---|
-| `Basic/sl1500.txt` | the BASIC installer (38 lines; asks for the RX port, shows INSTALLING..., POKEs 312 bytes with a checksum) |
+| `Basic/sl1500.txt` | the BASIC installer (39 lines; asks for the RX port, shows INSTALLING..., POKEs 312 bytes with a checksum) |
 | `wav/sl1500.wav` | the installer as a tape recording for `CLOAD` (CE-150; name `SL1500`, 6 s leader tone, about 2 minutes) |
 | `asm/uart1500_sl.asm` | the source (LH5801) of LOAD and SAVE |
 | `tools/lh5801asm.py`, `tools/build_sl1500.py` | a small LH5801 assembler and the installer builder |
@@ -15,7 +15,7 @@ for SerComet (target PC-1500, Software Serial). The routines work directly in th
 ## Use
 
 1. PRO mode: `NEW0`, `NEW &4300` (RAM start + `&300`; other RAM: `PEEK &7863` is the high byte of the RAM start; with the RAM from `&0000`: `NEW &300`), `CLOAD` the tape (or type `sl1500.txt`), `RUN`;
-   ENTER for RX on PB2 (`0` for PB0); it shows INSTALLING... and then the two calls in hex (`LOAD CALL &0100`, `SAVE CALL &0200`). Then `NEW`: the routines stay.
+   ENTER for RX on PB2 (`0` for PB0); it shows INSTALLING... and then `SL1500 READY 4800 PB2` (or `PB0`, the chosen port) and the two calls.in hex (`LOAD CALL &0100`, `SAVE CALL &0200`). Then `NEW`: the routines stay.
 2. **Save** (PC-1500 to SerComet): `CALL &4200` (RUN mode). `X=0 : CALL &4200,X` gives X = 1 when done.
 3. **Load** (SerComet to the PC-1500): `NEW`, `CALL &4100`, then Send in SerComet within 30 s. `X=0 : CALL &4100,X`: 1 = loaded, 2 = checksum error,
    3 = nothing received, 4 = does not fit; after 2 or 4 the memory is left empty.
