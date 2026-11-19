@@ -152,7 +152,7 @@ namespace UartSlTest
                 }
                 x += gap;
             }
-            comboBaud.Left -= 3; comboBaud.Width += 3;       // 115200 was cut off
+            comboBaud.Left -= 5; comboBaud.Width += 5;       // 115200 was cut off
             gb.Controls.AddRange(new Control[] { radioSoft, radioRs, radioSio, lblBaud, comboBaud, lblDelay, numDelay, lblEol, comboEol, lblFlow, comboFlow });
 
             var lblDir = new Label { Text = "Folder:", Left = 10, Top = 298, Width = 50 };
@@ -824,7 +824,6 @@ namespace UartSlTest
         void ResetPort()
         {
             if (port == null) return;
-            FlashArrows();
             string name = port.PortName;
             ClosePort();
             if (comboPorts.Items.Contains(name)) comboPorts.SelectedItem = name;
