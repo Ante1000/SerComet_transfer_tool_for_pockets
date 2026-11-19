@@ -152,6 +152,7 @@ namespace UartSlTest
                 }
                 x += gap;
             }
+            comboBaud.Left -= 3; comboBaud.Width += 3;       // 115200 was cut off
             gb.Controls.AddRange(new Control[] { radioSoft, radioRs, radioSio, lblBaud, comboBaud, lblDelay, numDelay, lblEol, comboEol, lblFlow, comboFlow });
 
             var lblDir = new Label { Text = "Folder:", Left = 10, Top = 298, Width = 50 };
@@ -212,7 +213,7 @@ namespace UartSlTest
                 const string titleText = "FILE TRANSFER TOOL FOR PC AND SHARP POCKET COMPUTERS";
                 var titleFont = new Font("Segoe UI", 11F, FontStyle.Bold);
                 Size ts = TextRenderer.MeasureText(titleText, titleFont);
-                int x0 = (ClientSize.Width - (32 + 8 + ts.Width)) / 2;
+                int x0 = (ClientSize.Width - (32 + 8 + ts.Width)) / 2 - 10;
                 Controls.Add(new PictureBox { Image = Icons.Comet(32), SizeMode = PictureBoxSizeMode.AutoSize, Left = x0, Top = 10, Anchor = AnchorStyles.Top });
                 Controls.Add(new Label
                 {
@@ -689,6 +690,7 @@ namespace UartSlTest
             txtLog.SelectionStart = txtLog.TextLength; txtLog.SelectionLength = 0;
             txtLog.SelectionFont = txtLog.Font; txtLog.SelectionColor = txtLog.ForeColor;
             txtLog.AppendText(DateTime.Now.ToString("HH:mm:ss") + "  " + s + "\r\n");
+            txtLog.SelectionStart = txtLog.TextLength; txtLog.ScrollToCaret();
         }
 
         // an important message: bold and dark red
@@ -699,6 +701,7 @@ namespace UartSlTest
             txtLog.AppendText(DateTime.Now.ToString("HH:mm:ss") + "  " + s + "\r\n");
             txtLog.SelectionStart = txtLog.TextLength; txtLog.SelectionLength = 0;
             txtLog.SelectionFont = txtLog.Font; txtLog.SelectionColor = txtLog.ForeColor;
+            txtLog.ScrollToCaret();
         }
 
         // ---- wrong baud rate: framing errors of the PC UART (the stop bit is not where it should be) and garbage in a text transfer
@@ -821,6 +824,7 @@ namespace UartSlTest
         void ResetPort()
         {
             if (port == null) return;
+            FlashArrows();
             string name = port.PortName;
             ClosePort();
             if (comboPorts.Items.Contains(name)) comboPorts.SelectedItem = name;
@@ -829,8 +833,26 @@ namespace UartSlTest
             if (port != null) Log("Reset port: " + name + " was closed and opened again.");
         }
 
+        // two short white flashes of both arrows (0.2 s in all): Flush and Reset port
+        int flashStep;
+        void FlashArrows()
+        {
+            flashStep = 0;
+            var t = new Timer { Interval = 50 };
+            t.Tick += delegate
+            {
+                flashStep++;                                   // 0-50 ms white, 50-100 off, 100-150 white, 150-200 off
+                banner.FlashWhite = flashStep % 2 == 0 && flashStep < 4;
+                banner.Invalidate();
+                if (flashStep >= 4) { t.Stop(); t.Dispose(); }
+            };
+            banner.FlashWhite = true; banner.Invalidate();
+            t.Start();
+        }
+
         void FlushBuffers()
         {
+            FlashArrows();
             try
             {
                 if (port != null && port.IsOpen) { port.DiscardInBuffer(); port.DiscardOutBuffer(); }
@@ -952,7 +974,6 @@ namespace UartSlTest
                 {
                     string guess = GuessBaudProblem(data);
                     if (guess != null) LogBold("Wrong baud rate, " + guess + " (the received data is garbage).");
-                    Log("Ignored " + data.Length + " B of noise (not a BASIC listing); nothing was saved.");
                     return;
                 }
                 Directory.CreateDirectory(txtDir.Text);
@@ -1010,7 +1031,6 @@ namespace UartSlTest
                 {
                     if (data.Length < 16)       // a few random bytes on the line, not a transfer
                     {
-                        Log("Ignored " + data.Length + " B of noise (" + err + "); nothing was saved.");
                         return;
                     }
                     string path = UniquePath("ERROR_" + DateTime.Now.ToString("yyyyMMdd_HHmmss"), ".bad");
@@ -1576,7 +1596,7 @@ namespace UartSlTest
     // Banner: PC <-> PC-1600
     public class BannerPanel : Panel
     {
-        public bool PortOpen, Sending, Receiving, Blink;   // Blink toggles ~5x per second while data flows
+        public bool PortOpen, Sending, Receiving, Blink, FlashWhite;   // Blink toggles ~5x per second while data flows
         Bitmap cometImg;
         public string ModelName = "Sharp PC-1600";
         public int Model = 1;                 // 0 PC-1500, 1 PC-1600, 2 other Sharp (15-pin, drawing of a PC-E500), 3 Casio FX-850/870, 4 TRS-80 / NEC, 5 other UART computer
@@ -1608,9 +1628,9 @@ namespace UartSlTest
             }
         }
 
-        static void Arrow(Graphics g, int x1, int x2, int y, bool right, bool active, bool blink)
+        static void Arrow(Graphics g, int x1, int x2, int y, bool right, bool active, bool blink, bool white)
         {
-            Color c = active && blink ? Color.FromArgb(255, 150, 30) : Color.FromArgb(70, 120, 175);   // orange flash while data flows
+            Color c = white ? Color.White : active && blink ? Color.FromArgb(255, 150, 30) : Color.FromArgb(70, 120, 175);   // orange flash while data flows
             Point[] pts = right
                 ? new[] { new Point(x1, y - 5), new Point(x2 - 22, y - 5), new Point(x2 - 22, y - 12), new Point(x2, y), new Point(x2 - 22, y + 12), new Point(x2 - 22, y + 5), new Point(x1, y + 5) }
                 : new[] { new Point(x2, y - 5), new Point(x1 + 22, y - 5), new Point(x1 + 22, y - 12), new Point(x1, y), new Point(x1 + 22, y + 12), new Point(x1 + 22, y + 5), new Point(x2, y + 5) };
@@ -1862,8 +1882,8 @@ namespace UartSlTest
                 if (cometImg == null) cometImg = Icons.Comet(28);
                 g.DrawImage(cometImg, mid - g.MeasureString("SerComet", f).Width / 2 - 32, top - 6);
             }
-            Arrow(g, ax1, ax2, top + 44, true, Sending, Blink);
-            Arrow(g, ax1, ax2, top + 74, false, Receiving, Blink);
+            Arrow(g, ax1, ax2, top + 44, true, Sending, Blink, FlashWhite);
+            Arrow(g, ax1, ax2, top + 74, false, Receiving, Blink, FlashWhite);
             Color ok = PortOpen ? Color.FromArgb(70, 220, 90) : Color.FromArgb(90, 90, 100);
             Led(g, ok, mid - 18, top + 96);
             Led(g, ok, mid, top + 96);
