@@ -97,7 +97,7 @@ namespace UartSlTest
             radio1500 = new RadioButton { Text = "Sharp PC-1500", Left = 8, Top = 24, Width = 100 };
             radio1600 = new RadioButton { Text = "Sharp PC-1600", Left = 122, Top = 24, Width = 100, Checked = true };
             radioOther = new RadioButton { Text = "Sharp (other)", Left = 238, Top = 24, Width = 112 };
-            radioFx = new RadioButton { Text = "Casio FX-850/870", Left = 8, Top = 54, Width = 100 };
+            radioFx = new RadioButton { Text = "Casio FX-850..", Left = 8, Top = 54, Width = 100 };
             radioTrs = new RadioButton { Text = "NEC/TRS-80", Left = 122, Top = 54, Width = 100 };
             radioUart = new RadioButton { Text = "UART Other", Left = 238, Top = 54, Width = 112 };
             gbTarget.Controls.AddRange(new Control[] { radio1500, radio1600, radioOther, radioFx, radioTrs, radioUart });
