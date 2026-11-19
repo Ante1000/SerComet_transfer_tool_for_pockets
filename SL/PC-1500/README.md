@@ -7,7 +7,7 @@ for SerComet (target PC-1500, Software Serial). The routines work directly in th
 | File | Contents |
 |---|---|
 | `Basic/sl1500.txt` | the BASIC installer (36 lines; asks for the RX port, shows INSTALLING..., POKEs 312 bytes with a checksum) |
-| `wav/sl1500.wav` | the installer as a tape recording for `CLOAD` (CE-150; name `SL1500`, about 2 minutes) |
+| `wav/sl1500.wav` | the installer as a tape recording for `CLOAD` (CE-150; name `SL1500`, 6 s leader tone, about 2 minutes) |
 | `asm/uart1500_sl.asm` | the source (LH5801) of LOAD and SAVE |
 | `tools/lh5801asm.py`, `tools/build_sl1500.py` | a small LH5801 assembler and the installer builder |
 | `tools/verify_sl1500.py` | simulator test of SAVE, LOAD and the installer (about 90 s, Python 3 only) |
