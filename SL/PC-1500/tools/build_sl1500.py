@@ -49,9 +49,11 @@ def build():
     pk = ':'.join('POKE L+%d,M' % p for p in bm_pos)
     add(130, pk)
     add(140, 'CLS:WAIT 100:PRINT "SL1500 READY 4800 BPS"')
-    add(150, 'PRINT "LOAD CALL ";L;" NEW 1ST"')
-    add(160, 'PRINT "SAVE CALL ";S')
+    add(150, 'N=L:GOSUB 200:PRINT "LOAD CALL &";H$;" NEW 1ST"')
+    add(160, 'N=S:GOSUB 200:PRINT "SAVE CALL &";H$')
     add(170, 'WAIT 0:END')
+    add(200, 'H$="":T=N:FOR K=1 TO 4:D=T-16*INT (T/16)')
+    add(210, 'H$=MID$ ("0123456789ABCDEF",D+1,1)+H$:T=INT (T/16):NEXT K:RETURN')
     nl = 1000
     row = []
     for v in code:
