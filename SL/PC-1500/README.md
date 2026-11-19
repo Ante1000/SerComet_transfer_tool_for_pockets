@@ -35,12 +35,13 @@ cassette routines of the CE-150, from the keyboard of a freshly reset PC-1500 (n
 10 A=PEEK &7863*256+&C5
 20 POKE &7879,&80
 30 POKE &7B69,0
+35 POKE &7B60,16,17,18,19,20,21,22,23
 40 CALL &BCE8
 50 CALL &BD3C,A
 60 CALL &BBF5
 ```
    Then RUN mode, `RUN` + ENTER and at once start the WAV (CE-150 audio input).
-3. Line 40 (`CALL &BCE8`) finds the header (up to a minute), line 50 (`CALL &BD3C,A`) stores the data from the address `A` (RAM start + `&C5`). When the tape has ended (the
+3. Line 35 puts the 8 synchronisation bytes `10H..17H` where `BCE8` expects them (`CLOAD` gets them from `BBD6`; without them `BCE8` never finds the header). Line 40 (`CALL &BCE8`) finds the header (up to a minute), line 50 (`CALL &BD3C,A`) stores the data from the address `A` (RAM start + `&C5`). When the tape has ended (the
    noise stops, about 27 s after the start) press **BREAK** once. If the program goes on, line 60 (`CALL &BBF5`) puts the ports and interrupts back; if the BASIC stops with `BREAK IN 50`,
    type `CALL &BBF5` + ENTER yourself. The 3 bytes after the code (`&1FD..&1FF` from the RAM start) are overwritten by the end of the tape; they are not used. Then PRO mode and `NEW` (the program is deleted, the routines stay).
 4. Check (type it as a program, too, or look at a few bytes): `PRINT PEEK 197, PEEK 198, PEEK 388` gives `253 190 253` with the RAM from `&0000` (add `&4000` to the three addresses for the RAM from `&4000`). The sum of the 312 bytes is **34369** (PB2) or **34360** (PB0). Then LOAD is at RAM start + `&C5`, SAVE at RAM start + `&184`, exactly as after the installer.
