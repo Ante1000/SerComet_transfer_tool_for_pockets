@@ -214,6 +214,19 @@ namespace UartSlTest
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             };
             gbLog.Controls.Add(txtLog);
+            // right mouse button in the log: Clear log, Copy log
+            var logMenu = new ContextMenuStrip();
+            var miClear = new ToolStripMenuItem("Clear log");
+            var miCopy = new ToolStripMenuItem("Copy log");
+            miClear.Click += delegate { txtLog.Clear(); progStart = 0; progEnd = -1;       // a running progress line is not redrawn };
+            miCopy.Click += delegate
+            {
+                try { if (txtLog.TextLength > 0) Clipboard.SetText(txtLog.Text); } catch (Exception ex) { Log("Copy error: " + ex.Message); }
+            };
+            logMenu.Items.Add(miClear);
+            logMenu.Items.Add(miCopy);
+            logMenu.Opening += delegate { miCopy.Enabled = miClear.Enabled = txtLog.TextLength > 0; };
+            txtLog.ContextMenuStrip = logMenu;
 
             Controls.AddRange(new Control[] { gbPort, gbTarget, banner, gb,
                 lblDir, txtDir, btnLocations, btnBrowse, btnOpenDir, gbInfo, gbFiles, btnView, chkEof, chkAuto, chkSkipRem, btnConvert, btnAbort, btnSend, btnSendOther, btnRefreshFiles, btnDelete, btnTerminal, gbLog });
