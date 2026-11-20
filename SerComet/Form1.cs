@@ -2409,7 +2409,15 @@ namespace UartSlTest
                     if (kw == "REM" || kw == "DATA")                     // the rest of the line is text
                     {
                         if (i < s.Length && s[i] == ' ') i++;
-                        for (; i < s.Length; i++) o.Add((byte)s[i]);
+                        // the PC-1500 / PC-1600 drop the spaces of a DATA statement outside quotation marks (DATA 1, 2 is stored as 1,2);
+                        // with the spaces kept, READ of a number fails with ERROR 1
+                        bool inQuote = false;
+                        for (; i < s.Length; i++)
+                        {
+                            if (s[i] == '"') inQuote = !inQuote;
+                            if (kw == "DATA" && !inQuote && s[i] == ' ') continue;
+                            o.Add((byte)s[i]);
+                        }
                         return null;
                     }
                     lineMode = LineKeywords.Contains(kw);
