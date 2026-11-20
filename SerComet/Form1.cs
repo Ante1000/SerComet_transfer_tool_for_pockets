@@ -218,7 +218,7 @@ namespace UartSlTest
             var logMenu = new ContextMenuStrip();
             var miClear = new ToolStripMenuItem("Clear log");
             var miCopy = new ToolStripMenuItem("Copy log");
-            miClear.Click += delegate { txtLog.Clear(); progStart = 0; progEnd = -1;       // a running progress line is not redrawn };
+            miClear.Click += delegate { txtLog.Clear(); progStart = 0; progEnd = -1; };       // a running progress line is not redrawn
             miCopy.Click += delegate
             {
                 try { if (txtLog.TextLength > 0) Clipboard.SetText(txtLog.Text); } catch (Exception ex) { Log("Copy error: " + ex.Message); }
