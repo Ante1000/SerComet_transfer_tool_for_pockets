@@ -2723,29 +2723,29 @@ namespace UartSlTest
                 lines.Add(ln);
             }
             add(3, "Machine: " + p.Name + ". " + lines.Count + " lines.");
-            if (lines.Count == 0) { add(2, "The listing is empty: NO lines."); faults++; return res; }
+            if (lines.Count == 0) { add(2, "The listing is empty: no lines."); faults++; return res; }
 
             // 1. every line has a number
-            if (unnumbered.Count == 0) add(0, "All lines have a line number: YES");
-            else { add(2, "All lines have a line number: NO (file lines " + Lines(unnumbered, 8) + ")"); faults++; }
+            if (unnumbered.Count == 0) add(0, "All lines have a line number: OK");
+            else { add(2, "All lines have a line number: Fail (file lines " + Lines(unnumbered, 8) + ")"); faults++; }
 
             // 2. no repeated numbers
             var seen = new Dictionary<int, int>(); var dups = new List<int>();
             foreach (Line l in lines) if (l.Number >= 0) { if (seen.ContainsKey(l.Number)) { if (!dups.Contains(l.Number)) dups.Add(l.Number); } else seen[l.Number] = 1; }
-            if (dups.Count == 0) add(0, "No repeated line numbers: YES");
-            else { add(2, "No repeated line numbers: NO (repeated: " + Lines(dups, 10) + ")"); faults++; }
+            if (dups.Count == 0) add(0, "No repeated line numbers: OK");
+            else { add(2, "No repeated line numbers: Fail (repeated: " + Lines(dups, 10) + ")"); faults++; }
 
             // 3. range of the line numbers
             var bad = new List<int>();
             foreach (Line l in lines) if (l.Number >= 0 && (l.Number < p.MinLine || l.Number > p.MaxLine)) bad.Add(l.Number);
-            if (bad.Count == 0) add(0, "Line numbers in the allowed range (" + p.MinLine + " to " + p.MaxLine + "): YES");
-            else { add(2, "Line numbers in the allowed range (" + p.MinLine + " to " + p.MaxLine + "): NO (" + Lines(bad, 10) + ")"); faults++; }
+            if (bad.Count == 0) add(0, "Line numbers in the allowed range (" + p.MinLine + " to " + p.MaxLine + "): OK");
+            else { add(2, "Line numbers in the allowed range (" + p.MinLine + " to " + p.MaxLine + "): Fail (" + Lines(bad, 10) + ")"); faults++; }
 
             // 4. order
             bool asc = true; int prev = -1;
             foreach (Line l in lines) if (l.Number >= 0) { if (l.Number < prev) asc = false; prev = l.Number; }
-            if (asc) add(0, "Line numbers in ascending order: YES");
-            else { add(1, "Line numbers in ascending order: NO (the computer sorts the lines when they are entered, but check the file)"); warnings++; }
+            if (asc) add(0, "Line numbers in ascending order: OK");
+            else { add(1, "Line numbers in ascending order: Fail (the computer sorts the lines when they are entered, but check the file)"); warnings++; }
 
             // 5. GOTO / GOSUB / THEN / RESTORE targets
             var missing = new List<string>(); var toRem = new List<int>(); var remLines = new HashSet<int>();
@@ -2760,8 +2760,8 @@ namespace UartSlTest
                         else if (remLines.Contains(tn) && !toRem.Contains(tn)) toRem.Add(tn);
                     }
             }
-            if (missing.Count == 0) add(0, "All GOTO / GOSUB / THEN / RESTORE targets exist: YES");
-            else { add(2, "All GOTO / GOSUB / THEN / RESTORE targets exist: NO (line -> missing target: " + string.Join("; ", missing.GetRange(0, Math.Min(8, missing.Count)).ToArray()) + (missing.Count > 8 ? " ... " + missing.Count + " in all" : "") + ")"); faults++; }
+            if (missing.Count == 0) add(0, "All GOTO / GOSUB / THEN / RESTORE targets exist: OK");
+            else { add(2, "All GOTO / GOSUB / THEN / RESTORE targets exist: Fail (line -> missing target: " + string.Join("; ", missing.GetRange(0, Math.Min(8, missing.Count)).ToArray()) + (missing.Count > 8 ? " ... " + missing.Count + " in all" : "") + ")"); faults++; }
             if (toRem.Count > 0) add(3, "Jumps point at REM lines " + Lines(toRem, 8) + ": do not use Skip REM for this program, or the REM lines are kept automatically.");
 
             // 6. characters
@@ -2772,19 +2772,19 @@ namespace UartSlTest
                 foreach (char c in l.Raw) if (c > 126) { hi.Add(l.Number >= 0 ? l.Number : -l.Index); break; }
                 if (!l.IsRem) foreach (char c in l.Code) if (c >= 'a' && c <= 'z') { lower.Add(l.Number >= 0 ? l.Number : -l.Index); break; }
             }
-            if (ctl.Count == 0 && hi.Count == 0) add(0, "Characters allowed (no control or non-ASCII characters): YES");
-            else { add(2, "Characters allowed (no control or non-ASCII characters): NO (lines " + Lines(ctl.Count > 0 ? ctl : hi, 8) + ")"); faults++; }
-            if (lower.Count == 0) add(0, "Capital letters in the program text: YES");
+            if (ctl.Count == 0 && hi.Count == 0) add(0, "Characters allowed (no control or non-ASCII characters): OK");
+            else { add(2, "Characters allowed (no control or non-ASCII characters): Fail (lines " + Lines(ctl.Count > 0 ? ctl : hi, 8) + ")"); faults++; }
+            if (lower.Count == 0) add(0, "Capital letters in the program text: OK");
             else if (p.LowerOk) add(0, "Small and capital letters: lowercase letters in " + lower.Count + " lines (allowed on this machine)");
-            else { add(1, "Capital letters in the program text: NO (lowercase letters outside strings in " + lower.Count + " lines, e.g. " + Lines(lower, 4) + "; SerComet converts them to capitals, a typed-in program needs capitals)"); warnings++; }
+            else { add(1, "Capital letters in the program text: Fail (lowercase letters outside strings in " + lower.Count + " lines, e.g. " + Lines(lower, 4) + "; SerComet converts them to capitals, a typed-in program needs capitals)"); warnings++; }
 
             // 7. line length
             if (p.MaxLen > 0)
             {
                 var longL = new List<int>();
                 foreach (Line l in lines) if (l.Raw.Trim().Length > p.MaxLen) longL.Add(l.Number >= 0 ? l.Number : -l.Index);
-                if (longL.Count == 0) add(0, "Line length within " + p.MaxLen + " characters: YES");
-                else { add(2, "Line length within " + p.MaxLen + " characters: NO (lines " + Lines(longL, 8) + ")"); faults++; }
+                if (longL.Count == 0) add(0, "Line length within " + p.MaxLen + " characters: OK");
+                else { add(2, "Line length within " + p.MaxLen + " characters: Fail (lines " + Lines(longL, 8) + ")"); faults++; }
             }
 
             // 8. quotation marks and parentheses
@@ -2799,10 +2799,10 @@ namespace UartSlTest
                 foreach (char c in l.Code) { if (c == '(') depth++; else if (c == ')') { depth--; if (depth < 0) neg = true; } }
                 if (depth != 0 || neg) paren.Add(l.Number);
             }
-            if (quote.Count == 0) add(0, "Quotation marks paired: YES");
-            else { add(1, "Quotation marks paired: NO (an unclosed string is allowed at the end of a line; lines " + Lines(quote, 8) + ")"); warnings++; }
-            if (paren.Count == 0) add(0, "Parentheses paired: YES");
-            else { add(2, "Parentheses paired: NO (lines " + Lines(paren, 8) + ")"); faults++; }
+            if (quote.Count == 0) add(0, "Quotation marks paired: OK");
+            else { add(1, "Quotation marks paired: Fail (an unclosed string is allowed at the end of a line; lines " + Lines(quote, 8) + ")"); warnings++; }
+            if (paren.Count == 0) add(0, "Parentheses paired: OK");
+            else { add(2, "Parentheses paired: Fail (lines " + Lines(paren, 8) + ")"); faults++; }
 
             // 9. words: statements, functions, variables
             var unknown = new List<string>(); var counts = new Dictionary<string, int>();
@@ -2819,11 +2819,11 @@ namespace UartSlTest
                     else if (!unknown.Contains(w + " (" + (l.Number >= 0 ? l.Number.ToString() : "?") + ")") && unknown.Count < 200) unknown.Add(w + " (" + (l.Number >= 0 ? l.Number.ToString() : "?") + ")");
                 }
             }
-            if (unknown.Count == 0) add(0, "All statements and functions are known on this machine: YES");
+            if (unknown.Count == 0) add(0, "All statements and functions are known on this machine: OK");
             else
             {
                 string kind = p.Tokenizer1500 || p.Tokenizer1600 ? "not a keyword or a variable name of this machine" : "not in the keyword list of this machine (the list is approximate)";
-                add(p.Tokenizer1500 || p.Tokenizer1600 ? 2 : 1, "All statements and functions are known on this machine: NO (" + kind + ": " + string.Join(", ", unknown.GetRange(0, Math.Min(8, unknown.Count)).ToArray()) + (unknown.Count > 8 ? " ..." : "") + ")");
+                add(p.Tokenizer1500 || p.Tokenizer1600 ? 2 : 1, "All statements and functions are known on this machine: Fail (" + kind + ": " + string.Join(", ", unknown.GetRange(0, Math.Min(8, unknown.Count)).ToArray()) + (unknown.Count > 8 ? " ..." : "") + ")");
                 if (p.Tokenizer1500 || p.Tokenizer1600) faults++; else warnings++;
             }
 
@@ -2843,14 +2843,14 @@ namespace UartSlTest
                 }
                 if (Regex.IsMatch(l.Body, "(?:^|:)\\s*DATA", RegexOptions.IgnoreCase)) nData++;
             }
-            if (nFor == nNext || (nNext > nFor && false)) add(0, "FOR and NEXT match (" + nFor + " / " + nNext + "): YES");
-            else { add(1, "FOR and NEXT match (" + nFor + " FOR / " + nNext + " NEXT): NO (a NEXT can serve several FORs; check the loops)"); warnings++; }
-            if ((nGosub > 0) == (nReturn > 0)) add(0, "GOSUB and RETURN present together: YES");
-            else { add(1, "GOSUB and RETURN present together: NO (" + nGosub + " GOSUB / " + nReturn + " RETURN)"); warnings++; }
-            if (nRead > 0 && nData == 0) { add(2, "READ has DATA to read: NO (no DATA statement)"); faults++; }
-            else add(0, "READ has DATA to read: YES");
-            if (p.NeedThen && nIf > nThen) { add(2, "Every IF has a THEN or GOTO: NO (" + nIf + " IF / " + nThen + " THEN or GOTO)"); faults++; }
-            else if (p.NeedThen) add(0, "Every IF has a THEN or GOTO: YES");
+            if (nFor == nNext || (nNext > nFor && false)) add(0, "FOR and NEXT match (" + nFor + " / " + nNext + "): OK");
+            else { add(1, "FOR and NEXT match (" + nFor + " FOR / " + nNext + " NEXT): Fail (a NEXT can serve several FORs; check the loops)"); warnings++; }
+            if ((nGosub > 0) == (nReturn > 0)) add(0, "GOSUB and RETURN present together: OK");
+            else { add(1, "GOSUB and RETURN present together: Fail (" + nGosub + " GOSUB / " + nReturn + " RETURN)"); warnings++; }
+            if (nRead > 0 && nData == 0) { add(2, "READ has DATA to read: Fail (no DATA statement)"); faults++; }
+            else add(0, "READ has DATA to read: OK");
+            if (p.NeedThen && nIf > nThen) { add(2, "Every IF has a THEN or GOTO: Fail (" + nIf + " IF / " + nThen + " THEN or GOTO)"); faults++; }
+            else if (p.NeedThen) add(0, "Every IF has a THEN or GOTO: OK");
 
             // 11. the tokenizer of SerComet (PC-1500 / PC-1600): the program as the machine will store it
             if (p.Tokenizer1500 || p.Tokenizer1600)
@@ -2858,15 +2858,15 @@ namespace UartSlTest
                 string pr; byte[] img = null;
                 try { img = Pc1600Basic.Tokenize(string.Join("\r\n", lines.ConvertAll(l => l.Raw).ToArray()), p.Tokenizer1500, out pr); }
                 catch (Exception ex) { pr = ex.Message; }
-                if (img == null) { add(2, "Tokenizer (the program in the machine's own code): NO (" + pr + ")"); faults++; }
+                if (img == null) { add(2, "Tokenizer (the program in the machine's own code): Fail (" + pr + ")"); faults++; }
                 else
                 {
                     int size = img.Length + 1;
                     string sizes = size + " B in the machine's own code";
                     int free = p.Tokenizer1500 ? Mem1500 : Mem1600, sl = p.Tokenizer1500 ? Sl1500 : Sl1600;
-                    if (size > free) { add(1, "Program size: " + sizes + ", more than the free memory of the machine without an expansion (about " + free + " B): NO"); warnings++; }
+                    if (size > free) { add(1, "Program size: " + sizes + ", more than the free memory of the machine without an expansion (about " + free + " B): Fail"); warnings++; }
                     else if (size > free - sl) { add(1, "Program size: " + sizes + " fits (about " + free + " B free) but not together with the Saver/Loader (about " + (free - sl) + " B)"); warnings++; }
-                    else add(0, "Program size: " + sizes + ", fits the free memory (about " + (free - sl) + " B with the Saver/Loader): YES");
+                    else add(0, "Program size: " + sizes + ", fits the free memory (about " + (free - sl) + " B with the Saver/Loader): OK");
                 }
             }
 
