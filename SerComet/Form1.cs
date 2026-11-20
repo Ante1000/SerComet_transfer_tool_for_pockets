@@ -2908,6 +2908,7 @@ namespace UartSlTest
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
             Controls.AddRange(new Control[] { lbl, combo, again, copy, close, box });
             CancelButton = close;
+            close.Click += delegate { Close(); };
             combo.SelectedIndexChanged += delegate { Run(); };
             again.Click += delegate { Run(); };
             copy.Click += delegate { try { Clipboard.SetText(box.Text); } catch { } };
