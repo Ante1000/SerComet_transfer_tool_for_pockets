@@ -6,6 +6,7 @@ using System.IO;
 using System.IO.Ports;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -189,6 +190,40 @@ namespace UartSlTest
                 tips.SetToolTip(lstFiles, i >= 0 && i < lstFiles.Items.Count ? FileInfoText((string)lstFiles.Items[i]) : ListTipDefault);
             };
             lstFiles.MouseLeave += delegate { tipIndex = -2; tips.SetToolTip(lstFiles, ListTipDefault); };
+            // a file can be dragged out of the list to the desktop or to Explorer (copied)
+            lstFiles.MouseDown += delegate (object sn, MouseEventArgs me)
+            {
+                dragIndex = me.Button == MouseButtons.Left ? lstFiles.IndexFromPoint(me.Location) : -1;
+                dragStart = me.Location;
+                if (me.Button == MouseButtons.Right) { int i = lstFiles.IndexFromPoint(me.Location); if (i >= 0) lstFiles.SelectedIndex = i; }
+            };
+            lstFiles.MouseUp += delegate { dragIndex = -1; };
+            lstFiles.MouseMove += delegate (object sn, MouseEventArgs me)
+            {
+                if (me.Button != MouseButtons.Left || dragIndex < 0 || dragIndex >= lstFiles.Items.Count) return;
+                Size ds = SystemInformation.DragSize;
+                if (Math.Abs(me.X - dragStart.X) < ds.Width && Math.Abs(me.Y - dragStart.Y) < ds.Height) return;
+                string p = Path.Combine(txtDir.Text, (string)lstFiles.Items[dragIndex]);
+                dragIndex = -1;
+                if (!File.Exists(p)) return;
+                try { lstFiles.DoDragDrop(new DataObject(DataFormats.FileDrop, new[] { p }), DragDropEffects.Copy); } catch { }
+            };
+            // right mouse button: View, Edit, Delete, Rename, Check Basic
+            var fileMenu = new ContextMenuStrip();
+            var miView = new ToolStripMenuItem("View", null, delegate { ViewSelected(); });
+            var miEdit = new ToolStripMenuItem("Edit", null, delegate { EditSelected(); });
+            var miDelete = new ToolStripMenuItem("Delete", null, delegate { DeleteSelected(); });
+            var miRename = new ToolStripMenuItem("Rename", null, delegate { RenameSelected(); });
+            var miCheck = new ToolStripMenuItem("Check Basic", null, delegate { CheckBasicSelected(); });
+            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck });
+            fileMenu.Opening += delegate (object sn, System.ComponentModel.CancelEventArgs ce)
+            {
+                if (lstFiles.SelectedItem == null || lstFiles.IndexFromPoint(lstFiles.PointToClient(Cursor.Position)) < 0) { ce.Cancel = true; return; }
+                string ext = Path.GetExtension((string)lstFiles.SelectedItem).ToLowerInvariant();
+                miEdit.Enabled = ext != ".img" && ext != ".bin";          // a program image is edited as BASIC text (Convert first)
+                miDelete.Enabled = !sending;
+            };
+            lstFiles.ContextMenuStrip = fileMenu;
             // files dragged from the desktop / Explorer are copied to the current folder
             foreach (Control dc in new Control[] { lstFiles, gbFiles })
             {
@@ -773,7 +808,8 @@ namespace UartSlTest
         }
 
         const string ListTipDefault = "Files in the folder for the current mode (.img or .bas). Select one to send it. Point at a name to see the size and dates.";
-        int tipIndex = -2;
+        int tipIndex = -2, dragIndex = -1;
+        Point dragStart;
 
         // ---- Skip REM: lines of BASIC text that hold only a comment are dropped (a REM line that a GOTO / GOSUB / THEN ... points to is kept)
         static string StripRemLines(string text, out int removed, out int kept)
@@ -856,7 +892,15 @@ namespace UartSlTest
                     string dest = Path.Combine(txtDir.Text, Path.GetFileName(f));
                     if (File.Exists(dest))
                     {
-                        if (MessageBox.Show(this, Path.GetFileName(f) + " already exists in the folder. Overwrite?", "SerComet", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) continue;
+                        var src = new FileInfo(f); var old = new FileInfo(dest);
+                        double diff = (src.LastWriteTime - old.LastWriteTime).TotalSeconds;
+                        string state = Math.Abs(diff) <= 2
+                            ? (src.Length == old.Length ? "and the file has the same date and size" : "and the file has the same date but a different size")
+                            : diff > 0 ? "and the file is newer" : "but the file is older";
+                        string question = "A file named " + Path.GetFileName(f) + " already exists in the folder, " + state + ".\r\n\r\n" +
+                            "In the folder: " + old.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss") + ", " + old.Length.ToString("N0") + " B\r\n" +
+                            "New file:      " + src.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss") + ", " + src.Length.ToString("N0") + " B\r\n\r\nOverwrite it?";
+                        if (MessageBox.Show(this, question, "SerComet", MessageBoxButtons.YesNo, diff < -2 ? MessageBoxIcon.Warning : MessageBoxIcon.Question) != DialogResult.Yes) continue;
                     }
                     File.Copy(f, dest, true);
                     Log("Copied " + Path.GetFileName(f) + " to " + txtDir.Text);
@@ -1296,6 +1340,70 @@ namespace UartSlTest
                 string ext = sel ? Path.GetExtension((string)lstFiles.SelectedItem).ToLowerInvariant() : "";
                 btnConvert.Enabled = sel && !rs232 && (ext == ".bas" || ext == ".txt" || ext == ".img" || ext == ".bin");   // Software UART mode only
             }
+        }
+
+        void EditSelected()
+        {
+            if (lstFiles.SelectedItem == null) return;
+            string path = Path.Combine(txtDir.Text, (string)lstFiles.SelectedItem);
+            string ext = Path.GetExtension(path).ToLowerInvariant();
+            if (ext == ".img" || ext == ".bin") { Log("A program image cannot be edited as text: use Convert to get the BASIC text (.bas), then Edit."); return; }
+            try
+            {
+                var ed = new EditorForm(path);
+                ed.FormClosed += delegate { RefreshFiles(); };
+                ed.Show(this);
+            }
+            catch (Exception ex) { Log("Edit error: " + ex.Message); }
+        }
+
+        void RenameSelected()
+        {
+            if (lstFiles.SelectedItem == null) return;
+            string oldName = (string)lstFiles.SelectedItem;
+            string newName;
+            using (var d = new PromptForm("Rename", "New name of the file:", oldName))
+            {
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                newName = d.Value;
+            }
+            if (newName.Length == 0 || newName == oldName) return;
+            if (newName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) { Log("Rename: the name contains characters that are not allowed in a file name."); return; }
+            try
+            {
+                string from = Path.Combine(txtDir.Text, oldName), to = Path.Combine(txtDir.Text, newName);
+                if (File.Exists(to) && !string.Equals(from, to, StringComparison.OrdinalIgnoreCase)) { Log("Rename: a file named " + newName + " already exists."); return; }
+                File.Move(from, to);
+                Log("Renamed " + oldName + " to " + newName);
+            }
+            catch (Exception ex) { Log("Rename error: " + ex.Message); }
+            RefreshFiles();
+            int i = lstFiles.Items.IndexOf(newName);
+            if (i >= 0) lstFiles.SelectedIndex = i;
+        }
+
+        // Check Basic: a basic check of the listing for the machine of the selected target (another machine can be chosen in the window)
+        void CheckBasicSelected()
+        {
+            if (lstFiles.SelectedItem == null) return;
+            string name = (string)lstFiles.SelectedItem;
+            try
+            {
+                string path = Path.Combine(txtDir.Text, name);
+                byte[] data = File.ReadAllBytes(path);
+                string ext = Path.GetExtension(path).ToLowerInvariant();
+                int profile = BasicCheck.ProfileOfTarget(curModel < 0 ? 1 : curModel);
+                string text;
+                if (ext == ".img" || (ext == ".bin" && ProgImage.CheckImage(data, out text)))
+                {
+                    string problem;
+                    text = Pc1600Basic.Detokenize(data, profile == 0, out problem);
+                    if (problem != null) { Log("Check Basic: the program image cannot be read (" + problem + ")."); return; }
+                }
+                else text = Encoding.GetEncoding(28591).GetString(data);
+                new CheckBasicForm(name, text, profile).Show(this);
+            }
+            catch (Exception ex) { Log("Check Basic error: " + ex.Message); }
         }
 
         void DeleteSelected()
@@ -2244,6 +2352,14 @@ namespace UartSlTest
             "LOCK", 0xF1B5, "UNLOCK", 0xF1B6,
         };
 
+        // the keywords of the token table (PC-1500 or PC-1600)
+        public static List<string> Keywords(bool pc1500)
+        {
+            var l = new List<string>();
+            foreach (var kv in (pc1500 ? T1500 : T1600).ByLength) l.Add(kv.Key);
+            return l;
+        }
+
         sealed class Tab
         {
             public readonly Dictionary<int, string> ByCode = new Dictionary<int, string>();
@@ -2444,6 +2560,455 @@ namespace UartSlTest
         }
     }
 
+
+    // ====================================================================================================================
+    // Check Basic: a basic check of a BASIC listing (text) for a chosen machine. The keyword lists of the PC-1500 and PC-1600 are
+    // the token tables of the tokenizer; the lists of the other machines are approximate (an unknown word is only a warning).
+    // ====================================================================================================================
+    public sealed class CheckItem
+    {
+        public int Level;          // 0 OK, 1 warning, 2 fault, 3 information
+        public string Text;
+        public CheckItem(int level, string text) { Level = level; Text = text; }
+    }
+
+    public sealed class CheckProfile
+    {
+        public string Name;
+        public int MinLine, MaxLine, MaxLen, MaxVar;     // allowed line numbers, longest line (characters), longest variable name (0 = any)
+        public bool LowerOk, NeedThen, Tokenizer1500, Tokenizer1600;
+        public HashSet<string> Kw = new HashSet<string>();
+        public List<string> KwSorted;
+        public override string ToString() { return Name; }
+    }
+
+    public static class BasicCheck
+    {
+        // free BASIC memory without a memory expansion (see Form1.WarnSize): the part taken by the Saver/Loader
+        public const int Mem1500 = 5946, Mem1600 = 11834, Sl1500 = 571, Sl1600 = 490;
+
+        const string Core = "LET PRINT INPUT GOTO GOSUB IF THEN ELSE FOR TO STEP NEXT RETURN END STOP REM READ DATA RESTORE DIM ON CLS CLEAR BEEP WAIT PAUSE RUN LIST NEW CONT " +
+            "PEEK POKE CALL AND OR NOT XOR MOD INT ABS SGN SQR SIN COS TAN ASN ACS ATN LOG LN EXP RND LEN LEFT$ RIGHT$ MID$ ASC CHR$ STR$ VAL TAB USING LPRINT LLIST " +
+            "CSAVE CLOAD MERGE CHAIN RANDOM TRON TROFF PI DEG DMS RADIAN DEGREE GRAD ERROR MEM TIME INKEY$ AREAD ARUN LOCK UNLOCK STATUS";
+        const string Sharp1350 = " CURSOR GCURSOR GPRINT LINE PSET PRESET POINT LF COLOR CSIZE GRAPH TEXT ROTATE LCURSOR RLINE LLINE SORGN GLCURSOR TEST FEED ZONE BREAK OFF OPN";
+        const string Sharp1360 = " RENUM AUTO DELETE FILES SAVE LOAD INIT KILL NAME OPEN CLOSE BSAVE BLOAD COPY SET TIME$ DATE$ INSTR HEX$ INP OUT KEY MODE LOF LOC EOF DSKF TITLE PASS";
+        const string SharpE500 = " DEF FN ELSE SWITCH CIRCLE PAINT LINE PSET PRESET POINT GPRINT GCURSOR CURSOR LOCATE KEY INSTR HEX$ BIN$ DATE$ TIME$ OPEN CLOSE INPUT# PRINT# SAVE LOAD FILES KILL NAME " +
+            "COPY INIT RENUM AUTO DELETE MODE ON ERROR RESUME OUT INP BSAVE BLOAD VERIFY CHAIN APPEND OUTPUT AS SET USING BEEP ARUN STR$ FRAC CLEAR TITLE PASS LF MID$ LEFT$ RIGHT$ DMS DEG " +
+            "ERN ERL UBOUND RESTORE LOCK UNLOCK EOF LOC LOF ROTATE DEGREE RADIAN GRAD";
+        const string Casio = " LOCATE SCREEN OPEN CLOSE INPUT# PRINT# LINE KEY ON COM OFF INSTR HEX$ BIN$ DATE$ TIME$ TIME LOF EOF LOC SAVE LOAD FILES KILL NAME ERASE INIT FRAC SET OUT INP OUTPUT APPEND AS PEN";
+        const string Model100 = " CALL CLS CLOSE COM CSAVE CLOAD CSRLIN DATE$ DAY$ DSKI$ DSKO$ EOF FILES FRE HEX$ INSTR IPL KEY KILL LINE LOF LPOS MAXFILES MENU MOTOR NAME OCT$ OPEN OUT INP POS PRESET " +
+            "PSET RENUM RESUME RUN SAVE LOAD SCREEN SOUND SPACE$ STRING$ TIME$ TAB USING VARPTR WIDTH ERL ERR ERROR LPRINT LLIST POINT SGN CINT CSNG CDBL FIX LOG INPUT$ LINE";
+
+        static readonly List<CheckProfile> profiles = new List<CheckProfile>();
+        public static List<CheckProfile> Profiles { get { return profiles; } }
+
+        static void Add(string name, int min, int max, int maxLen, int maxVar, bool lowerOk, bool needThen, bool t1500, bool t1600, string kw)
+        {
+            var p = new CheckProfile { Name = name, MinLine = min, MaxLine = max, MaxLen = maxLen, MaxVar = maxVar, LowerOk = lowerOk, NeedThen = needThen, Tokenizer1500 = t1500, Tokenizer1600 = t1600 };
+            foreach (string k in kw.Split(' ')) if (k.Length > 0) p.Kw.Add(k);
+            p.KwSorted = new List<string>(p.Kw);
+            p.KwSorted.Sort((a, b) => b.Length != a.Length ? b.Length.CompareTo(a.Length) : string.CompareOrdinal(a, b));
+            profiles.Add(p);
+        }
+
+        static BasicCheck()
+        {
+            string k1500 = string.Join(" ", Pc1600Basic.Keywords(true)), k1600 = string.Join(" ", Pc1600Basic.Keywords(false));
+            Add("Sharp PC-1500(A)", 1, 65279, 80, 2, false, false, true, false, k1500);
+            Add("Sharp PC-1600", 1, 65279, 255, 2, true, false, false, true, k1600);
+            Add("Sharp PC-1350", 1, 65279, 80, 2, false, true, false, false, Core + Sharp1350);
+            Add("Sharp PC-1360 and 1360K", 1, 65279, 80, 2, false, true, false, false, Core + Sharp1350 + Sharp1360);
+            Add("Sharp PC-E500", 1, 65279, 255, 0, true, true, false, false, Core + SharpE500);
+            Add("Sharp PC-E500S", 1, 65279, 255, 0, true, true, false, false, Core + SharpE500 + " CLS LOCATE FRE");
+            Add("Casio FX-850P / FX-870P", 1, 65535, 255, 0, true, true, false, false, Core + Casio);
+            Add("NEC PC-8201 / TRS-80 Model 100", 0, 65529, 255, 0, true, true, false, false, Core + Model100);
+            Add("Other computer (general check)", 0, 65535, 0, 0, true, false, false, false, Core + Sharp1350 + Sharp1360 + SharpE500 + Casio + Model100);
+        }
+
+        // profile of the target computer of SerComet: 0 PC-1500, 1 PC-1600, 2 other Sharp, 3 Casio, 4 TRS-80 / NEC, 5 other UART
+        public static int ProfileOfTarget(int model)
+        {
+            return model == 0 ? 0 : model == 1 ? 1 : model == 2 ? 3 : model == 3 ? 6 : model == 4 ? 7 : 8;
+        }
+
+        static readonly Regex RxStr = new Regex("\"[^\"]*\"?", RegexOptions.Compiled);
+        static readonly Regex RxHex = new Regex("&[0-9A-Fa-f]+", RegexOptions.Compiled);
+        static readonly Regex RxWord = new Regex("[A-Za-z][A-Za-z0-9]*\\$?", RegexOptions.Compiled);
+        static readonly Regex RxTarget = new Regex("(?:GOTO|GOSUB|THEN|ELSE|RESTORE|RUN)\\s*(\\d+(?:\\s*,\\s*\\d+)*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        static readonly Regex RxNumbered = new Regex("^\\s*(\\d+)\\s?(.*)$", RegexOptions.Compiled);
+
+        sealed class Line { public int Number = -1; public int Index; public string Raw, Body, Code; public bool IsRem; }
+
+        // the code of a statement line without strings, REM / DATA texts and hexadecimal numbers
+        static string MaskCode(string body, out bool isRem)
+        {
+            isRem = false;
+            string t = body.TrimStart();
+            if (t.StartsWith("'") || Regex.IsMatch(t, "^REM", RegexOptions.IgnoreCase)) { isRem = true; return ""; }
+            string s = RxStr.Replace(body, "\"\"");
+            Match m = Regex.Match(s, "(?:^|:)\\s*(?:REM|DATA|')", RegexOptions.IgnoreCase);
+            if (m.Success) s = s.Substring(0, m.Index + (s[m.Index] == ':' ? 1 : 0));
+            return RxHex.Replace(s, "0");
+        }
+
+        // can the word be split into keywords and variable names? (the keywords found are collected)
+        static bool Split(string w, int pos, CheckProfile p, List<string> found, Dictionary<int, bool> failed, bool lastVar)
+        {
+            if (pos >= w.Length) return true;
+            int key = pos * 2 + (lastVar ? 1 : 0);
+            if (failed.ContainsKey(key)) return false;
+            if (char.IsDigit(w[pos]))                         // a number after a keyword (TO2, THEN100)
+            {
+                int e = pos; while (e < w.Length && char.IsDigit(w[e])) e++;
+                if (Split(w, e, p, found, failed, false)) return true;
+                failed[key] = true; return false;
+            }
+            foreach (string k in p.KwSorted)
+            {
+                if (pos + k.Length <= w.Length && string.CompareOrdinal(w, pos, k, 0, k.Length) == 0)
+                {
+                    int mark = found.Count;
+                    found.Add(k);
+                    if (Split(w, pos + k.Length, p, found, failed, false)) return true;
+                    found.RemoveRange(mark, found.Count - mark);
+                }
+            }
+            // a variable name: a letter, then letters / digits (at most MaxVar characters), then an optional $
+            int max = p.MaxVar == 0 ? w.Length - pos : p.MaxVar;
+            for (int len = Math.Min(max, w.Length - pos); len >= 1 && !lastVar; len--)         // two variable names cannot follow each other
+            {
+                string v = w.Substring(pos, len);
+                if (!char.IsLetter(v[0])) continue;
+                int next = pos + len;
+                if (next < w.Length && w[next] == '$') next++;
+                if (Split(w, next, p, found, failed, true)) return true;
+            }
+            failed[key] = true;
+            return false;
+        }
+
+        static string Lines(List<int> n, int max)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < n.Count && i < max; i++) { if (i > 0) sb.Append(", "); sb.Append(n[i]); }
+            if (n.Count > max) sb.Append(" ... (" + n.Count + " in all)");
+            return sb.ToString();
+        }
+
+        public static List<CheckItem> Check(string text, CheckProfile p, out int faults, out int warnings)
+        {
+            var res = new List<CheckItem>();
+            faults = 0; warnings = 0;
+            Action<int, string> add = delegate (int lv, string t) { res.Add(new CheckItem(lv, t)); };
+
+            var lines = new List<Line>();
+            var unnumbered = new List<int>();
+            int idx = 0;
+            foreach (string raw0 in text.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\u001A", "").Split('\n'))
+            {
+                idx++;
+                string raw = raw0.TrimEnd();
+                if (raw.Trim().Length == 0) continue;
+                var ln = new Line { Index = idx, Raw = raw };
+                Match m = RxNumbered.Match(raw);
+                if (m.Success && m.Groups[1].Value.Length < 10) { ln.Number = int.Parse(m.Groups[1].Value); ln.Body = m.Groups[2].Value; }
+                else { ln.Body = raw; unnumbered.Add(idx); }
+                bool rem;
+                ln.Code = MaskCode(ln.Body, out rem);
+                ln.IsRem = rem;
+                lines.Add(ln);
+            }
+            add(3, "Machine: " + p.Name + ". " + lines.Count + " lines.");
+            if (lines.Count == 0) { add(2, "The listing is empty: NO lines."); faults++; return res; }
+
+            // 1. every line has a number
+            if (unnumbered.Count == 0) add(0, "All lines have a line number: YES");
+            else { add(2, "All lines have a line number: NO (file lines " + Lines(unnumbered, 8) + ")"); faults++; }
+
+            // 2. no repeated numbers
+            var seen = new Dictionary<int, int>(); var dups = new List<int>();
+            foreach (Line l in lines) if (l.Number >= 0) { if (seen.ContainsKey(l.Number)) { if (!dups.Contains(l.Number)) dups.Add(l.Number); } else seen[l.Number] = 1; }
+            if (dups.Count == 0) add(0, "No repeated line numbers: YES");
+            else { add(2, "No repeated line numbers: NO (repeated: " + Lines(dups, 10) + ")"); faults++; }
+
+            // 3. range of the line numbers
+            var bad = new List<int>();
+            foreach (Line l in lines) if (l.Number >= 0 && (l.Number < p.MinLine || l.Number > p.MaxLine)) bad.Add(l.Number);
+            if (bad.Count == 0) add(0, "Line numbers in the allowed range (" + p.MinLine + " to " + p.MaxLine + "): YES");
+            else { add(2, "Line numbers in the allowed range (" + p.MinLine + " to " + p.MaxLine + "): NO (" + Lines(bad, 10) + ")"); faults++; }
+
+            // 4. order
+            bool asc = true; int prev = -1;
+            foreach (Line l in lines) if (l.Number >= 0) { if (l.Number < prev) asc = false; prev = l.Number; }
+            if (asc) add(0, "Line numbers in ascending order: YES");
+            else { add(1, "Line numbers in ascending order: NO (the computer sorts the lines when they are entered, but check the file)"); warnings++; }
+
+            // 5. GOTO / GOSUB / THEN / RESTORE targets
+            var missing = new List<string>(); var toRem = new List<int>(); var remLines = new HashSet<int>();
+            foreach (Line l in lines) if (l.IsRem && l.Number >= 0) remLines.Add(l.Number);
+            foreach (Line l in lines)
+            {
+                foreach (Match m in RxTarget.Matches(l.Code))
+                    foreach (string t in m.Groups[1].Value.Split(','))
+                    {
+                        int tn; if (!int.TryParse(t.Trim(), out tn)) continue;
+                        if (!seen.ContainsKey(tn)) missing.Add(l.Number + " -> " + tn);
+                        else if (remLines.Contains(tn) && !toRem.Contains(tn)) toRem.Add(tn);
+                    }
+            }
+            if (missing.Count == 0) add(0, "All GOTO / GOSUB / THEN / RESTORE targets exist: YES");
+            else { add(2, "All GOTO / GOSUB / THEN / RESTORE targets exist: NO (line -> missing target: " + string.Join("; ", missing.GetRange(0, Math.Min(8, missing.Count)).ToArray()) + (missing.Count > 8 ? " ... " + missing.Count + " in all" : "") + ")"); faults++; }
+            if (toRem.Count > 0) add(3, "Jumps point at REM lines " + Lines(toRem, 8) + ": do not use Skip REM for this program, or the REM lines are kept automatically.");
+
+            // 6. characters
+            var ctl = new List<int>(); var lower = new List<int>(); var hi = new List<int>();
+            foreach (Line l in lines)
+            {
+                foreach (char c in l.Raw) if (c < 32 && c != 9) { ctl.Add(l.Number >= 0 ? l.Number : -l.Index); break; }
+                foreach (char c in l.Raw) if (c > 126) { hi.Add(l.Number >= 0 ? l.Number : -l.Index); break; }
+                if (!l.IsRem) foreach (char c in l.Code) if (c >= 'a' && c <= 'z') { lower.Add(l.Number >= 0 ? l.Number : -l.Index); break; }
+            }
+            if (ctl.Count == 0 && hi.Count == 0) add(0, "Characters allowed (no control or non-ASCII characters): YES");
+            else { add(2, "Characters allowed (no control or non-ASCII characters): NO (lines " + Lines(ctl.Count > 0 ? ctl : hi, 8) + ")"); faults++; }
+            if (lower.Count == 0) add(0, "Capital letters in the program text: YES");
+            else if (p.LowerOk) add(0, "Small and capital letters: lowercase letters in " + lower.Count + " lines (allowed on this machine)");
+            else { add(1, "Capital letters in the program text: NO (lowercase letters outside strings in " + lower.Count + " lines, e.g. " + Lines(lower, 4) + "; SerComet converts them to capitals, a typed-in program needs capitals)"); warnings++; }
+
+            // 7. line length
+            if (p.MaxLen > 0)
+            {
+                var longL = new List<int>();
+                foreach (Line l in lines) if (l.Raw.Trim().Length > p.MaxLen) longL.Add(l.Number >= 0 ? l.Number : -l.Index);
+                if (longL.Count == 0) add(0, "Line length within " + p.MaxLen + " characters: YES");
+                else { add(2, "Line length within " + p.MaxLen + " characters: NO (lines " + Lines(longL, 8) + ")"); faults++; }
+            }
+
+            // 8. quotation marks and parentheses
+            var quote = new List<int>(); var paren = new List<int>();
+            foreach (Line l in lines)
+            {
+                if (l.IsRem) continue;
+                string t = l.Body; Match mm = Regex.Match(t, "(?:^|:)\\s*(?:REM|DATA)", RegexOptions.IgnoreCase);
+                int q = 0; foreach (char c in (mm.Success ? t.Substring(0, mm.Index) : t)) if (c == '"') q++;
+                if (q % 2 == 1) quote.Add(l.Number);
+                int depth = 0; bool neg = false;
+                foreach (char c in l.Code) { if (c == '(') depth++; else if (c == ')') { depth--; if (depth < 0) neg = true; } }
+                if (depth != 0 || neg) paren.Add(l.Number);
+            }
+            if (quote.Count == 0) add(0, "Quotation marks paired: YES");
+            else { add(1, "Quotation marks paired: NO (an unclosed string is allowed at the end of a line; lines " + Lines(quote, 8) + ")"); warnings++; }
+            if (paren.Count == 0) add(0, "Parentheses paired: YES");
+            else { add(2, "Parentheses paired: NO (lines " + Lines(paren, 8) + ")"); faults++; }
+
+            // 9. words: statements, functions, variables
+            var unknown = new List<string>(); var counts = new Dictionary<string, int>();
+            var longVar = new List<string>();
+            foreach (Line l in lines)
+            {
+                foreach (Match m in RxWord.Matches(l.Code))
+                {
+                    string w = m.Value.ToUpperInvariant();
+                    if (w.Length == 1 || (w.Length == 2 && w[1] == '$')) continue;
+                    var found = new List<string>();
+                    if (Split(w, 0, p, found, new Dictionary<int, bool>(), false))
+                    { foreach (string k in found) { int c; counts.TryGetValue(k, out c); counts[k] = c + 1; } }
+                    else if (!unknown.Contains(w + " (" + (l.Number >= 0 ? l.Number.ToString() : "?") + ")") && unknown.Count < 200) unknown.Add(w + " (" + (l.Number >= 0 ? l.Number.ToString() : "?") + ")");
+                }
+            }
+            if (unknown.Count == 0) add(0, "All statements and functions are known on this machine: YES");
+            else
+            {
+                string kind = p.Tokenizer1500 || p.Tokenizer1600 ? "not a keyword or a variable name of this machine" : "not in the keyword list of this machine (the list is approximate)";
+                add(p.Tokenizer1500 || p.Tokenizer1600 ? 2 : 1, "All statements and functions are known on this machine: NO (" + kind + ": " + string.Join(", ", unknown.GetRange(0, Math.Min(8, unknown.Count)).ToArray()) + (unknown.Count > 8 ? " ..." : "") + ")");
+                if (p.Tokenizer1500 || p.Tokenizer1600) faults++; else warnings++;
+            }
+
+            // 10. structure: FOR / NEXT, GOSUB / RETURN, READ / DATA, IF without THEN
+            int nFor = 0, nNext = 0, nGosub = 0, nReturn = 0, nRead = 0, nData = 0, nIf = 0, nThen = 0;
+            foreach (Line l in lines)
+            {
+                foreach (Match m in RxWord.Matches(l.Code))
+                {
+                    var found = new List<string>();
+                    if (!Split(m.Value.ToUpperInvariant(), 0, p, found, new Dictionary<int, bool>(), false)) continue;
+                    foreach (string k in found)
+                    {
+                        if (k == "FOR") nFor++; else if (k == "NEXT") nNext++; else if (k == "GOSUB") nGosub++; else if (k == "RETURN") nReturn++;
+                        else if (k == "READ") nRead++; else if (k == "IF") nIf++; else if (k == "THEN" || k == "GOTO") nThen++;
+                    }
+                }
+                if (Regex.IsMatch(l.Body, "(?:^|:)\\s*DATA", RegexOptions.IgnoreCase)) nData++;
+            }
+            if (nFor == nNext || (nNext > nFor && false)) add(0, "FOR and NEXT match (" + nFor + " / " + nNext + "): YES");
+            else { add(1, "FOR and NEXT match (" + nFor + " FOR / " + nNext + " NEXT): NO (a NEXT can serve several FORs; check the loops)"); warnings++; }
+            if ((nGosub > 0) == (nReturn > 0)) add(0, "GOSUB and RETURN present together: YES");
+            else { add(1, "GOSUB and RETURN present together: NO (" + nGosub + " GOSUB / " + nReturn + " RETURN)"); warnings++; }
+            if (nRead > 0 && nData == 0) { add(2, "READ has DATA to read: NO (no DATA statement)"); faults++; }
+            else add(0, "READ has DATA to read: YES");
+            if (p.NeedThen && nIf > nThen) { add(2, "Every IF has a THEN or GOTO: NO (" + nIf + " IF / " + nThen + " THEN or GOTO)"); faults++; }
+            else if (p.NeedThen) add(0, "Every IF has a THEN or GOTO: YES");
+
+            // 11. the tokenizer of SerComet (PC-1500 / PC-1600): the program as the machine will store it
+            if (p.Tokenizer1500 || p.Tokenizer1600)
+            {
+                string pr; byte[] img = null;
+                try { img = Pc1600Basic.Tokenize(string.Join("\r\n", lines.ConvertAll(l => l.Raw).ToArray()), p.Tokenizer1500, out pr); }
+                catch (Exception ex) { pr = ex.Message; }
+                if (img == null) { add(2, "Tokenizer (the program in the machine's own code): NO (" + pr + ")"); faults++; }
+                else
+                {
+                    int size = img.Length + 1;
+                    string sizes = size + " B in the machine's own code";
+                    int free = p.Tokenizer1500 ? Mem1500 : Mem1600, sl = p.Tokenizer1500 ? Sl1500 : Sl1600;
+                    if (size > free) { add(1, "Program size: " + sizes + ", more than the free memory of the machine without an expansion (about " + free + " B): NO"); warnings++; }
+                    else if (size > free - sl) { add(1, "Program size: " + sizes + " fits (about " + free + " B free) but not together with the Saver/Loader (about " + (free - sl) + " B)"); warnings++; }
+                    else add(0, "Program size: " + sizes + ", fits the free memory (about " + (free - sl) + " B with the Saver/Loader): YES");
+                }
+            }
+
+            // 12. information
+            int remCount = 0, remBytes = 0;
+            foreach (Line l in lines) if (l.IsRem) { remCount++; remBytes += l.Raw.Length + 1; }
+            if (remCount > 0) add(3, "REM lines: " + remCount + " (about " + remBytes + " B); Skip REM leaves them out when the program is sent.");
+            if (p.Tokenizer1500 || p.Tokenizer1600)
+                add(3, "Spaces in DATA statements outside quotation marks are removed by the machine (DATA 1, 2 is stored as 1,2); SerComet does the same.");
+            if (p.Tokenizer1500) add(3, "PC-1500(A): the IF statement may have no THEN (IF A=1 GOTO 100 or IF A=1 PRINT 1).");
+            if (p.Name.StartsWith("Sharp PC-1360")) add(3, "PC-1360: the PC-1350 statements plus the file and disk statements (OPEN, SAVE, LOAD ...).");
+            return res;
+        }
+    }
+
+    // the result window of Check Basic: a machine can be chosen and the check repeated
+    public class CheckBasicForm : Form
+    {
+        readonly string text, fileName;
+        readonly ComboBox combo;
+        readonly RichTextBox box;
+        public CheckBasicForm(string fileName, string text, int defaultProfile)
+        {
+            this.text = text; this.fileName = fileName;
+            Text = "Check Basic: " + fileName;
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(760, 520);
+            MinimumSize = new Size(560, 320);
+            ShowInTaskbar = false;
+            try { Icon = Icons.AppIcon(); } catch { }
+            var lbl = new Label { Text = "Machine:", Left = 10, Top = 14, Width = 60 };
+            combo = new ComboBox { Left = 72, Top = 10, Width = 280, DropDownStyle = ComboBoxStyle.DropDownList };
+            foreach (var p in BasicCheck.Profiles) combo.Items.Add(p);
+            combo.SelectedIndex = defaultProfile;
+            var again = new Button { Text = "Check again", Left = 362, Top = 8, Width = 100, Height = 26 };
+            var copy = new Button { Text = "Copy result", Left = 470, Top = 8, Width = 100, Height = 26 };
+            var close = new Button { Text = "Close", Left = 650, Top = 8, Width = 100, Height = 26, DialogResult = DialogResult.Cancel, Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            box = new RichTextBox { Left = 10, Top = 44, Width = 740, Height = 466, ReadOnly = true, Font = new Font("Consolas", 9.5F), BackColor = Color.White, DetectUrls = false,
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
+            Controls.AddRange(new Control[] { lbl, combo, again, copy, close, box });
+            CancelButton = close;
+            combo.SelectedIndexChanged += delegate { Run(); };
+            again.Click += delegate { Run(); };
+            copy.Click += delegate { try { Clipboard.SetText(box.Text); } catch { } };
+            Shown += delegate { Run(); };
+        }
+
+        void Run()
+        {
+            var p = (CheckProfile)combo.SelectedItem;
+            int faults, warns;
+            var items = BasicCheck.Check(text, p, out faults, out warns);
+            box.Clear();
+            string head = faults == 0 ? "Basic listing seems OK" + (warns > 0 ? " (" + warns + " warning" + (warns > 1 ? "s" : "") + ")" : "")
+                                      : "Basic listing has faults (" + faults + (faults == 1 ? " fault" : " faults") + (warns > 0 ? ", " + warns + (warns == 1 ? " warning" : " warnings") : "") + ")";
+            Append(head + "\r\n", new Font(box.Font.FontFamily, 12F, FontStyle.Bold), faults == 0 ? Color.FromArgb(20, 130, 40) : Color.FromArgb(190, 30, 30));
+            Append(fileName + " checked for " + p.Name + "\r\n\r\n", box.Font, Color.Black);
+            foreach (var it in items)
+            {
+                string tag = it.Level == 0 ? "[ OK ]  " : it.Level == 1 ? "[WARN]  " : it.Level == 2 ? "[FAULT] " : "[info]  ";
+                Color c = it.Level == 0 ? Color.FromArgb(20, 130, 40) : it.Level == 1 ? Color.FromArgb(190, 110, 0) : it.Level == 2 ? Color.FromArgb(190, 30, 30) : Color.FromArgb(70, 70, 120);
+                Append(tag, new Font(box.Font, FontStyle.Bold), c);
+                Append(it.Text + "\r\n", box.Font, Color.Black);
+            }
+            box.SelectionStart = 0; box.ScrollToCaret();
+        }
+
+        void Append(string s, Font f, Color c)
+        {
+            box.SelectionStart = box.TextLength; box.SelectionLength = 0;
+            box.SelectionFont = f; box.SelectionColor = c;
+            box.AppendText(s);
+        }
+    }
+
+    // a simple editor (like Notepad) for BASIC text files; the bytes are kept as they are (Latin-1)
+    public class EditorForm : Form
+    {
+        readonly string path;
+        readonly TextBox txt;
+        bool modified;
+        static readonly Encoding Latin = Encoding.GetEncoding(28591);
+        public EditorForm(string path)
+        {
+            this.path = path;
+            Text = "Edit: " + Path.GetFileName(path);
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(760, 560);
+            MinimumSize = new Size(420, 260);
+            try { Icon = Icons.AppIcon(); } catch { }
+            string content = Latin.GetString(File.ReadAllBytes(path)).Replace("\u001A", "");
+            content = content.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n");
+            txt = new TextBox { Dock = DockStyle.Fill, Multiline = true, ScrollBars = ScrollBars.Both, WordWrap = false, Font = new Font("Consolas", 10F), AcceptsTab = true, Text = content, MaxLength = 0 };
+            var menu = new MenuStrip();
+            var file = new ToolStripMenuItem("File");
+            var save = new ToolStripMenuItem("Save", null, delegate { Save(); }) { ShortcutKeys = Keys.Control | Keys.S };
+            var close = new ToolStripMenuItem("Close", null, delegate { Close(); });
+            file.DropDownItems.Add(save); file.DropDownItems.Add(close);
+            menu.Items.Add(file);
+            Controls.Add(txt); Controls.Add(menu); MainMenuStrip = menu;
+            txt.Select(0, 0);
+            txt.TextChanged += delegate { if (!modified) { modified = true; Text = "Edit: " + Path.GetFileName(path) + " *"; } };
+            FormClosing += delegate (object s, FormClosingEventArgs e)
+            {
+                if (!modified) return;
+                var r = MessageBox.Show(this, "Save the changes to " + Path.GetFileName(path) + "?", "SerComet", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                if (r == DialogResult.Cancel) e.Cancel = true;
+                else if (r == DialogResult.Yes && !Save()) e.Cancel = true;
+            };
+        }
+
+        bool Save()
+        {
+            try
+            {
+                File.WriteAllBytes(path, Latin.GetBytes(txt.Text));
+                modified = false; Text = "Edit: " + Path.GetFileName(path);
+                return true;
+            }
+            catch (Exception ex) { MessageBox.Show(this, "Cannot save: " + ex.Message, "SerComet", MessageBoxButtons.OK, MessageBoxIcon.Error); return false; }
+        }
+    }
+
+    // a small question with one text field (Rename)
+    public class PromptForm : Form
+    {
+        readonly TextBox box;
+        public string Value { get { return box.Text.Trim(); } }
+        public PromptForm(string title, string label, string value)
+        {
+            Text = title;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = MinimizeBox = false; ShowInTaskbar = false;
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(380, 100);
+            try { Icon = Icons.AppIcon(); } catch { }
+            Controls.Add(new Label { Text = label, Left = 12, Top = 12, Width = 356 });
+            box = new TextBox { Left = 12, Top = 34, Width = 356, Text = value };
+            var ok = new Button { Text = "OK", Left = 198, Top = 64, Width = 80, DialogResult = DialogResult.OK };
+            var cancel = new Button { Text = "Cancel", Left = 288, Top = 64, Width = 80, DialogResult = DialogResult.Cancel };
+            Controls.AddRange(new Control[] { box, ok, cancel });
+            AcceptButton = ok; CancelButton = cancel;
+            Shown += delegate { box.Focus(); int dot = value.LastIndexOf('.'); box.Select(0, dot > 0 ? dot : value.Length); };
+        }
+    }
+
     // ToolTip that wraps its text at about 30 characters per line
     public class WrapToolTip : ToolTip
     {
@@ -2627,7 +3192,7 @@ namespace UartSlTest
 
     public static class AppInfo
     {
-        public const string Version = "1.3";      // 1.1: Software UART speeds 1200 to 19200 (SL V3.0), settings.ini, .img files; 1.2: names of the programs checked for the Sharp; 1.3: PC-1500 Software UART (4800 bps), six target computers, Port settings box, Flush and Reset port, wrong baud rate warning
+        public const string Version = "1.4";      // 1.1: Software UART speeds 1200 to 19200 (SL V3.0), settings.ini, .img files; 1.2: names of the programs checked for the Sharp; 1.4: file info tip, Skip REM, Check Basic, Files menu, drag out of the list; 1.3: PC-1500 Software UART (4800 bps), six target computers, Port settings box, Flush and Reset port, wrong baud rate warning
     }
 
     // Names of programs for the pocket computers: the length and the characters that the Sharp accepts

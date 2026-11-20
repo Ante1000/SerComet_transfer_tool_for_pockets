@@ -2,11 +2,18 @@
 
 # <img src="img/sercomet_icon.png" alt="" width="40" align="top"> SerComet
 
-**File transfer tool for PC and Sharp pocket computers.** A small Windows program (version 1.3) that sends and receives BASIC programs
+**File transfer tool for PC and Sharp pocket computers.** A small Windows program (version 1.4) that sends and receives BASIC programs
 between a PC and a pocket computer through a serial port (a USB-UART / USB-RS232 adapter), with a few helpers around it: the
 Saver/Loader programs for the Sharp PC-1500 and PC-1600, a built-in BASIC tokenizer / detokenizer, a terminal and a log.
 
 Free for personal, non-commercial and educational use ([PolyForm Noncommercial License 1.0.0](LICENSE.md)).
+
+## What it does
+
+- Send and receive BASIC programs, with a built-in tokenizer / detokenizer for the PC-1500 and PC-1600, **Auto token** and **Skip REM** (comment lines are left out when a program is sent).
+- **Files** list: drag files in from Explorer (copied; the question about an existing file tells whether the new file is newer, older or the same) and drag them out to the desktop; point at a name for the size and dates; right mouse button: **View, Edit, Delete, Rename, Check Basic**.
+- **Check Basic**: a basic check of a listing for a chosen machine (line numbers, repeated numbers, GOTO / GOSUB targets, characters, line length, quotation marks and parentheses, keywords, FOR / NEXT, the program size against the free memory of the PC-1500A / PC-1600 ...). The keyword lists of the PC-1500 and PC-1600 are exact, those of the other machines are approximate (a warning only).
+- Warnings in the log when the baud rate looks wrong or the listing is too long for the memory; right mouse button in the log: Clear log, Copy log.
 
 ## Computers
 
