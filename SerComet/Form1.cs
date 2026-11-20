@@ -2864,7 +2864,7 @@ namespace UartSlTest
                     int size = img.Length + 1;
                     string sizes = size + " B in the machine's own code";
                     int free = p.Tokenizer1500 ? Mem1500 : Mem1600, sl = p.Tokenizer1500 ? Sl1500 : Sl1600;
-                    if (size > free) { add(1, "Program size: " + sizes + ", more than the free memory of the machine without an expansion (about " + free + " B): Fail"); warnings++; }
+                    if (size > free) { add(1, "Program size: " + sizes + ", more than the free memory of the basic machine without a RAM card (about " + free + " B): check it against MEM of your machine"); warnings++; }
                     else if (size > free - sl) { add(1, "Program size: " + sizes + " fits (about " + free + " B free) but not together with the Saver/Loader (about " + (free - sl) + " B)"); warnings++; }
                     else add(0, "Program size: " + sizes + ", fits the free memory (about " + (free - sl) + " B with the Saver/Loader): OK");
                 }
