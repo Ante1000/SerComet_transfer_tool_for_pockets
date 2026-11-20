@@ -183,6 +183,7 @@ namespace UartSlTest
             // hovering over a file name: a tip with the size, dates and type of the file
             lstFiles.MouseMove += delegate (object sn, MouseEventArgs me)
             {
+                if (fileMenuOpen) return;
                 int i = lstFiles.IndexFromPoint(me.Location);
                 if (i == tipIndex) return;
                 tipIndex = i;
@@ -223,6 +224,8 @@ namespace UartSlTest
                 miEdit.Enabled = ext != ".img" && ext != ".bin";          // a program image is edited as BASIC text (Convert first)
                 miDelete.Enabled = !sending;
             };
+            fileMenu.Opened += delegate { fileMenuOpen = true; tips.Hide(lstFiles); tips.Active = false; };     // no tip while the menu is shown
+            fileMenu.Closed += delegate { fileMenuOpen = false; tipIndex = -2; tips.Active = true; };
             lstFiles.ContextMenuStrip = fileMenu;
             // files dragged from the desktop / Explorer are copied to the current folder
             foreach (Control dc in new Control[] { lstFiles, gbFiles })
@@ -809,6 +812,7 @@ namespace UartSlTest
 
         const string ListTipDefault = "Files in the folder for the current mode (.img or .bas). Select one to send it. Point at a name to see the size and dates.";
         int tipIndex = -2, dragIndex = -1;
+        bool fileMenuOpen;
         Point dragStart;
 
         // ---- Skip REM: lines of BASIC text that hold only a comment are dropped (a REM line that a GOTO / GOSUB / THEN ... points to is kept)
