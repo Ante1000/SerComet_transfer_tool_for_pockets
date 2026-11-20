@@ -788,17 +788,17 @@ namespace UartSlTest
             return sb.ToString();
         }
 
-        // free BASIC memory of a machine without a memory expansion (MEM): PC-1500 about 1850 B, PC-1600 about 11834 B (to be checked on real machines).
+        // free BASIC memory of a machine without a memory expansion (MEM): PC-1500A about 5946 B (5.8 KB, to be checked with MEM; the bare PC-1500 has less), PC-1600 about 11834 B (to be checked on real machines).
         // The Saver/Loader takes a part of it: PC-1500 BASIC starts at RAM start + &300 instead of + &C5 (571 B less); PC-1600 the code lies
         // in the machine-language area from &C100 to about &C2B0 (about 490 B).
-        const int Mem1500 = 1850, Mem1600 = 11834, Sl1500 = 571, Sl1600 = 490;
+        const int Mem1500 = 5946, Mem1600 = 11834, Sl1500 = 571, Sl1600 = 490;
 
         void WarnSize(int imageBytes, bool software)
         {
             if (curModel < 0 || curModel > 1) return;
             int limit = curModel == 0 ? Mem1500 - (software ? Sl1500 : 0) : Mem1600 - (software ? Sl1600 : 0);
             if (imageBytes <= limit) return;
-            LogBold("Listing can be too long: the program takes " + imageBytes + " B, the free memory of the " + (curModel == 0 ? "PC-1500" : "PC-1600") +
+            LogBold("Listing can be too long: the program takes " + imageBytes + " B, the free memory of the " + (curModel == 0 ? "PC-1500A" : "PC-1600") +
                     " without a memory expansion is about " + limit + " B" + (software ? " (after the Saver/Loader)" : "") + ". An optional memory expansion is needed.");
         }
 
