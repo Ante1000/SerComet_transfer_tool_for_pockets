@@ -6,7 +6,9 @@ patches the delays for the chosen speed (ENTER = 9600).
 
 | File | Contents |
 |---|---|
-| `Basic/sl.txt` | the BASIC installer V3.2 (49 lines) |
+| `Basic/sl.txt` | the BASIC installer V3.2 (50 lines; asks for the speed, shows INSTALLING, ends with the addresses `CALL&C100` / `CALL&C200`) |
+| `wav/sl1600_mode0.wav` | the installer as a tape recording for the PC-1600 in MODE 0 (`LOAD "CAS:SL1600"`, 6 s leader tone, about 25 s) |
+| `wav/sl1600_mode1.wav` | the same program in the PC-1500 tape format (MODE 1, CE-150 / PC-1500 `CLOAD`, 6 s leader tone, about 2.5 min); not tried yet whether MODE 0 can use a program loaded this way |
 | `Basic/sl_v2.1.txt`, `asm/uart1600_sl_v2.1.asm` | the previous version V2.1 (fixed 19200 bps), kept as a working fallback |
 | `asm/uart1600_sl.asm` | the source of SAVE and LOAD (position independent, no buffer; assembler `z80asm`) |
 | `tools/build_sl.py` | builds `Basic/sl.txt` from the source |
