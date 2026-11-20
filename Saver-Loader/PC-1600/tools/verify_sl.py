@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emulator test of Basic/sl.txt (the Saver/Loader V3.0, 1200 to 19200 bps). The code and the patch sites are read from the DATA and
+"""Emulator test of Basic/sl_v3.2.txt (the Saver/Loader V3.0, 1200 to 19200 bps). The code and the patch sites are read from the DATA and
 POKE lines of the BASIC installer; the delays are calculated as the installer does. For every speed it checks that SAVE sends exactly the
 bytes of a program plus the checksum, that LOAD takes the stream (also at +-3 % of the speed and with gaps), and the error cases.
 z80asm is not needed. pip install z80
@@ -8,7 +8,7 @@ import math, os, random, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import verify_listing as V
 ROOT = V.ROOT
-lines = V.load_listing(os.path.join(ROOT, 'Basic', 'sl.txt'))
+lines = V.load_listing(os.path.join(ROOT, 'Basic', 'sl_v3.2.txt'))
 st = V.Stream(lines, 1000)
 n = st.read(); base = bytearray(0x200); tot = 0
 for _ in range(n):

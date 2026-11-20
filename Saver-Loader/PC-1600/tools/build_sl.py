@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds Basic/sl.txt (the BASIC installer of the Saver/Loader) from asm/uart1600_sl.asm. Needs z80asm."""
+"""Builds Basic/sl_v3.2.txt (the BASIC installer of the Saver/Loader) from asm/uart1600_sl.asm. Needs z80asm."""
 import os, re, subprocess, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -92,6 +92,6 @@ def build():
 
 if __name__ == '__main__':
     text, code, lab = build()
-    open(os.path.join(ROOT, 'Basic', 'sl.txt'), 'w', newline='\n').write(text)
-    print('Basic/sl.txt written;', len(text.splitlines()), 'lines,', len(text), 'bytes, longest', max(len(l) for l in text.splitlines()),
+    open(os.path.join(ROOT, 'Basic', 'sl_v3.2.txt'), 'w', newline='\n').write(text)
+    print('Basic/sl_v3.2.txt written;', len(text.splitlines()), 'lines,', len(text), 'bytes, longest', max(len(l) for l in text.splitlines()),
           '; LOAD at &C100, SAVE at &C200')
