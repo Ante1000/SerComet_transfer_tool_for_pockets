@@ -28,7 +28,7 @@ namespace UartSlTest
         CheckBox chkEof;
         Button btnView;
         ComboBox comboPorts, comboBaud, comboEol, comboFlow;
-        CheckBox chkAuto;
+        CheckBox chkAuto, chkSkipRem;
         readonly WrapToolTip tips = new WrapToolTip { AutoPopDelay = 9000, InitialDelay = 400, ReshowDelay = 200, ShowAlways = true };
         TerminalForm term;
         Button btnTerminal, btnAbort, btnConvert, btnLocations, btnDelete;
@@ -171,13 +171,24 @@ namespace UartSlTest
 
             var gbFiles = new GroupBox { Text = "Files", Left = 10, Top = 408, Width = 565, Height = 148, Anchor = TLR };   // only the list; the row of buttons below it ends with the Terminal button
             lstFiles = new ListBox { Left = 6, Top = 16, Width = 553, Height = 126, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
-            chkEof = new CheckBox { Text = "Add EOF marker", Left = 202, Top = 562, Width = 115, Checked = true };
-            chkAuto = new CheckBox { Text = "Auto tokenize", Left = 322, Top = 562, Width = 110, Checked = true };
+            chkEof = new CheckBox { Text = "Add EOF marker", Left = 198, Top = 562, Width = 115, Checked = true };
+            chkAuto = new CheckBox { Text = "Auto token", Left = 316, Top = 562, Width = 86, Checked = true };
+            chkSkipRem = new CheckBox { Text = "Skip REM", Left = 402, Top = 562, Width = 82, Checked = false };
             btnAbort = Btn("Abort", Icons.Cross(), 485, 560, 90, 24, TR);
             btnConvert = Btn("Convert", Icons.File(), 104, 560, 90, 24, TL);
             btnView = Btn("View", Icons.File(), 10, 560, 90, 24, TL);
             btnView.Enabled = false;
             gbFiles.Controls.Add(lstFiles);
+            // hovering over a file name: a tip with the size, dates and type of the file
+            lstFiles.MouseMove += delegate (object sn, MouseEventArgs me)
+            {
+                int i = lstFiles.IndexFromPoint(me.Location);
+                if (i == tipIndex) return;
+                tipIndex = i;
+                tips.Hide(lstFiles);
+                tips.SetToolTip(lstFiles, i >= 0 && i < lstFiles.Items.Count ? FileInfoText((string)lstFiles.Items[i]) : ListTipDefault);
+            };
+            lstFiles.MouseLeave += delegate { tipIndex = -2; tips.SetToolTip(lstFiles, ListTipDefault); };
             // files dragged from the desktop / Explorer are copied to the current folder
             foreach (Control dc in new Control[] { lstFiles, gbFiles })
             {
@@ -205,7 +216,7 @@ namespace UartSlTest
             gbLog.Controls.Add(txtLog);
 
             Controls.AddRange(new Control[] { gbPort, gbTarget, banner, gb,
-                lblDir, txtDir, btnLocations, btnBrowse, btnOpenDir, gbInfo, gbFiles, btnView, chkEof, chkAuto, btnConvert, btnAbort, btnSend, btnSendOther, btnRefreshFiles, btnDelete, btnTerminal, gbLog });
+                lblDir, txtDir, btnLocations, btnBrowse, btnOpenDir, gbInfo, gbFiles, btnView, chkEof, chkAuto, chkSkipRem, btnConvert, btnAbort, btnSend, btnSendOther, btnRefreshFiles, btnDelete, btnTerminal, gbLog });
 
             // title row: everything else moves down by one row (40 px)
             foreach (Control c in Controls) c.Top += 52;
@@ -308,7 +319,7 @@ namespace UartSlTest
             tips.SetToolTip(txtDir, "Folder where received files are saved and listed from.");
             tips.SetToolTip(btnBrowse, "Choose another folder.");
             tips.SetToolTip(btnOpenDir, "Open the folder in Windows Explorer.");
-            tips.SetToolTip(lstFiles, "Files in the folder for the current mode (.img or .bas). Select one to send it.");
+            tips.SetToolTip(lstFiles, ListTipDefault);
             tips.SetToolTip(btnSend, "Send the selected file to the Sharp. Start the Loader / receiver on the Sharp first.");
             tips.SetToolTip(btnSendOther, "Pick any file from the disk and send it to the Sharp.");
             tips.SetToolTip(btnRefreshFiles, "Re-read the folder and refresh the file list.");
@@ -318,6 +329,7 @@ namespace UartSlTest
             tips.SetToolTip(chkEof, "Add the end-of-file marker. Text modes: after the file (and the dummy line) send the end-of-file character 1Ah (Ctrl-Z) so that the Sharp finishes the reception (1Ah is the end-of-file code of an ASCII file). Switch it off if the Sharp reports an error.");
             tips.SetToolTip(btnAbort, "Abort the transmission at once: stops sending the file and discards data waiting to be sent or received.");
             tips.SetToolTip(btnConvert, "Software UART mode only. Convert the selected file: BASIC text (.bas, .txt) to a program image (.img), or a program image (.img, or a .bin that is a BASIC program) to BASIC text (.bas).");
+            tips.SetToolTip(chkSkipRem, "Skip REM: lines that contain only a comment (REM) are not sent to the pocket computer, to save its memory. A REM line that a GOTO / GOSUB points to is kept. Off by default. Not applied to ready program images (.img).");
             tips.SetToolTip(chkAuto, "Software UART. ON: the converter is active. A program received from the Sharp is saved as BASIC text (.bas) and BASIC files are tokenized automatically when sent (the image is not kept). OFF: only program images (.img) are used, no automatic conversion (use the Convert button).");
             tips.SetToolTip(btnLocations, "Set the default folders of the programs for PC-1500, PC-1600 and the other models.");
             tips.SetToolTip(btnDelete, "Delete the selected file from the folder (after a confirmation).");
@@ -407,7 +419,7 @@ namespace UartSlTest
             public string Baud = "9600";        // text modes
             public string SoftBaud = "9600";    // Software UART
             public int Delay = 100, Eol = 1, Flow = 1;
-            public bool Eof = true, Auto = true;
+            public bool Eof = true, Auto = true, Skip = false;
             public string Dir;                  // null = the default folder
         }
 
@@ -445,6 +457,7 @@ namespace UartSlTest
             c.Flow = comboFlow.SelectedIndex;
             c.Eof = chkEof.Checked;
             c.Auto = chkAuto.Checked;
+            c.Skip = chkSkipRem.Checked;
             c.Dir = txtDir.Text;
         }
 
@@ -461,6 +474,7 @@ namespace UartSlTest
             comboFlow.SelectedIndex = c.Flow >= 0 && c.Flow < 4 ? c.Flow : 1;
             chkEof.Checked = c.Eof;
             chkAuto.Checked = c.Auto;
+            chkSkipRem.Checked = c.Skip;
         }
 
         void LoadSettings()
@@ -506,6 +520,7 @@ namespace UartSlTest
                     c.Flow = IndexOf(FlowNames, get(n, "Flow"), c.Flow);
                     if (get(n, "EofMarker") != null) c.Eof = get(n, "EofMarker") == "1";
                     if (get(n, "AutoTokenize") != null) c.Auto = get(n, "AutoTokenize") == "1";
+                    if (get(n, "SkipRem") != null) c.Skip = get(n, "SkipRem") == "1";
                     c.Dir = get(n, "Folder");
                 }
             }
@@ -539,6 +554,7 @@ namespace UartSlTest
                     sb.AppendLine("Flow=" + FlowNames[c.Flow]);
                     sb.AppendLine("EofMarker=" + (c.Eof ? "1" : "0"));
                     sb.AppendLine("AutoTokenize=" + (c.Auto ? "1" : "0"));
+                    sb.AppendLine("SkipRem=" + (c.Skip ? "1" : "0"));
                     sb.AppendLine("Folder=" + (c.Dir ?? locs[m]));
                 }
                 string f = SettingsFile();
@@ -741,6 +757,74 @@ namespace UartSlTest
             foreach (string p in SerialPort.GetPortNames()) comboPorts.Items.Add(p);
             if (cur != null && comboPorts.Items.Contains(cur)) comboPorts.SelectedItem = cur;
             else if (comboPorts.Items.Count > 0) comboPorts.SelectedIndex = 0;
+        }
+
+        const string ListTipDefault = "Files in the folder for the current mode (.img or .bas). Select one to send it. Point at a name to see the size and dates.";
+        int tipIndex = -2;
+
+        // ---- Skip REM: lines of BASIC text that hold only a comment are dropped (a REM line that a GOTO / GOSUB / THEN ... points to is kept)
+        static string StripRemLines(string text, out int removed, out int kept)
+        {
+            removed = 0; kept = 0;
+            string[] lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            var refs = new HashSet<string>();
+            var rx = new System.Text.RegularExpressions.Regex(@"(?:GOTO|GOSUB|THEN|ELSE|RESTORE|RUN)\s*(\d+(?:\s*,\s*\d+)*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var rem = new System.Text.RegularExpressions.Regex(@"^\s*(\d*)\s*(?:REM\b|')", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            foreach (string l in lines)
+                if (!rem.IsMatch(l))
+                    foreach (System.Text.RegularExpressions.Match m in rx.Matches(l))
+                        foreach (string n in m.Groups[1].Value.Split(',')) refs.Add(n.Trim());
+            var sb = new StringBuilder();
+            foreach (string l in lines)
+            {
+                var m = rem.Match(l);
+                if (m.Success)
+                {
+                    if (m.Groups[1].Value.Length > 0 && refs.Contains(m.Groups[1].Value)) kept++;
+                    else { removed++; continue; }
+                }
+                sb.Append(l).Append("\r\n");
+            }
+            return sb.ToString();
+        }
+
+        // free BASIC memory of a machine without a memory expansion (MEM): PC-1500 about 1850 B, PC-1600 about 11834 B (to be checked on real machines).
+        // The Saver/Loader takes a part of it: PC-1500 BASIC starts at RAM start + &300 instead of + &C5 (571 B less); PC-1600 the code lies
+        // in the machine-language area from &C100 to about &C2B0 (about 490 B).
+        const int Mem1500 = 1850, Mem1600 = 11834, Sl1500 = 571, Sl1600 = 490;
+
+        void WarnSize(int imageBytes, bool software)
+        {
+            if (curModel < 0 || curModel > 1) return;
+            int limit = curModel == 0 ? Mem1500 - (software ? Sl1500 : 0) : Mem1600 - (software ? Sl1600 : 0);
+            if (imageBytes <= limit) return;
+            LogBold("Listing can be too long: the program takes " + imageBytes + " B, the free memory of the " + (curModel == 0 ? "PC-1500" : "PC-1600") +
+                    " without a memory expansion is about " + limit + " B" + (software ? " (after the Saver/Loader)" : "") + ". An optional memory expansion is needed.");
+        }
+
+        string FileInfoText(string name)
+        {
+            try
+            {
+                var fi = new FileInfo(Path.Combine(txtDir.Text, name));
+                if (!fi.Exists) return name;
+                string ext = fi.Extension.ToLowerInvariant();
+                string kind = ext == ".img" ? "Program image" : ext == ".bas" || ext == ".txt" ? "BASIC text" : ext == ".bin" ? "Binary file" : "File";
+                string extra = "";
+                if (ext == ".img")
+                {
+                    string err; byte[] d = File.ReadAllBytes(fi.FullName);
+                    if (ProgImage.CheckImage(d, out err)) extra = "\r\nLines: " + ProgImage.CountLines(d);
+                }
+                else if (ext == ".bas" || ext == ".txt")
+                {
+                    int n = 0; foreach (string l in File.ReadAllLines(fi.FullName)) if (l.Trim().Length > 0) n++;
+                    extra = "\r\nLines: " + n;
+                }
+                return fi.Name + "\r\nType: " + kind + "\r\nSize: " + fi.Length.ToString("N0") + " B (" + (fi.Length / 1024.0).ToString("0.0") + " KB)" + extra +
+                       "\r\nModified: " + fi.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss") + "\r\nCreated: " + fi.CreationTime.ToString("yyyy-MM-dd HH:mm:ss");
+            }
+            catch { return name; }
         }
 
         void DropFiles(string[] files)
@@ -1282,21 +1366,46 @@ namespace UartSlTest
             bool dsrFlow = rs232 && comboFlow.SelectedIndex == 3;
             int eolIdx = comboEol.SelectedIndex;
             byte[] eol = eolIdx == 1 ? new byte[] { 13, 10 } : eolIdx == 2 ? new byte[] { 10 } : new byte[] { 13 };
+            if (text)
+            {
+                var latin = Encoding.GetEncoding(28591);
+                string src = latin.GetString(data);
+                if (chkSkipRem.Checked)
+                {
+                    int rm, kp;
+                    src = StripRemLines(src, out rm, out kp);
+                    data = latin.GetBytes(src);
+                    Log("Skip REM: " + rm + " comment lines left out" + (kp > 0 ? ", " + kp + " kept (a GOTO / GOSUB points to them)" : "") + ".");
+                }
+                if (curModel <= 1)                       // the size the pocket computer will need (estimated with the tokenizer)
+                {
+                    string pr;
+                    try { byte[] est = Pc1600Basic.Tokenize(src, curModel == 0, out pr); if (est != null) WarnSize(est.Length + 1, false); } catch { }
+                }
+            }
             if (!text)
             {
                 string err;
                 byte[] img;
-                if (path.EndsWith(".img", StringComparison.OrdinalIgnoreCase)) img = data;
+                if (path.EndsWith(".img", StringComparison.OrdinalIgnoreCase)) { img = data; if (chkSkipRem.Checked) Log("Skip REM is not applied to program images (.img)."); }
                 else
                 {
-                    if (!chkAuto.Checked) { Log("Auto tokenize is off: only .img files can be sent (use Convert or switch Auto tokenize on)."); return; }
+                    if (!chkAuto.Checked) { Log("Auto token is off: only .img files can be sent (use Convert or switch Auto token on)."); return; }
                     // BASIC text: convert to the intermediate code of the Sharp first
                     Log("Tokenizing to the " + (radio1500.Checked ? "PC-1500" : "PC-1600") + " intermediate code format...");
                     string problem;
-                    img = Pc1600Basic.Tokenize(Encoding.GetEncoding(28591).GetString(data), radio1500.Checked, out problem);
+                    string src = Encoding.GetEncoding(28591).GetString(data);
+                    if (chkSkipRem.Checked)
+                    {
+                        int rm, kp;
+                        src = StripRemLines(src, out rm, out kp);
+                        Log("Skip REM: " + rm + " comment lines left out" + (kp > 0 ? ", " + kp + " kept (a GOTO / GOSUB points to them)" : "") + ".");
+                    }
+                    img = Pc1600Basic.Tokenize(src, radio1500.Checked, out problem);
                     if (img == null) { Log("Tokenizer error: " + problem); return; }
                     Log("Tokenized: " + ProgImage.CountLines(img) + " lines, " + img.Length + " B (program image).");
                 }
+                WarnSize(img.Length + 1, true);
                 if (!ProgImage.CheckImage(img, out err)) { Log("File rejected: " + err); return; }
                 data = ProgImage.StreamFromImage(img);       // the Software UART sends the image + a checksum byte
             }
