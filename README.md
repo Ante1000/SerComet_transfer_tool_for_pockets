@@ -24,8 +24,8 @@ Free for personal, non-commercial and educational use ([PolyForm Noncommercial L
 | Folder | Contents |
 |---|---|
 | [`SerComet/`](SerComet) | the Windows program: C# WinForms source (Visual Studio 2019, .NET Framework 4.7.2): `Form1.cs`, `Form1.Designer.cs`, `Program.cs`, `SerComet.ico` |
-| [`SL/PC-1500/`](SL/PC-1500) | **Saver/Loader for the PC-1500(A)**: LOAD and SAVE of BASIC programs through the software UART, 4800 bps: LH5801 source, BASIC installer, tape recording (WAV), simulator test |
-| [`SL/PC-1600/`](SL/PC-1600) | **Saver/Loader for the PC-1600**: Z-80 source, BASIC installer (1200 to 19200 bps), emulator test, test programs |
+| [`Saver-Loader/PC-1500/`](Saver-Loader/PC-1500) | **Saver/Loader for the PC-1500(A)**: LOAD and SAVE of BASIC programs through the software UART, 4800 bps: LH5801 source, BASIC installer, tape recording (WAV), simulator test |
+| [`Saver-Loader/PC-1600/`](Saver-Loader/PC-1600) | **Saver/Loader for the PC-1600**: Z-80 source, BASIC installer (1200 to 19200 bps), emulator test, test programs |
 | [`img/`](img) | pictures |
 
 The Saver/Loaders are small machine-language routines that a short BASIC installer puts in the RAM of the pocket computer; after that
