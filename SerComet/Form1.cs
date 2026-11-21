@@ -88,7 +88,7 @@ namespace UartSlTest
             var lblPort = new Label { Text = "Port:", Left = 8, Top = 24, Width = 32 };
             comboPorts = new ComboBox { Left = 44, Top = 20, Width = 100, DropDownStyle = ComboBoxStyle.DropDownList };
             led = new LedLabel { Left = 24, Top = 48, Width = 74, Height = 26 };
-            btnTest = new Button { Text = "TEST", Left = 102, Top = 48, Width = 42, Height = 28, UseCompatibleTextRendering = false, FlatStyle = FlatStyle.Standard, Font = new Font("Segoe UI", 8F, FontStyle.Bold), Padding = new Padding(0), TextAlign = ContentAlignment.MiddleCenter, Anchor = TL };
+            btnTest = new Button { Text = "TEST", Left = 102, Top = 48, Width = 42, Height = 28, UseCompatibleTextRendering = false, FlatStyle = FlatStyle.Standard, Font = new Font("Segoe UI", 8F, FontStyle.Regular), Padding = new Padding(0), TextAlign = ContentAlignment.MiddleCenter, Anchor = TL };
             btnOpen = Btn("Open port", Icons.Plug(), 156, 16, 85, 28, TL);
             btnRefresh = Btn("Refresh", Icons.Refresh(), 248, 16, 85, 28, TL);
             btnFlush = Btn("Flush", Icons.Flush(), 156, 48, 85, 28, TL);
@@ -3631,9 +3631,9 @@ int removed, kept, cut; List<string> moved;
             foreach (int baud in Bauds)
             {
                 if (abort) break;
+                Add(baud.ToString().PadLeft(7) + " bps: ", Color.Black, false, 10F);     // shown when the test of this speed starts
                 string err = One(baud);
                 done++;
-                Add(baud.ToString().PadLeft(7) + " bps   ", Color.Black, false, 10F);
                 if (err == null) Add("OK\r\n", Green, true, 10F);
                 else { failed++; Add("FAIL  " + err + "\r\n", Red, true, 10F); }
             }
