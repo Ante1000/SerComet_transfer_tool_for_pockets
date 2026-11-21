@@ -1764,6 +1764,12 @@ int removed, kept, cut; List<string> moved;
             catch (Exception ex) { Log("Send error: " + ex.Message); }
             finally
             {
+                // PC-1600 over the UART: 1 s pause after the end of the transmission, before the port is reset (the controls stay locked)
+                if (text && curModel == 1 && port != null && !abortRequested)
+                {
+                    Log("Waiting 1 s before the port is reset...");
+                    try { await Task.Delay(1000); } catch { }
+                }
                 lock (rxLock) { rx.Clear(); }
                 sending = false;
                 MarkSending(null);
