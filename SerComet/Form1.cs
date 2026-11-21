@@ -87,8 +87,8 @@ namespace UartSlTest
             var gbPort = new GroupBox { Text = "Port settings", Left = 10, Top = 0, Width = 340, Height = 84, Anchor = TL };
             var lblPort = new Label { Text = "Port:", Left = 8, Top = 24, Width = 32 };
             comboPorts = new ComboBox { Left = 44, Top = 20, Width = 100, DropDownStyle = ComboBoxStyle.DropDownList };
-            led = new LedLabel { Left = 30, Top = 48, Width = 74, Height = 26 };
-            btnTest = new Button { Text = "TEST", Left = 108, Top = 48, Width = 42, Height = 28, UseCompatibleTextRendering = false, FlatStyle = FlatStyle.Standard, Font = new Font("Segoe UI", 6F, FontStyle.Bold), Padding = new Padding(0), TextAlign = ContentAlignment.MiddleCenter, Anchor = TL };
+            led = new LedLabel { Left = 24, Top = 48, Width = 74, Height = 26 };
+            btnTest = new Button { Text = "TEST", Left = 102, Top = 48, Width = 42, Height = 28, UseCompatibleTextRendering = false, FlatStyle = FlatStyle.Standard, Font = new Font("Segoe UI", 8F, FontStyle.Bold), Padding = new Padding(0), TextAlign = ContentAlignment.MiddleCenter, Anchor = TL };
             btnOpen = Btn("Open port", Icons.Plug(), 156, 16, 85, 28, TL);
             btnRefresh = Btn("Refresh", Icons.Refresh(), 248, 16, 85, 28, TL);
             btnFlush = Btn("Flush", Icons.Flush(), 156, 48, 85, 28, TL);
@@ -3624,7 +3624,10 @@ int removed, kept, cut; List<string> moved;
         void Run()
         {
             int failed = 0, done = 0;
-            Add("Port " + portName + ", 8N1, " + FlowName() + "\r\n\r\n", Color.Black, false, 10F);
+            Add("Port " + portName + ", 8N1, " + FlowName() + "\r\n", Color.Black, false, 10F);
+            byte[] pt = Pattern(); var hex = new StringBuilder();
+            for (int k = 0; k < 8; k++) hex.Append(pt[k].ToString("X2")).Append(' ');
+            Add("Sending string: SerComet port test pattern (" + pt.Length + " bytes: " + hex + "...)\r\n\r\n", Color.Black, false, 10F);
             foreach (int baud in Bauds)
             {
                 if (abort) break;
