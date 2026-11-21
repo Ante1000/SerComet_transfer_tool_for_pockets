@@ -87,13 +87,13 @@ namespace UartSlTest
             var gbPort = new GroupBox { Text = "Port settings", Left = 10, Top = 0, Width = 340, Height = 84, Anchor = TL };
             var lblPort = new Label { Text = "Port:", Left = 8, Top = 24, Width = 32 };
             comboPorts = new ComboBox { Left = 44, Top = 20, Width = 100, DropDownStyle = ComboBoxStyle.DropDownList };
-            led = new LedLabel { Left = 44, Top = 48, Width = 74, Height = 26 };
-            btnTest = new Button { Text = "TEST", Left = 122, Top = 48, Width = 28, Height = 28, Font = new Font("Segoe UI", 6F, FontStyle.Bold), Padding = new Padding(0), TextAlign = ContentAlignment.MiddleCenter, Anchor = TL };
+            led = new LedLabel { Left = 30, Top = 48, Width = 74, Height = 26 };
+            btnTest = new Button { Text = "TEST", Left = 108, Top = 48, Width = 42, Height = 28, UseCompatibleTextRendering = false, FlatStyle = FlatStyle.Standard, Font = new Font("Segoe UI", 6F, FontStyle.Bold), Padding = new Padding(0), TextAlign = ContentAlignment.MiddleCenter, Anchor = TL };
             btnOpen = Btn("Open port", Icons.Plug(), 156, 16, 85, 28, TL);
             btnRefresh = Btn("Refresh", Icons.Refresh(), 248, 16, 85, 28, TL);
             btnFlush = Btn("Flush", Icons.Flush(), 156, 48, 85, 28, TL);
             btnReset = Btn("Reset port", Icons.Cross(), 248, 48, 85, 28, TL);
-            btnFlush.Enabled = btnReset.Enabled = false;
+            btnFlush.Enabled = btnReset.Enabled = btnTest.Enabled = false;
             gbPort.Controls.AddRange(new Control[] { lblPort, comboPorts, led, btnTest, btnOpen, btnRefresh, btnFlush, btnReset });
             var gbTarget = new GroupBox { Text = "Target computer", Left = 354, Top = 0, Width = 356, Height = 84, Anchor = TR };
             radio1500 = new RadioButton { Text = "Sharp PC-1500", Left = 8, Top = 20, Width = 100 };
@@ -968,7 +968,7 @@ namespace UartSlTest
         // Flush and Reset port work only while the port is open (Refresh and Open port always)
         void SetRefreshMode(bool open)
         {
-            btnFlush.Enabled = btnReset.Enabled = open;
+            btnFlush.Enabled = btnReset.Enabled = btnTest.Enabled = open;
         }
 
         // close the port and open it again with the current settings; the buffers are cleared
@@ -1398,7 +1398,8 @@ namespace UartSlTest
             if (comboPorts.SelectedItem == null) { Log("Port test: no port selected."); return; }
             if (sending) { Log("Port test: wait until the transfer is finished."); return; }
             string name = comboPorts.SelectedItem.ToString();
-            if (port != null) { ClosePort(); Log("Port " + name + " closed for the port test."); }
+            bool wasOpen = port != null;
+            if (wasOpen) { ClosePort(); Log("Port " + name + " closed for the port test."); }
             string result;
             using (var f = new PortTestForm(name, rs232 ? comboFlow.SelectedIndex : 0))
             {
@@ -1406,6 +1407,7 @@ namespace UartSlTest
                 result = f.Summary;
             }
             if (result != null) Log("Port test " + name + ": " + result + ".");
+            if (wasOpen) { comboPorts.SelectedItem = name; TogglePort(); }          // the port is open again, as it was before the test
         }
 
         // Renumber: the line numbers of a BASIC text file and the GOTO / GOSUB / THEN ... targets
@@ -1464,8 +1466,14 @@ namespace UartSlTest
             {
                 string path = Path.Combine(txtDir.Text, name);
                 string text = Encoding.GetEncoding(28591).GetString(File.ReadAllBytes(path));
-                int removed, kept, cut;
-                string res = BasicTools.RemoveRem(text, out removed, out kept, out cut);
+int removed, kept, cut; List<string> moved;
+                bool keepFirst, targets;
+                using (var d = new RemoveRemForm(name))
+                {
+                    if (d.ShowDialog(this) != DialogResult.OK) return;
+                    keepFirst = d.KeepFirst; targets = d.RemoveTargets;
+                }
+                string res = BasicTools.RemoveRem(text, keepFirst, targets, out removed, out kept, out cut, out moved);
                 string outName = Path.GetFileNameWithoutExtension(name) + "_NOREM" + Path.GetExtension(name);
                 string outPath = Path.Combine(txtDir.Text, outName);
                 if (File.Exists(outPath) && MessageBox.Show(this, outName + " already exists. Replace it?", "Remove REM", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
@@ -1473,8 +1481,9 @@ namespace UartSlTest
                 byte[] bytes = Encoding.GetEncoding(28591).GetBytes(res);
                 File.WriteAllBytes(outPath, bytes);
                 int before = File.ReadAllBytes(path).Length;
-                Log("Remove REM " + name + ": " + removed + " REM lines removed, " + cut + " comments cut off the ends of lines" + (kept > 0 ? ", " + kept + " REM lines kept as a bare REM (a GOTO / GOSUB / THEN points to them)" : "") +
+                Log("Remove REM " + name + ": " + removed + " REM lines removed, " + cut + " comments cut off the ends of lines" + (kept > 0 ? ", " + kept + " REM lines kept" + (keepFirst ? " (the first one as it is" + (targets ? "" : ", a REM that a GOTO / GOSUB points to as a bare REM") + ")" : (targets ? "" : " as a bare REM (a GOTO / GOSUB / THEN points to them)")) : "") +
                     "; " + before + " to " + bytes.Length + " bytes. Written: " + outName + ".");
+                if (moved.Count > 0) Log("Remove REM " + name + ": jumps moved to the next line: " + string.Join(", ", moved.ToArray()) + ".");
                 RefreshFiles();
                 int i = lstFiles.Items.IndexOf(outName);
                 if (i >= 0) lstFiles.SelectedIndex = i;
@@ -3398,47 +3407,62 @@ namespace UartSlTest
             return sb.ToString();
         }
 
-        // Remove REM: whole REM lines are dropped (a REM line that GOTO / GOSUB / THEN ... points to stays as a bare "REM"); a comment after a colon
-        // or an apostrophe at the end of a line is cut off. Line numbers stay as they are.
-        public static string RemoveRem(string text, out int removedLines, out int keptLines, out int cutComments)
+        // Remove REM: whole REM lines are dropped; a comment after a colon or an apostrophe at the end of a line is cut off.
+        // keepFirst: the first REM line (e.g. the title of the program) stays as it is.
+        // retarget: a REM line that GOTO / GOSUB / THEN ... points to is removed too and the jumps go to the next line that stays (what the
+        // program executed after the REM anyway); without it such a REM stays as a bare "REM". A REM at the very end (no line after it) always stays.
+        public static string RemoveRem(string text, bool keepFirst, bool retarget, out int removedLines, out int keptLines, out int cutComments, out List<string> moved)
         {
-            removedLines = keptLines = cutComments = 0;
+            removedLines = keptLines = cutComments = 0; moved = new List<string>();
             string nl; string[] lines = SplitLines(text, out nl);
+            int n = lines.Length;
+            var no = new string[n]; var body = new string[n]; var cmt = new int[n];
             var refs = new HashSet<string>();
-            foreach (string l in lines)
+            for (int i = 0; i < n; i++)
             {
-                var m = LineRx.Match(l);
-                string body = m.Success ? m.Groups[2].Value : l;
-                int rc = CommentStart(body);
-                string code = rc == 0 ? "" : rc > 0 ? body.Substring(0, rc) : body;
+                var m = LineRx.Match(lines[i]);
+                if (!m.Success) { cmt[i] = -2; continue; }
+                no[i] = m.Groups[1].Value; body[i] = m.Groups[2].Value; cmt[i] = CommentStart(body[i]);
+                string code = cmt[i] == 0 ? "" : cmt[i] > 0 ? body[i].Substring(0, cmt[i]) : body[i];
                 foreach (Match r in Regex.Matches(code, @"(?:GOTO|GOSUB|THEN|ELSE|RESTORE|RUN)\s*(\d+(?:\s*,\s*\d+)*)", RegexOptions.IgnoreCase))
-                    foreach (string n in r.Groups[1].Value.Split(',')) refs.Add(n.Trim());
+                    foreach (string x in r.Groups[1].Value.Split(',')) refs.Add(x.Trim());
             }
-            var sb = new StringBuilder();
-            foreach (string l in lines)
+            // a line that only had a trailing comment and nothing else counts as a REM line as well
+            var isRem = new bool[n];
+            for (int i = 0; i < n; i++)
             {
-                var m = LineRx.Match(l);
-                if (!m.Success) { sb.Append(l).Append(nl); continue; }
-                string no = m.Groups[1].Value, body = m.Groups[2].Value;
-                int rc = CommentStart(body);
-                if (rc == 0)           // the whole line is a comment
+                if (cmt[i] == -2) continue;
+                string code = cmt[i] > 0 ? body[i].Substring(0, cmt[i]).TrimEnd().TrimEnd(':').Trim() : body[i];
+                isRem[i] = cmt[i] == 0 || (cmt[i] > 0 && code.Length == 0);
+            }
+            int keepIdx = -1;
+            if (keepFirst) for (int i = 0; i < n; i++) if (isRem[i]) { keepIdx = i; break; }
+            var remove = new bool[n]; var map = new Dictionary<int, int>();
+            string nextKept = null;
+            for (int i = n - 1; i >= 0; i--)
+            {
+                if (cmt[i] == -2) continue;                     // a line without a number stays
+                bool ref1 = refs.Contains(no[i]);
+                if (isRem[i] && i != keepIdx && (!ref1 || (retarget && nextKept != null)))
                 {
-                    if (refs.Contains(no)) { keptLines++; sb.Append(no).Append(" REM").Append(nl); } else removedLines++;
+                    remove[i] = true;
+                    if (ref1) { int ov; if (nextKept.Length < 10 && int.TryParse(no[i], out ov)) map[ov] = int.Parse(nextKept); moved.Add(no[i] + "->" + nextKept); }
                     continue;
                 }
-                if (rc > 0)
-                {
-                    string code = body.Substring(0, rc).TrimEnd();
-                    if (code.EndsWith(":")) code = code.Substring(0, code.Length - 1).TrimEnd();
-                    cutComments++;
-                    if (code.Trim().Length == 0)
-                    {
-                        if (refs.Contains(no)) { keptLines++; sb.Append(no).Append(" REM").Append(nl); } else removedLines++;
-                        continue;
-                    }
-                    body = code;
-                }
-                sb.Append(no).Append(body).Append(nl);
+                nextKept = no[i];
+            }
+            moved.Reverse();
+            var sb = new StringBuilder(); var dummy = new HashSet<string>(); int chg = 0;
+            for (int i = 0; i < n; i++)
+            {
+                if (cmt[i] == -2) { sb.Append(lines[i]).Append(nl); continue; }
+                if (remove[i]) { removedLines++; continue; }
+                if (i == keepIdx) { keptLines++; sb.Append(lines[i]).Append(nl); continue; }
+                string b = body[i];
+                if (isRem[i]) { keptLines++; sb.Append(no[i]).Append(" REM").Append(nl); continue; }      // referenced REM that has to stay
+                if (cmt[i] > 0) { b = b.Substring(0, cmt[i]).TrimEnd(); if (b.EndsWith(":")) b = b.Substring(0, b.Length - 1).TrimEnd(); cutComments++; }
+                if (map.Count > 0) b = Fix(b, map, dummy, ref chg);
+                sb.Append(no[i]).Append(b).Append(nl);
             }
             return sb.ToString();
         }
@@ -3471,6 +3495,30 @@ namespace UartSlTest
                 }
             }
             return -1;
+        }
+    }
+
+    // Remove REM: the two options
+    public class RemoveRemForm : Form
+    {
+        readonly CheckBox chkFirst, chkTarget;
+        public bool KeepFirst { get { return chkFirst.Checked; } }
+        public bool RemoveTargets { get { return chkTarget.Checked; } }
+        public RemoveRemForm(string fileName)
+        {
+            Text = "Remove REM";
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = MinimizeBox = false; ShowInTaskbar = false;
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(470, 172);
+            try { Icon = Icons.AppIcon(); } catch { }
+            Controls.Add(new Label { Text = fileName + ": the REM lines and the comments at the ends of the lines are removed; the result is written to a new file (NAME_NOREM).", Left = 12, Top = 10, Width = 446, Height = 34 });
+            chkFirst = new CheckBox { Text = "Keep first REM (e.g. Program title)", Left = 14, Top = 50, Width = 440 };
+            chkTarget = new CheckBox { Text = "Remove also target REM lines and renumber accordingly program skips (GOTO, GOSUB, THEN ... go to the next line)", Left = 14, Top = 76, Width = 446, Height = 34, Checked = true };
+            var ok = new Button { Text = "Remove REM", Left = 270, Top = 132, Width = 94, DialogResult = DialogResult.OK };
+            var cancel = new Button { Text = "Cancel", Left = 372, Top = 132, Width = 86, DialogResult = DialogResult.Cancel };
+            Controls.AddRange(new Control[] { chkFirst, chkTarget, ok, cancel });
+            AcceptButton = ok; CancelButton = cancel;
         }
     }
 
@@ -3536,7 +3584,7 @@ namespace UartSlTest
             var info = new Label
             {
                 Left = 10, Top = 8, Width = 540, Height = 88, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                Text = "1. Disconnect the cable to the Sharp from the port " + portName + ".\r\n" +
+                Text = "1. Disconnect the cable to the pocket computer from the port " + portName + ".\r\n" +
                        "2. Connect RXD with TXD (D-sub 9: pin 2 with pin 3; D-sub 25: pin 3 with pin 2, or the RX and TX pins of a TTL adapter).\r\n" +
                        "3. " + how + "\r\n" +
                        "4. Press 'Start test': 100 bytes are sent and read back at every speed from 300 to 115200 bps."
