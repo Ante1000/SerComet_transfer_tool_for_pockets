@@ -36,7 +36,7 @@ namespace UartSlTest
         // default folders of the target computers: PC-1500, PC-1600, other Sharp (15-pin), FX-850/870, TRS-80 / NEC, other UART
         const int NModels = 6;
         string[] locs = LoadLocations();      // overwritten by settings.ini when it exists
-        Button btnRefresh, btnOpen, btnFlush, btnReset, btnBrowse, btnOpenDir, btnSend, btnSendOther, btnRefreshFiles;
+        Button btnTest, btnRefresh, btnOpen, btnFlush, btnReset, btnBrowse, btnOpenDir, btnSend, btnSendOther, btnRefreshFiles;
         TextBox txtDir;
         RichTextBox txtLog;
         ListBox lstFiles;
@@ -87,13 +87,14 @@ namespace UartSlTest
             var gbPort = new GroupBox { Text = "Port settings", Left = 10, Top = 0, Width = 340, Height = 84, Anchor = TL };
             var lblPort = new Label { Text = "Port:", Left = 8, Top = 24, Width = 32 };
             comboPorts = new ComboBox { Left = 44, Top = 20, Width = 100, DropDownStyle = ComboBoxStyle.DropDownList };
-            led = new LedLabel { Left = 44, Top = 48, Width = 100, Height = 26 };
+            led = new LedLabel { Left = 44, Top = 48, Width = 74, Height = 26 };
+            btnTest = new Button { Text = "TEST", Left = 122, Top = 48, Width = 28, Height = 28, Font = new Font("Segoe UI", 6F, FontStyle.Bold), Padding = new Padding(0), TextAlign = ContentAlignment.MiddleCenter, Anchor = TL };
             btnOpen = Btn("Open port", Icons.Plug(), 156, 16, 85, 28, TL);
             btnRefresh = Btn("Refresh", Icons.Refresh(), 248, 16, 85, 28, TL);
             btnFlush = Btn("Flush", Icons.Flush(), 156, 48, 85, 28, TL);
             btnReset = Btn("Reset port", Icons.Cross(), 248, 48, 85, 28, TL);
             btnFlush.Enabled = btnReset.Enabled = false;
-            gbPort.Controls.AddRange(new Control[] { lblPort, comboPorts, led, btnOpen, btnRefresh, btnFlush, btnReset });
+            gbPort.Controls.AddRange(new Control[] { lblPort, comboPorts, led, btnTest, btnOpen, btnRefresh, btnFlush, btnReset });
             var gbTarget = new GroupBox { Text = "Target computer", Left = 354, Top = 0, Width = 356, Height = 84, Anchor = TR };
             radio1500 = new RadioButton { Text = "Sharp PC-1500", Left = 8, Top = 20, Width = 100 };
             radio1600 = new RadioButton { Text = "Sharp PC-1600", Left = 126, Top = 20, Width = 100, Checked = true };
@@ -216,13 +217,16 @@ namespace UartSlTest
             var miDelete = new ToolStripMenuItem("Delete", null, delegate { DeleteSelected(); });
             var miRename = new ToolStripMenuItem("Rename", null, delegate { RenameSelected(); });
             var miCheck = new ToolStripMenuItem("Check Basic", null, delegate { CheckBasicSelected(); });
-            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck });
+            var miRenum = new ToolStripMenuItem("Renumber", null, delegate { RenumberSelected(); });
+            var miNoRem = new ToolStripMenuItem("Remove REM", null, delegate { RemoveRemSelected(); });
+            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck, miRenum, miNoRem });
             fileMenu.Opening += delegate (object sn, System.ComponentModel.CancelEventArgs ce)
             {
                 if (lstFiles.SelectedItem == null || lstFiles.IndexFromPoint(lstFiles.PointToClient(Cursor.Position)) < 0) { ce.Cancel = true; return; }
                 string ext = Path.GetExtension((string)lstFiles.SelectedItem).ToLowerInvariant();
                 miEdit.Enabled = ext != ".img" && ext != ".bin";          // a program image is edited as BASIC text (Convert first)
                 miDelete.Enabled = !sending;
+                miRenum.Enabled = miNoRem.Enabled = ext == ".bas" || ext == ".txt";       // BASIC text only
             };
             fileMenu.Opened += delegate { fileMenuOpen = true; tips.Hide(lstFiles); tips.Active = false; };     // no tip while the menu is shown
             fileMenu.Closed += delegate { fileMenuOpen = false; tipIndex = -2; tips.Active = true; };
@@ -296,6 +300,7 @@ namespace UartSlTest
             btnFlush.Click += delegate { FlushBuffers(); };
             btnReset.Click += delegate { ResetPort(); };
             btnOpen.Click += delegate { TogglePort(); };
+            btnTest.Click += delegate { TestPort(); };
             radioSoft.CheckedChanged += delegate { UpdateMode(); };
             radioRs.CheckedChanged += delegate { UpdateMode(); };
             radioSio.CheckedChanged += delegate { UpdateMode(); };
@@ -351,6 +356,7 @@ namespace UartSlTest
             tips.SetToolTip(btnFlush, "Flush: discard the data waiting in the port buffers and in the receive buffer. Use it before a transfer, after an interrupted transfer, and after the Sharp was switched on or reset (it may have sent garbage). Active when the port is open.");
             tips.SetToolTip(btnReset, "Reset port: close the port and open it again with the current settings, and clear the buffers. Active when the port is open.");
             tips.SetToolTip(btnOpen, "Open or close the selected COM port.");
+            tips.SetToolTip(btnTest, "Port test: connect RXD with TXD and send test data at 300 to 115200 bps.");
             tips.SetToolTip(led, "Port status: green = open, dark = closed.");
             tips.SetToolTip(radio1500, "Target: Sharp PC-1500 (software serial Saver/Loader at 4800 baud, or RS-232 through the CE-158(X) interface).");
             tips.SetToolTip(radio1600, "Target: Sharp PC-1600 (software serial Saver/Loader or its RS-232 port).");
@@ -1384,6 +1390,96 @@ namespace UartSlTest
             RefreshFiles();
             int i = lstFiles.Items.IndexOf(newName);
             if (i >= 0) lstFiles.SelectedIndex = i;
+        }
+
+        // Port test: the port is closed first; the window sends a pattern at 300 to 115200 bps (TXD must be connected to RXD)
+        void TestPort()
+        {
+            if (comboPorts.SelectedItem == null) { Log("Port test: no port selected."); return; }
+            if (sending) { Log("Port test: wait until the transfer is finished."); return; }
+            string name = comboPorts.SelectedItem.ToString();
+            if (port != null) { ClosePort(); Log("Port " + name + " closed for the port test."); }
+            string result;
+            using (var f = new PortTestForm(name, rs232 ? comboFlow.SelectedIndex : 0))
+            {
+                f.ShowDialog(this);
+                result = f.Summary;
+            }
+            if (result != null) Log("Port test " + name + ": " + result + ".");
+        }
+
+        // Renumber: the line numbers of a BASIC text file and the GOTO / GOSUB / THEN ... targets
+        void RenumberSelected()
+        {
+            if (lstFiles.SelectedItem == null) return;
+            string name = (string)lstFiles.SelectedItem;
+            try
+            {
+                string path = Path.Combine(txtDir.Text, name);
+                string text = Encoding.GetEncoding(28591).GetString(File.ReadAllBytes(path));
+                int maxLine = BasicCheck.Profiles[BasicCheck.ProfileOfTarget(curModel < 0 ? 1 : curModel)].MaxLine;
+                int count = BasicTools.CountNumbered(text);
+                if (count == 0) { Log("Renumber " + name + ": the file has no numbered lines."); return; }
+                int step, start;
+                using (var d = new RenumberForm(name, count, maxLine))
+                {
+                    if (d.ShowDialog(this) != DialogResult.OK) return;
+                    step = d.Step; start = d.Start;
+                }
+                RenumberResult r = BasicTools.Renumber(text, start, step, maxLine);
+                if (r.Error != null) { Log("Renumber " + name + ": " + r.Error); return; }
+                if (r.Overflow)
+                {
+                    int alt = 0;
+                    foreach (int a in new[] { 5, 2, 1 })
+                        if (a < step && start + (long)(r.Count - 1) * a <= maxLine) { alt = a; break; }
+                    if (alt == 0)
+                    {
+                        Log("Renumber " + name + ": " + r.Count + " lines from " + start + " do not fit below " + maxLine + " even with step 1; nothing changed.");
+                        return;
+                    }
+                    long lastAlt = start + (long)(r.Count - 1) * alt;
+                    if (MessageBox.Show(this, "With the step " + step + " the last line would be " + r.NewLast + " (the highest allowed line number is " + maxLine + ").\r\n\r\nUse the step " + alt + " instead (the last line " + lastAlt + ")?",
+                        "Renumber", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) { Log("Renumber " + name + ": cancelled (the step " + step + " is too large)."); return; }
+                    step = alt;
+                    r = BasicTools.Renumber(text, start, step, maxLine);
+                    if (r.Error != null || r.Overflow) { Log("Renumber " + name + ": failed."); return; }
+                }
+                File.WriteAllBytes(path, Encoding.GetEncoding(28591).GetBytes(r.Text));
+                Log("Renumber " + name + ": " + r.Count + " lines, was " + r.OldFirst + " to " + r.OldLast + ", now " + r.NewFirst + " to " + r.NewLast + " (start " + start + ", step " + step + "); " + r.RefsChanged + " line references changed.");
+                if (r.Missing.Count > 0) Log("Renumber " + name + ": references to lines that do not exist were left as they are: " + string.Join(", ", r.Missing.ToArray()) + ".");
+            }
+            catch (Exception ex) { Log("Renumber error: " + ex.Message); }
+            RefreshFiles();
+            int i = lstFiles.Items.IndexOf(name);
+            if (i >= 0) lstFiles.SelectedIndex = i;
+        }
+
+        // Remove REM: writes NAME_NOREM.ext without the comments
+        void RemoveRemSelected()
+        {
+            if (lstFiles.SelectedItem == null) return;
+            string name = (string)lstFiles.SelectedItem;
+            try
+            {
+                string path = Path.Combine(txtDir.Text, name);
+                string text = Encoding.GetEncoding(28591).GetString(File.ReadAllBytes(path));
+                int removed, kept, cut;
+                string res = BasicTools.RemoveRem(text, out removed, out kept, out cut);
+                string outName = Path.GetFileNameWithoutExtension(name) + "_NOREM" + Path.GetExtension(name);
+                string outPath = Path.Combine(txtDir.Text, outName);
+                if (File.Exists(outPath) && MessageBox.Show(this, outName + " already exists. Replace it?", "Remove REM", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                { Log("Remove REM " + name + ": cancelled."); return; }
+                byte[] bytes = Encoding.GetEncoding(28591).GetBytes(res);
+                File.WriteAllBytes(outPath, bytes);
+                int before = File.ReadAllBytes(path).Length;
+                Log("Remove REM " + name + ": " + removed + " REM lines removed, " + cut + " comments cut off the ends of lines" + (kept > 0 ? ", " + kept + " REM lines kept as a bare REM (a GOTO / GOSUB / THEN points to them)" : "") +
+                    "; " + before + " to " + bytes.Length + " bytes. Written: " + outName + ".");
+                RefreshFiles();
+                int i = lstFiles.Items.IndexOf(outName);
+                if (i >= 0) lstFiles.SelectedIndex = i;
+            }
+            catch (Exception ex) { Log("Remove REM error: " + ex.Message); }
         }
 
         // Check Basic: a basic check of the listing for the machine of the selected target (another machine can be chosen in the window)
@@ -3195,9 +3291,367 @@ namespace UartSlTest
         }
     }
 
+    // ---- BASIC text tools: Renumber and Remove REM (text listings, one numbered line per row)
+    public sealed class RenumberResult
+    {
+        public string Text, Error;
+        public int Count, OldFirst, OldLast, NewFirst, NewLast, RefsChanged, MaxStepNeeded;
+        public bool Overflow;
+        public List<string> Missing = new List<string>();
+    }
+
+    public static class BasicTools
+    {
+        static readonly Regex RefRx = new Regex(@"\G(?:GOTO|GOSUB|THEN|ELSE|RESTORE|RUN)\s*\d+(?:\s*,\s*\d+)*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        static readonly Regex RemRx = new Regex(@"\GREM\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        static readonly Regex DataRx = new Regex(@"\GDATA\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        static readonly Regex LineRx = new Regex(@"^\s*(\d+)(.*)$", RegexOptions.Compiled);
+
+        static string[] SplitLines(string text, out string nl)
+        {
+            nl = text.Contains("\r\n") || !text.Contains("\n") ? "\r\n" : "\n";
+            var l = new List<string>(text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'));
+            while (l.Count > 0 && l[l.Count - 1].Trim().Length == 0) l.RemoveAt(l.Count - 1);
+            return l.ToArray();
+        }
+
+        // the last line of a renumbering with the given start and step (0 lines -> start)
+        public static int CountNumbered(string text)
+        {
+            string nl; int n = 0;
+            foreach (string l in SplitLines(text, out nl)) if (LineRx.IsMatch(l)) n++;
+            return n;
+        }
+
+        public static RenumberResult Renumber(string text, int start, int step, int maxLine)
+        {
+            var res = new RenumberResult();
+            string nl; string[] lines = SplitLines(text, out nl);
+            var nums = new List<int>(); var bodies = new List<string>();
+            var map = new Dictionary<int, int>();
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].Trim().Length == 0) continue;
+                var m = LineRx.Match(lines[i]);
+                if (!m.Success) { res.Error = "line " + (i + 1) + " of the file has no line number."; return res; }
+                int no = int.Parse(m.Groups[1].Value.Length > 9 ? "999999999" : m.Groups[1].Value);
+                if (map.ContainsKey(no)) { res.Error = "the line number " + no + " is repeated."; return res; }
+                map[no] = -1; nums.Add(no); bodies.Add(m.Groups[2].Value);
+            }
+            res.Count = nums.Count;
+            if (res.Count == 0) { res.Error = "the file has no numbered lines."; return res; }
+            res.OldFirst = nums[0]; res.OldLast = nums[nums.Count - 1];
+            long last = start + (long)(res.Count - 1) * step;
+            if (last > maxLine) { res.Overflow = true; res.NewLast = (int)Math.Min(last, int.MaxValue); return res; }
+            for (int i = 0; i < nums.Count; i++) map[nums[i]] = start + i * step;
+            res.NewFirst = start; res.NewLast = (int)last;
+            var sb = new StringBuilder(); var missing = new HashSet<string>();
+            for (int i = 0; i < nums.Count; i++)
+            {
+                sb.Append(map[nums[i]]).Append(Fix(bodies[i], map, missing, ref res.RefsChanged)).Append(nl);
+            }
+            res.Text = sb.ToString();
+            foreach (string s in missing) res.Missing.Add(s);
+            res.Missing.Sort((a, b) => a.Length != b.Length ? a.Length.CompareTo(b.Length) : string.CompareOrdinal(a, b));
+            return res;
+        }
+
+        // the line numbers after GOTO, GOSUB, THEN, ELSE, RESTORE, RUN (also the lists of ON ... GOTO) outside strings, REM and DATA
+        static string Fix(string body, Dictionary<int, int> map, HashSet<string> missing, ref int changed)
+        {
+            var sb = new StringBuilder();
+            int i = 0, ch = 0;
+            while (i < body.Length)
+            {
+                char c = body[i];
+                if (c == '"')
+                {
+                    int e = body.IndexOf('"', i + 1); if (e < 0) e = body.Length - 1;
+                    sb.Append(body, i, e - i + 1); i = e + 1; continue;
+                }
+                bool startOk = i == 0 || !char.IsLetter(body[i - 1]);
+                if (c == '\'' || (startOk && RemRx.IsMatch(body, i))) { sb.Append(body, i, body.Length - i); break; }
+                if (startOk && DataRx.IsMatch(body, i))
+                {
+                    int j = i; bool q = false;
+                    while (j < body.Length && !(body[j] == ':' && !q)) { if (body[j] == '"') q = !q; j++; }
+                    sb.Append(body, i, j - i); i = j; continue;
+                }
+                if (startOk)
+                {
+                    var m = RefRx.Match(body, i);
+                    if (m.Success)
+                    {
+                        int mc = 0; var miss = missing;
+                        string r = Regex.Replace(m.Value, @"\d+", delegate (Match d)
+                        {
+                            int old;
+                            if (d.Value.Length < 10 && int.TryParse(d.Value, out old) && map.ContainsKey(old)) { mc++; return map[old].ToString(); }
+                            miss.Add(d.Value); return d.Value;
+                        });
+                        ch += mc; sb.Append(r); i += m.Length; continue;
+                    }
+                }
+                sb.Append(c); i++;
+            }
+            changed += ch;
+            return sb.ToString();
+        }
+
+        // Remove REM: whole REM lines are dropped (a REM line that GOTO / GOSUB / THEN ... points to stays as a bare "REM"); a comment after a colon
+        // or an apostrophe at the end of a line is cut off. Line numbers stay as they are.
+        public static string RemoveRem(string text, out int removedLines, out int keptLines, out int cutComments)
+        {
+            removedLines = keptLines = cutComments = 0;
+            string nl; string[] lines = SplitLines(text, out nl);
+            var refs = new HashSet<string>();
+            foreach (string l in lines)
+            {
+                var m = LineRx.Match(l);
+                string body = m.Success ? m.Groups[2].Value : l;
+                int rc = CommentStart(body);
+                string code = rc == 0 ? "" : rc > 0 ? body.Substring(0, rc) : body;
+                foreach (Match r in Regex.Matches(code, @"(?:GOTO|GOSUB|THEN|ELSE|RESTORE|RUN)\s*(\d+(?:\s*,\s*\d+)*)", RegexOptions.IgnoreCase))
+                    foreach (string n in r.Groups[1].Value.Split(',')) refs.Add(n.Trim());
+            }
+            var sb = new StringBuilder();
+            foreach (string l in lines)
+            {
+                var m = LineRx.Match(l);
+                if (!m.Success) { sb.Append(l).Append(nl); continue; }
+                string no = m.Groups[1].Value, body = m.Groups[2].Value;
+                int rc = CommentStart(body);
+                if (rc == 0)           // the whole line is a comment
+                {
+                    if (refs.Contains(no)) { keptLines++; sb.Append(no).Append(" REM").Append(nl); } else removedLines++;
+                    continue;
+                }
+                if (rc > 0)
+                {
+                    string code = body.Substring(0, rc).TrimEnd();
+                    if (code.EndsWith(":")) code = code.Substring(0, code.Length - 1).TrimEnd();
+                    cutComments++;
+                    if (code.Trim().Length == 0)
+                    {
+                        if (refs.Contains(no)) { keptLines++; sb.Append(no).Append(" REM").Append(nl); } else removedLines++;
+                        continue;
+                    }
+                    body = code;
+                }
+                sb.Append(no).Append(body).Append(nl);
+            }
+            return sb.ToString();
+        }
+
+        // index of the start of a comment in a line body (outside strings and DATA): 0 = the body is a comment; -1 = none.
+        // A trailing comment starts at the colon before REM (or at the apostrophe).
+        static int CommentStart(string body)
+        {
+            int i = 0; bool q = false;
+            while (i < body.Length && body[i] == ' ') i++;
+            int first = i;
+            if (i < body.Length && (body[i] == '\'' || RemRx.IsMatch(body, i))) return 0;
+            for (; i < body.Length; i++)
+            {
+                char c = body[i];
+                if (c == '"') { q = !q; continue; }
+                if (q) continue;
+                bool startOk = i == 0 || !char.IsLetter(body[i - 1]);
+                if (startOk && DataRx.IsMatch(body, i))
+                {
+                    while (i < body.Length && !(body[i] == ':' && !q)) { if (body[i] == '"') q = !q; i++; }
+                    if (i >= body.Length) return -1;
+                    continue;
+                }
+                if (c == '\'') return i;
+                if (c == ':')
+                {
+                    int j = i + 1; while (j < body.Length && body[j] == ' ') j++;
+                    if (j < body.Length && (body[j] == '\'' || RemRx.IsMatch(body, j))) return i;
+                }
+            }
+            return -1;
+        }
+    }
+
+    // asks for the step and the first line number of Renumber
+    public class RenumberForm : Form
+    {
+        readonly TextBox txtStep, txtStart;
+        public int Step, Start;
+        public RenumberForm(string fileName, int lines, int maxLine)
+        {
+            Text = "Renumber";
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = MinimizeBox = false; ShowInTaskbar = false;
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(360, 150);
+            try { Icon = Icons.AppIcon(); } catch { }
+            Controls.Add(new Label { Text = fileName + ": " + lines + " numbered lines. GOTO, GOSUB, THEN, ELSE, RESTORE, RUN and ON ... GOTO / GOSUB are renumbered too (the file is changed).", Left = 12, Top = 10, Width = 336, Height = 44 });
+            Controls.Add(new Label { Text = "Step (distance between the lines):", Left = 12, Top = 62, Width = 200 });
+            txtStep = new TextBox { Left = 216, Top = 58, Width = 60, Text = "10" };
+            Controls.Add(new Label { Text = "First line number:", Left = 12, Top = 90, Width = 200 });
+            txtStart = new TextBox { Left = 216, Top = 86, Width = 60, Text = "10" };
+            var ok = new Button { Text = "Renumber", Left = 178, Top = 116, Width = 84 };
+            var cancel = new Button { Text = "Cancel", Left = 268, Top = 116, Width = 80, DialogResult = DialogResult.Cancel };
+            Controls.AddRange(new Control[] { txtStep, txtStart, ok, cancel });
+            AcceptButton = ok; CancelButton = cancel;
+            ok.Click += delegate
+            {
+                int s, f;
+                if (!int.TryParse(txtStep.Text.Trim(), out s) || s < 1 || s > maxLine || !int.TryParse(txtStart.Text.Trim(), out f) || f < 1 || f > maxLine)
+                { MessageBox.Show(this, "Enter whole numbers from 1 to " + maxLine + ".", "Renumber", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+                Step = s; Start = f; DialogResult = DialogResult.OK;
+            };
+            Shown += delegate { txtStep.Focus(); txtStep.SelectAll(); };
+        }
+    }
+
+    // Port test: TXD must be connected to RXD (and the flow control lines, if selected); a pattern is sent at 300 to 115200 bps and must come back
+    public class PortTestForm : Form
+    {
+        readonly string portName; readonly int flow;
+        readonly RichTextBox box; readonly Button start, close;
+        volatile bool abort; System.Threading.Thread th;
+        public string Summary;
+        static readonly int[] Bauds = { 300, 600, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200 };
+
+        public PortTestForm(string portName, int flow)
+        {
+            this.portName = portName; this.flow = flow;
+            Text = "Port test: " + portName;
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(560, 440);
+            MinimumSize = new Size(480, 360);
+            ShowInTaskbar = false;
+            try { Icon = Icons.AppIcon(); } catch { }
+            string how;
+            switch (flow)
+            {
+                case 2: how = "RTS/CTS: connect also RTS with CTS (D-sub 9: pin 7 with pin 8)."; break;
+                case 3: how = "DSR/DTR: connect also DTR with DSR (D-sub 9: pin 4 with pin 6)."; break;
+                case 1: how = "XON/XOFF: no more wires (the test data do not contain the XON / XOFF codes 11H and 13H)."; break;
+                default: how = "Flow control: none, no more wires."; break;
+            }
+            var info = new Label
+            {
+                Left = 10, Top = 8, Width = 540, Height = 88, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                Text = "1. Disconnect the cable to the Sharp from the port " + portName + ".\r\n" +
+                       "2. Connect RXD with TXD (D-sub 9: pin 2 with pin 3; D-sub 25: pin 3 with pin 2, or the RX and TX pins of a TTL adapter).\r\n" +
+                       "3. " + how + "\r\n" +
+                       "4. Press 'Start test': 100 bytes are sent and read back at every speed from 300 to 115200 bps."
+            };
+            start = new Button { Text = "Start test", Left = 10, Top = 100, Width = 110, Height = 28 };
+            close = new Button { Text = "Close", Left = 450, Top = 100, Width = 100, Height = 28, Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            box = new RichTextBox { Left = 10, Top = 136, Width = 540, Height = 294, ReadOnly = true, Font = new Font("Consolas", 10F), BackColor = Color.White, DetectUrls = false,
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
+            Controls.AddRange(new Control[] { info, start, close, box });
+            CancelButton = close;
+            close.Click += delegate { Close(); };
+            start.Click += delegate { StartTest(); };
+            FormClosing += delegate { abort = true; try { if (th != null && th.IsAlive) th.Join(3000); } catch { } };
+        }
+
+        void Add(string s, Color c, bool bold, float size)
+        {
+            if (IsDisposed) return;
+            Action a = delegate
+            {
+                box.SelectionStart = box.TextLength; box.SelectionLength = 0;
+                box.SelectionFont = new Font(box.Font.FontFamily, size, bold ? FontStyle.Bold : FontStyle.Regular);
+                box.SelectionColor = c; box.AppendText(s); box.ScrollToCaret();
+            };
+            try { if (InvokeRequired) Invoke(a); else a(); } catch { }
+        }
+
+        void StartTest()
+        {
+            start.Enabled = false; box.Clear(); Summary = null; abort = false;
+            th = new System.Threading.Thread(Run) { IsBackground = true };
+            th.Start();
+        }
+
+        static readonly Color Green = Color.FromArgb(20, 130, 40), Red = Color.FromArgb(190, 30, 30);
+
+        void Run()
+        {
+            int failed = 0, done = 0;
+            Add("Port " + portName + ", 8N1, " + FlowName() + "\r\n\r\n", Color.Black, false, 10F);
+            foreach (int baud in Bauds)
+            {
+                if (abort) break;
+                string err = One(baud);
+                done++;
+                Add(baud.ToString().PadLeft(7) + " bps   ", Color.Black, false, 10F);
+                if (err == null) Add("OK\r\n", Green, true, 10F);
+                else { failed++; Add("FAIL  " + err + "\r\n", Red, true, 10F); }
+            }
+            if (!abort)
+            {
+                Summary = failed == 0 ? "PORT TEST OK" : "PORT TEST FAIL (" + failed + " of " + done + " speeds failed)";
+                Add("\r\n" + (failed == 0 ? "PORT TEST OK" : "PORT TEST FAIL") + "\r\n", failed == 0 ? Green : Red, true, 14F);
+                if (failed > 0) Add("Check the wires (TXD-RXD and the flow control lines). A USB adapter may not support every speed.\r\n", Color.Black, false, 10F);
+            }
+            else Summary = "test cancelled";
+            try { Invoke((Action)delegate { start.Enabled = true; }); } catch { }
+        }
+
+        string FlowName() { return flow == 2 ? "RTS/CTS" : flow == 3 ? "DSR/DTR" : flow == 1 ? "XON/XOFF" : "no flow control"; }
+
+        byte[] Pattern()
+        {
+            var p = new byte[100];
+            byte[] head = { 0x55, 0xAA, 0x00, 0xFF, 0x0F, 0xF0, 0x01, 0x80 };
+            for (int i = 0; i < p.Length; i++)
+            {
+                int v = i < head.Length ? head[i] : (i * 73 + 41) & 0xFF;
+                if (flow == 1 && (v == 0x11 || v == 0x13)) v++;
+                p[i] = (byte)v;
+            }
+            return p;
+        }
+
+        string One(int baud)
+        {
+            System.IO.Ports.SerialPort p = null;
+            try
+            {
+                p = new System.IO.Ports.SerialPort(portName, baud, System.IO.Ports.Parity.None, 8, System.IO.Ports.StopBits.One);
+                p.ReadBufferSize = 4096; p.WriteTimeout = 3000;
+                p.Handshake = flow == 2 ? System.IO.Ports.Handshake.RequestToSend : flow == 1 ? System.IO.Ports.Handshake.XOnXOff : System.IO.Ports.Handshake.None;
+                p.Open();
+                if (flow == 3)
+                {
+                    p.DtrEnable = true; System.Threading.Thread.Sleep(50);
+                    if (!p.DsrHolding) return "DSR is not high: connect DTR with DSR";
+                }
+                System.Threading.Thread.Sleep(20);
+                p.DiscardInBuffer();
+                byte[] pat = Pattern();
+                try { p.Write(pat, 0, pat.Length); }
+                catch (TimeoutException) { return flow == 2 ? "the data are not sent: CTS is low (connect RTS with CTS)" : "the data cannot be sent (time-out)"; }
+                var got = new List<byte>();
+                int limit = Environment.TickCount + (int)(pat.Length * 10.0 / baud * 1000 * 2) + 800;
+                while (got.Count < pat.Length && limit - Environment.TickCount > 0 && !abort)
+                {
+                    int n = p.BytesToRead;
+                    if (n > 0) { var b = new byte[n]; int r = p.Read(b, 0, n); for (int k = 0; k < r; k++) got.Add(b[k]); }
+                    else System.Threading.Thread.Sleep(3);
+                }
+                if (got.Count == 0) return "nothing received (connect TXD with RXD)";
+                for (int k = 0; k < Math.Min(got.Count, pat.Length); k++)
+                    if (got[k] != pat[k]) return "wrong data at byte " + (k + 1) + " (sent " + pat[k].ToString("X2") + "H, received " + got[k].ToString("X2") + "H)";
+                if (got.Count < pat.Length) return "only " + got.Count + " of " + pat.Length + " bytes received";
+                return null;
+            }
+            catch (Exception ex) { return ex.Message; }
+            finally { try { if (p != null) { if (p.IsOpen) p.Close(); p.Dispose(); } } catch { } }
+        }
+    }
+
     public static class AppInfo
     {
-        public const string Version = "1.4";      // 1.1: Software UART speeds 1200 to 19200 (SL V3.0), settings.ini, .img files; 1.2: names of the programs checked for the Sharp; 1.4: file info tip, Skip REM, Check Basic, Files menu, drag out of the list; 1.3: PC-1500 Software UART (4800 bps), six target computers, Port settings box, Flush and Reset port, wrong baud rate warning
+        public const string Version = "1.5";      // 1.5: port TEST button, Renumber and Remove REM in the Files menu; 1.1: Software UART speeds 1200 to 19200 (SL V3.0), settings.ini, .img files; 1.2: names of the programs checked for the Sharp; 1.4: file info tip, Skip REM, Check Basic, Files menu, drag out of the list; 1.3: PC-1500 Software UART (4800 bps), six target computers, Port settings box, Flush and Reset port, wrong baud rate warning
     }
 
     // Names of programs for the pocket computers: the length and the characters that the Sharp accepts
