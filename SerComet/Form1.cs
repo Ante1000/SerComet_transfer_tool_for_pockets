@@ -120,6 +120,18 @@ namespace UartSlTest
             comboEol = new ComboBox { Width = 50, DropDownStyle = ComboBoxStyle.DropDownList };
             comboEol.Items.AddRange(new object[] { "CR", "CR+LF", "LF" });
             comboEol.SelectedIndex = 1;
+            comboEol.DrawMode = DrawMode.OwnerDrawFixed;                  // CR alone or LF alone: red text where the machine expects CR+LF
+            comboEol.DrawItem += delegate (object sn, DrawItemEventArgs de)
+            {
+                if (de.Index < 0) return;
+                bool hi = (de.State & DrawItemState.Selected) != 0 && (de.State & DrawItemState.ComboBoxEdit) == 0;
+                bool bad = EolSuspect(de.Index);
+                de.DrawBackground();
+                Color c = bad ? (hi ? Color.FromArgb(255, 170, 170) : Color.Red) : de.ForeColor;
+                TextRenderer.DrawText(de.Graphics, (string)comboEol.Items[de.Index], de.Font, de.Bounds, c, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+                de.DrawFocusRectangle();
+            };
+            comboEol.SelectedIndexChanged += delegate { comboEol.Invalidate(); };
             var lblFlow = new Label { Text = "Flow:" };
             comboFlow = new ComboBox { Width = 74, DropDownStyle = ComboBoxStyle.DropDownList };
             comboFlow.Items.AddRange(new object[] { "None", "XON/XOFF", "RTS/CTS", "DSR/DTR" });
@@ -399,7 +411,7 @@ namespace UartSlTest
             tips.SetToolTip(btnSendOther, "Pick any file from the disk and send it to the Sharp.");
             tips.SetToolTip(btnRefreshFiles, "Re-read the folder and refresh the file list.");
             tips.SetToolTip(btnTerminal, "Open a terminal window (like TeraTerm): typed characters are sent, received data is shown. Text modes only.");
-            tips.SetToolTip(comboEol, "Line end sent after every line of a text file: CR, CR+LF (TeraTerm style) or LF.");
+            tips.SetToolTip(comboEol, "Line end sent after every line of a text file: CR, CR+LF (TeraTerm style) or LF. Red = CR alone or LF alone is probably a wrong choice for the Sharp and Casio computers (they expect CR+LF); TRS-80 / NEC and other UART computers can use any of them.");
             tips.SetToolTip(btnView, "Show the contents of the selected file (BASIC text; program images are shown as BASIC).");
             tips.SetToolTip(chkEof, "Add the end-of-file marker. Text modes: after the file (and the dummy line) send the end-of-file character 1Ah (Ctrl-Z) so that the Sharp finishes the reception (1Ah is the end-of-file code of an ASCII file). Switch it off if the Sharp reports an error.");
             tips.SetToolTip(btnAbort, "Abort the transmission at once: stops sending the file and discards data waiting to be sent or received.");
@@ -432,6 +444,7 @@ namespace UartSlTest
             radioRs.Enabled = nm != 2 && nm != 3;
             radioSio.Enabled = nm == 2 || nm == 3 || nm == 5;
             radioRs.Text = "RS-232 serial";
+            comboEol.Invalidate();
             banner.ModelName = ModelCaptions[nm];
             banner.Model = nm;
             banner.Invalidate();
@@ -498,7 +511,7 @@ namespace UartSlTest
             public string Dir;                  // null = the default folder
         }
 
-        readonly ModelCfg[] cfg = { new ModelCfg { Delay = 200 }, new ModelCfg { Mode = 1, Baud = "2400" }, new ModelCfg { Mode = 2 }, new ModelCfg { Mode = 2, Baud = "4800" },
+        readonly ModelCfg[] cfg = { new ModelCfg { Delay = 200 }, new ModelCfg { Mode = 1, Baud = "4800" }, new ModelCfg { Mode = 2 }, new ModelCfg { Mode = 2, Baud = "4800" },
             new ModelCfg { Mode = 1, Baud = "1200", Delay = 200, Eol = 0 }, new ModelCfg { Mode = 1 } };
         int curModel = -1, startModel = 1;
         string startPort;
@@ -539,7 +552,7 @@ namespace UartSlTest
         void ApplyCfg(int m)
         {
             var c = cfg[m];
-            if (m == 1 && c.Mode == 0) { c.Mode = 1; c.Baud = "2400"; }      // PC-1600: the Software Serial is blocked; RS-232 at 2400 bps (the recommended speed of the Info) is the default
+            if (m == 1 && c.Mode == 0) { c.Mode = 1; c.Baud = "4800"; }      // PC-1600: the Software Serial is blocked; RS-232 at 4800 bps is the default
             if (m == 2 || m == 3 || (m == 5 && c.Mode == 2)) radioSio.Checked = true;
             else if (m == 4 || m == 5 || c.Mode == 1) radioRs.Checked = true;
             else radioSoft.Checked = true;
@@ -838,6 +851,10 @@ namespace UartSlTest
         const string ListTipDefault = "Files in the folder for the current mode (.img or .bas). Select one to send it. Point at a name to see the size and dates.";
         int tipIndex = -2, dragIndex = -1;
         bool fileMenuOpen;
+        // CR alone or LF alone as the line end is a wrong choice for the Sharp (15-pin, PC-1500, PC-1600) and the Casio, which expect CR+LF;
+        // the TRS-80 / NEC (CR is their default) and the other UART computers can use any of them
+        bool EolSuspect(int idx) { return (idx == 0 || idx == 2) && curModel >= 0 && curModel <= 3; }
+
         string sendingPath;                 // the file being sent (its row in the list is red)
         void MarkSending(string path) { sendingPath = path; if (lstFiles != null) lstFiles.Invalidate(); }
         Point dragStart;
@@ -1752,6 +1769,7 @@ int removed, kept, cut; List<string> moved;
                 MarkSending(null);
                 btnSendOther.Enabled = true;
                 SelectionChanged();
+                if (text && curModel == 1 && port != null) ResetPort();      // PC-1600 over the UART: the port is closed and opened again after the transmission (or Abort)
             }
         }
     }
