@@ -844,7 +844,7 @@ namespace UartSlTest
         // free BASIC memory of a machine without a memory expansion (MEM): PC-1500A about 5946 B (5.8 KB, to be checked with MEM; the bare PC-1500 has less), PC-1600 about 11834 B (to be checked on real machines).
         // The Saver/Loader takes a part of it: PC-1500 BASIC starts at RAM start + &300 instead of + &C5 (571 B less); PC-1600 the code lies
         // in the machine-language area from &C100 to about &C2B0 (about 490 B).
-        const int Mem1500 = 5946, Mem1600 = 11834, Sl1500 = 571, Sl1600 = 490;
+        const int Mem1500 = 5946, Mem1600 = 11834, Sl1500 = 571, Sl1600 = 3648;
 
         void WarnSize(int imageBytes, bool software)
         {
@@ -2589,7 +2589,7 @@ namespace UartSlTest
     public static class BasicCheck
     {
         // free BASIC memory without a memory expansion (see Form1.WarnSize): the part taken by the Saver/Loader
-        public const int Mem1500 = 5946, Mem1600 = 11834, Sl1500 = 571, Sl1600 = 490;
+        public const int Mem1500 = 5946, Mem1600 = 11834, Sl1500 = 571, Sl1600 = 3648;
 
         const string Core = "LET PRINT INPUT GOTO GOSUB IF THEN ELSE FOR TO STEP NEXT RETURN END STOP REM READ DATA RESTORE DIM ON CLS CLEAR BEEP WAIT PAUSE RUN LIST NEW CONT " +
             "PEEK POKE CALL AND OR NOT XOR MOD INT ABS SGN SQR SIN COS TAN ASN ACS ATN LOG LN EXP RND LEN LEFT$ RIGHT$ MID$ ASC CHR$ STR$ VAL TAB USING LPRINT LLIST " +
