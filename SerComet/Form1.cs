@@ -3513,8 +3513,8 @@ int removed, kept, cut; List<string> moved;
             ClientSize = new Size(470, 172);
             try { Icon = Icons.AppIcon(); } catch { }
             Controls.Add(new Label { Text = fileName + ": the REM lines and the comments at the ends of the lines are removed; the result is written to a new file (NAME_NOREM).", Left = 12, Top = 10, Width = 446, Height = 34 });
-            chkFirst = new CheckBox { Text = "Keep first REM (e.g. Program title)", Left = 14, Top = 50, Width = 440 };
-            chkTarget = new CheckBox { Text = "Remove also target REM lines and renumber accordingly program skips (GOTO, GOSUB, THEN ... go to the next line)", Left = 14, Top = 76, Width = 446, Height = 34, Checked = true };
+            chkFirst = new CheckBox { Text = "Keep first REM (e.g. Program title)", Left = 14, Top = 50, Width = 440, Checked = true };
+            chkTarget = new CheckBox { Text = "Remove also target REM lines and renumber accordingly program skips (GOTO, GOSUB, THEN ... go to the next line)", Left = 14, Top = 76, Width = 446, Height = 34 };
             var ok = new Button { Text = "Remove REM", Left = 270, Top = 132, Width = 94, DialogResult = DialogResult.OK };
             var cancel = new Button { Text = "Cancel", Left = 372, Top = 132, Width = 86, DialogResult = DialogResult.Cancel };
             Controls.AddRange(new Control[] { chkFirst, chkTarget, ok, cancel });
