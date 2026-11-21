@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emulator test of Basic/sl_v3.2.txt (the Saver/Loader V3.0, 1200 to 19200 bps). The code and the patch sites are read from the DATA and
+"""Emulator test of Basic/sl_v4.0.txt (the Saver/Loader V4.0, 1200 to 19200 bps). The code and the patch sites are read from the DATA and
 POKE lines of the BASIC installer; the delays are calculated as the installer does. For every speed it checks that SAVE sends exactly the
 bytes of a program plus the checksum, that LOAD takes the stream (also at +-3 % of the speed and with gaps), and the error cases.
 z80asm is not needed. pip install z80
@@ -8,7 +8,7 @@ import math, os, random, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import verify_listing as V
 ROOT = V.ROOT
-lines = V.load_listing(os.path.join(ROOT, 'Basic', 'sl_v3.2.txt'))
+lines = V.load_listing(os.path.join(ROOT, 'Basic', 'sl_v4.0.txt'))
 st = V.Stream(lines, 1000)
 n = st.read(); base = bytearray(0x200); tot = 0
 for _ in range(n):
@@ -82,13 +82,13 @@ for bd in (1200, 2400, 4800, 9600, 19200):
           % (bd, len(got), good, r.m.de, r.opc, min(ws), max(ws)))
     ok &= good and min(ws) <= 0.97 and max(ws) >= 1.03
     # LOAD at several phases and speeds (+-3 %), with and without gaps
-    def load(data, start=START, newprog=bytes(40), mult=1.0, gap=0, phase=0.0, regs=False, shorten=False):
+    def load(data, start=START, newprog=bytes(40), mult=1.0, gap=0, phase=0.0, regs=False, shorten=False, limit=80_000_000):
         r = V.Rig(img, LOAD, 0, P, wave=V.waveform(data, bit * mult, phase=phase, gap=gap)); setup(r, newprog, start)
         if regs:
             r.m.alt_af = 0x3344; r.m.alt_bc = 0x1234; r.m.alt_de = 0x5678; r.m.alt_hl = 0x9abc; r.m.bc = 0x0f0e; r.m.hl = 0x2468
         if shorten:
             i = P + LOAD; j = bytes(r.m.memory[i:i + 80]).find(bytes([0x0E, 0x00, 0x16, 30])); r.m.memory[i + j + 3] = 1
-        r.run(); mem = r.m.memory
+        r.run(limit); mem = r.m.memory
         return r, mem[0xFE3F] + 256 * mem[0xFE40]
     def pe2(r): return ((r.m.memory[0xF867] ^ 0x80) << 8) + r.m.memory[0xF868]      # the end as the BASIC reads it (F869H is not touched)
     res = []
@@ -108,8 +108,16 @@ for bd in (1200, 2400, 4800, 9600, 19200):
         print('        nothing received: status', r.m.de, '(expect 3); untouched:', g)
         r, pe = load(bytes([7])); g = r.m.de == 2 and pe == START and r.m.memory[START] == 0xFF; ok &= g
         print('        one byte: status', r.m.de, '(expect 2); empty:', g)
-        r, pe = load(bytes(stream), start=0xBF00); g = r.m.de == 4 and pe == 0xBF00 and r.m.memory[0xBF00] == 0xFF; ok &= g
+        r, pe = load(bytes(stream), start=0xEE00); g = r.m.de == 4 and pe == 0xEE00 and r.m.memory[0xEE00] == 0xFF; ok &= g
         print('        does not fit: status', r.m.de, '(expect 4); empty:', g)
+        if bd == 19200:
+            big = bytearray()
+            for k in range(10, 10 + 10 * 290, 10):
+                c = [rnd.randrange(32, 126) for _ in range(30)]; big += bytes([k >> 8, k & 255, len(c) + 1]) + bytes(c) + b'\r'
+            bst = bytes(big) + bytes([sum(big) & 255]); BS = 0xC340; BE = BS + len(big)
+            r, pe = load(bst, start=BS, limit=900_000_000)
+            g = r.m.de == 1 and pe == BE and r.m.memory[BE] == 0xFF and bytes(r.m.memory[BS:BE]) == bytes(big) and r.m.memory[0xFE41] == r.m.memory[0xFE3E] and bytes(r.m.memory[P:P + 2]) == bytes(img[0:2]); ok &= g
+            print('        big program %d bytes up to %04X: status %d, stored exactly, code untouched: %s' % (len(big), BE, r.m.de, g))
         r, pe = load(bytes([5, 5]), newprog=bytes(40)); g = r.m.de == 1 and pe == START + 1 and r.m.memory[START + 1] == 0xFF; ok &= g
         print('        one byte and its checksum: status', r.m.de, 'marker', g)
         longp = bytes([0, 10, 6, 241, 171, 79, 76, 79, 13, 0, 20, 9, 241, 171, 77, 65, 78, 79, 76, 79, 13, 0, 30, 8, 76, 79, 86, 69, 79, 76, 79, 13])

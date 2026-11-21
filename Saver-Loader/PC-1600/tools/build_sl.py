@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds Basic/sl_v3.2.txt (the BASIC installer of the Saver/Loader) from asm/uart1600_sl.asm. Needs z80asm."""
+"""Builds Basic/sl_v4.0.txt (the BASIC installer of the Saver/Loader) from asm/uart1600_sl.asm. Needs z80asm."""
 import os, re, subprocess, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -23,7 +23,8 @@ def build():
     code, lab = assemble()
     # fixed places: LOAD (receive into the PC-1600) at &C100 = 49408, SAVE (send from the PC-1600) at &C200 = 49664.
     # The code is position independent; the offsets are relative to 49408. LOAD (about 207 bytes) must end before SAVE.
-    LOAD_AT, SAVE_AT = 0xC100, 0xC200
+    CODE_OFF = 3072
+    LOAD_AT, SAVE_AT = 0, 256
     assert lab['ld_fin'] - lab['LOAD'] <= SAVE_AT - LOAD_AT
     segs = [(lab['LOAD'], lab['ld_fin'], 0), (0, lab['sv_fin'], SAVE_AT - LOAD_AT)]    # (source from, to, offset in the PC-1600)
     L = []
@@ -34,12 +35,14 @@ def build():
     S = SAVE_AT - LOAD_AT
     ls = lambda name: lab[name] - lab['LOAD'] + 1          # in LOAD
     sv = lambda name: S + lab[name] + 1                    # in SAVE
-    add(10, 'REM SL V3.2: LOAD &C100, SAVE &C200')
-    add(30, 'CLEAR:WAIT 0:BEEP OFF:A=%d' % LOAD_AT)
-    # F865H/F866H = the start of the BASIC program in the notation of the PC-1500 (high byte first, bit 15 inverted). When the
-    # program is in the internal RAM (C000H or more), the machine-language area ends there: it must hold both routines
+    add(10, 'REM SL V4.0: ADDRESSES SHOWN AT THE END')
+    add(30, 'CLEAR:WAIT 0:BEEP OFF')
+    # F865H/F866H = the start of the BASIC program in the notation of the PC-1500 (high byte first, bit 15 inverted), FE3CH/FE3DH the same
+    # in the plain form. The code goes behind the text of this installer (3072 bytes from the start); the start of the program is then
+    # moved behind the code, so a program of any size can be loaded without touching it (NEW keeps the start).
     add(40, 'H=PEEK(63589):S=(H+128-256*INT(H/128))*256+PEEK(63590)')
-    add(42, 'IF S>49151 AND S<A+%d THEN PRINT "NO ROOM":BEEP 3:END' % (S + (segs[1][1] - segs[1][0])))
+    add(42, 'IF MEM<%d THEN PRINT "NO ROOM":BEEP 3:END' % (CODE_OFF + 576 + 1500))
+    add(44, 'A=S+%d' % CODE_OFF)
     add(50, 'D=0:INPUT "BAUD (ENTER=9600) ";D')
     add(52, 'IF D=0 THEN LET D=9600')
     add(54, 'IF D<>1200 AND D<>2400 AND D<>4800 AND D<>9600 AND D<>19200 THEN GOTO 50')
@@ -54,17 +57,19 @@ def build():
     add(116, 'Q=INT((T-99)/4+.5):GOSUB 200:POKE A+%d,U:POKE A+%d,U' % (ls('ld_bn'), ls('ld_sn')))
     add(117, 'POKE A+%d,V:POKE A+%d,V' % (ls('ld_bj'), ls('ld_sj')))
     add(118, 'Q=INT((T/2-105)/4+.5):GOSUB 200:POKE A+%d,U:POKE A+%d,V' % (ls('ld_hn'), ls('ld_hj')))
-    add(120, 'P=PEEK(65084)+256*PEEK(65085)')
-    add(140, 'IF P<32768 THEN GOTO 910')
     add(150, 'CLS:PRINT "SAVER/LOADER READY ";D')
-    add(160, 'PRINT "LOAD: CALL&C100, NEW first"')
-    add(170, 'PRINT "SAVE: CALL&C200"')
-    add(190, 'END')
+    add(160, 'PRINT "LOAD: CALL&";HEX$(A);", NEW first"')
+    add(170, 'PRINT "SAVE: CALL&";HEX$(A+256)')
+    add(180, 'GOSUB 300:END')
     add(200, 'U=INT((Q+3)/4):IF U<1 THEN LET U=1')
     add(205, 'V=4*U-Q:IF V>8 THEN LET V=8')
     add(207, 'RETURN')
+    # the new start of the program = behind the code: the marker FFH there, the pointers (start and end) in both notations
+    add(300, 'N=A+576:POKE N,255:K=INT(N/256):L=N-256*K:W=K+128-256*INT(K/128)')
+    add(310, 'POKE 65084,L:POKE 65085,K:POKE 65087,L:POKE 65088,K')
+    add(320, 'POKE 63589,W:POKE 63590,L:POKE 63591,W:POKE 63592,L')
+    add(330, 'RETURN')
     add(900, 'PRINT "DATA ERROR":BEEP 3:END')
-    add(910, 'PRINT "POINTERS?":BEEP 3:END')
     add(1000, 'DATA %d' % len(segs))
     n = 1010
     tot = 0
@@ -92,6 +97,7 @@ def build():
 
 if __name__ == '__main__':
     text, code, lab = build()
-    open(os.path.join(ROOT, 'Basic', 'sl_v3.2.txt'), 'w', newline='\n').write(text)
-    print('Basic/sl_v3.2.txt written;', len(text.splitlines()), 'lines,', len(text), 'bytes, longest', max(len(l) for l in text.splitlines()),
-          '; LOAD at &C100, SAVE at &C200')
+    open(os.path.join(ROOT, 'Basic', 'sl_v4.0.txt'), 'w', newline='\n').write(text)
+    print('Basic/sl_v4.0.txt written;', len(text.splitlines()), 'lines,', len(text), 'bytes, longest', max(len(l) for l in text.splitlines()),
+          '; code behind the installer (+3072)')
+    assert len(text) < 2900, 'the installer must be shorter than the 3072 bytes reserved for it'

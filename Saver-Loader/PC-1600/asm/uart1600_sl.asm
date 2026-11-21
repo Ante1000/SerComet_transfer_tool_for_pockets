@@ -1,4 +1,4 @@
-; UART1600 SAVER / LOADER V3.2 for the Sharp PC-1600: BASIC programs through the UART (1200 to 19200 bps, 8N1; the BASIC installer patches the delays)
+; UART1600 SAVER / LOADER V4.0 for the Sharp PC-1600: BASIC programs through the UART (1200 to 19200 bps, 8N1; the BASIC installer patches the delays)
 ; TX = PC7 (OPC, I/O 18H bit 7, CN9 pin 29), RX = PB2 (OPB, I/O 1FH bit 2, CN9 pin 27); CPU about 3.0 MHz.
 ; The BASIC program is copied as it lies in the memory (tokens). The file is the bytes of the program followed by one
 ; byte: the sum of all the bytes before it, modulo 256. The end of a received file is 0.5 s without a byte.
@@ -149,12 +149,7 @@ LOAD:
  xor a
  ex af,af'            ; A' = checksum
  ld hl,(PS)           ; the program is stored from its start
- ld e,0xC0            ; the limit: the end of the 16 KB window of a module (8000H-BFFFH) ...
- ld a,h
- cp 0xC0
- jr c,ld_lim
- ld e,0xF0            ; ... or the work area (F000H) if the program is in the internal RAM
-ld_lim:
+ ld e,0xEF            ; the limit: the user memory ends at EEFFH (start + MEM; the program is contiguous through C000H, also from a module)
  ld c,0
  ld d,30              ; about 30 s for the first byte
  jr ld_w
@@ -282,6 +277,8 @@ ld_bad:
 ld_fix:
  ld (hl),0xFF         ; the end marker
  ld (PE),hl           ; the end of the program = the place of the marker
+ ld a,(PS+2)
+ ld (PE+2),a        ; the logical bank number of the end = that of the start
  ld a,h
  xor 0x80             ; bit 15 inverted
  ld (PE2H),a
