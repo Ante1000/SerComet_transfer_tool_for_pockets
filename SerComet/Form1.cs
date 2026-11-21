@@ -173,6 +173,24 @@ namespace UartSlTest
 
             var gbFiles = new GroupBox { Text = "Files", Left = 10, Top = 408, Width = 565, Height = 148, Anchor = TLR };   // only the list; the row of buttons below it ends with the Terminal button
             lstFiles = new ListBox { Left = 6, Top = 16, Width = 553, Height = 126, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            lstFiles.DrawMode = DrawMode.OwnerDrawFixed;          // the row of the file being sent has a red background
+            lstFiles.DrawItem += delegate (object sn, DrawItemEventArgs de)
+            {
+                if (de.Index < 0 || de.Index >= lstFiles.Items.Count) return;
+                string nm = (string)lstFiles.Items[de.Index];
+                bool tx = sendingPath != null && string.Equals(Path.Combine(txtDir.Text, nm), sendingPath, StringComparison.OrdinalIgnoreCase);
+                if (tx)
+                {
+                    using (var b = new SolidBrush(Color.FromArgb(220, 40, 40))) de.Graphics.FillRectangle(b, de.Bounds);
+                    TextRenderer.DrawText(de.Graphics, nm, de.Font, de.Bounds, Color.White, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+                }
+                else
+                {
+                    de.DrawBackground();
+                    TextRenderer.DrawText(de.Graphics, nm, de.Font, de.Bounds, de.ForeColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+                    de.DrawFocusRectangle();
+                }
+            };
             chkEof = new CheckBox { Text = "Add EOF marker", Left = 198, Top = 562, Width = 115, Checked = true };
             chkAuto = new CheckBox { Text = "Auto token", Left = 316, Top = 562, Width = 86, Checked = true };
             chkSkipRem = new CheckBox { Text = "Skip REM", Left = 402, Top = 562, Width = 82, Checked = false };
@@ -820,6 +838,8 @@ namespace UartSlTest
         const string ListTipDefault = "Files in the folder for the current mode (.img or .bas). Select one to send it. Point at a name to see the size and dates.";
         int tipIndex = -2, dragIndex = -1;
         bool fileMenuOpen;
+        string sendingPath;                 // the file being sent (its row in the list is red)
+        void MarkSending(string path) { sendingPath = path; if (lstFiles != null) lstFiles.Invalidate(); }
         Point dragStart;
 
         // ---- Skip REM: lines of BASIC text that hold only a comment are dropped (a REM line that a GOTO / GOSUB / THEN ... points to is kept)
@@ -1542,6 +1562,7 @@ int removed, kept, cut; List<string> moved;
         void Abort()
         {
             abortRequested = true;
+            MarkSending(null);
             try { if (port != null && port.IsOpen) { port.DiscardOutBuffer(); port.DiscardInBuffer(); } } catch { }
             lock (rxLock) { rx.Clear(); }
             Log("ABORT: transmission stopped, buffers cleared.");
@@ -1642,6 +1663,7 @@ int removed, kept, cut; List<string> moved;
             }
             abortRequested = false;
             sending = true;
+            MarkSending(path);
             btnSend.Enabled = btnSendOther.Enabled = false;
             CheckSharpName(path);
             progText = "SENDING " + Path.GetFileName(path) + " (" + data.Length + " B)";
@@ -1727,6 +1749,7 @@ int removed, kept, cut; List<string> moved;
             {
                 lock (rxLock) { rx.Clear(); }
                 sending = false;
+                MarkSending(null);
                 btnSendOther.Enabled = true;
                 SelectionChanged();
             }
