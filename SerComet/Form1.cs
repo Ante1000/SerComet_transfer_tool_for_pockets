@@ -40,7 +40,7 @@ namespace UartSlTest
         TextBox txtDir;
         RichTextBox txtLog;
         ListBox lstFiles;
-        Label lblHint;
+        TextBox lblHint;                    // the Info text: read-only, can be selected and copied
         LedLabel led;
         RadioButton radio1500, radio1600, radioOther, radioFx, radioTrs, radioUart;
         RadioButton radioSoft, radioRs, radioSio;
@@ -168,7 +168,7 @@ namespace UartSlTest
             btnOpenDir = Btn("Open", Icons.Folder(), 634, 291, 76, 28, TR);
 
             var gbInfo = new GroupBox { Text = "Info", Left = 10, Top = 322, Width = 700, Height = 84, Anchor = TLR };
-            lblHint = new Label { Left = 8, Top = 14, Width = 684, Height = 67, Anchor = TLR };
+            lblHint = new TextBox { Left = 8, Top = 14, Width = 684, Height = 67, Anchor = TLR, Multiline = true, ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = SystemColors.Control, TabStop = false, ScrollBars = ScrollBars.None };
             gbInfo.Controls.Add(lblHint);
 
             var gbFiles = new GroupBox { Text = "Files", Left = 10, Top = 408, Width = 565, Height = 148, Anchor = TLR };   // only the list; the row of buttons below it ends with the Terminal button
@@ -410,7 +410,7 @@ namespace UartSlTest
             int nm = radio1500.Checked ? 0 : radio1600.Checked ? 1 : radioOther.Checked ? 2 : radioFx.Checked ? 3 : radioTrs.Checked ? 4 : 5;
             if (curModel >= 0 && nm != curModel) CaptureUi(curModel);     // keep the settings of the computer we leave
             curModel = nm;
-            radioSoft.Enabled = nm <= 1;
+            radioSoft.Enabled = nm == 0;          // Software Serial: PC-1500 only (blocked for the PC-1600 for the time being)
             radioRs.Enabled = nm != 2 && nm != 3;
             radioSio.Enabled = nm == 2 || nm == 3 || nm == 5;
             radioRs.Text = "RS-232 serial";
@@ -455,9 +455,8 @@ namespace UartSlTest
             if (radio1500.Checked)
                 return "Software UART: 8N1 at 4800 baud (fixed), binary transfer (.img files). TX = PC7 (pin 10), RX = PB2 (pin 27) of the PC-1500. RECEIVE: on the PC-1500 type CALL &4200 (SAVE). The file is saved automatically, named after the first REM.\r\nSEND: type NEW, then CALL &4100 (LOAD) on the PC-1500 first, then press Send (30 s to start). Addresses for a RAM starting at &4000 (the SL installer shows the others).";
             if (radioRs.Checked)
-                return "Into the PC-1600 (Send): INIT\"COM1:\",512 / SETCOM\"COM1:\",2400 / LOAD\"COM1:\" (same baud rate as in SerComet).\r\n" +
-                       "From the PC-1600 (Receive): SAVE\"COM1:\",A. Text transfer (.bas); the file is saved after EOF (1Ah) or 3 s of silence.\r\n" +
-                       "SETCOM\"COM1:\",2400,8,N,1,X,N switches XON/XOFF on in the Sharp (the default Flow of SerComet).";
+                return "PC-1600, UART at 1200 bps (8N1): on the PC-1600 type LOAD\"CAS:\", then press Send in SerComet (verified, it works).\r\n" +
+                       "Text transfer (.bas).";
             return "Software UART: 8N1 at the speed chosen here and in the SL installer (9600 recommended), binary transfer (.img files). RECEIVE: on the PC-1600 type CALL &C200 (SAVE). The file is saved automatically, named after the first REM.\r\nSEND: type CALL &C100 (LOAD) on the PC-1600 first, then press Send (30 s to start).";
         }
 
@@ -480,7 +479,7 @@ namespace UartSlTest
             public string Dir;                  // null = the default folder
         }
 
-        readonly ModelCfg[] cfg = { new ModelCfg { Delay = 200 }, new ModelCfg(), new ModelCfg { Mode = 2 }, new ModelCfg { Mode = 2, Baud = "4800" },
+        readonly ModelCfg[] cfg = { new ModelCfg { Delay = 200 }, new ModelCfg { Mode = 1, Baud = "1200" }, new ModelCfg { Mode = 2 }, new ModelCfg { Mode = 2, Baud = "4800" },
             new ModelCfg { Mode = 1, Baud = "1200", Delay = 200, Eol = 0 }, new ModelCfg { Mode = 1 } };
         int curModel = -1, startModel = 1;
         string startPort;
@@ -521,6 +520,7 @@ namespace UartSlTest
         void ApplyCfg(int m)
         {
             var c = cfg[m];
+            if (m == 1 && c.Mode == 0) { c.Mode = 1; c.Baud = "1200"; }      // PC-1600: the Software Serial is blocked; UART (RS-232) at 1200 bps is the default
             if (m == 2 || m == 3 || (m == 5 && c.Mode == 2)) radioSio.Checked = true;
             else if (m == 4 || m == 5 || c.Mode == 1) radioRs.Checked = true;
             else radioSoft.Checked = true;
