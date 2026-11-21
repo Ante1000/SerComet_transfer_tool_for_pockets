@@ -7,13 +7,12 @@ patches the delays for the chosen speed (ENTER = 9600).
 | File | Contents |
 |---|---|
 | `Basic/sl_v4.0.txt` | the BASIC installer V4.0 (asks for the speed, shows INSTALLING, ends with the addresses `CALL&xxxx` for LOAD and SAVE) |
-| `wav/sl1600_mode0_CE-1600P.wav` | the installer as a tape recording for the PC-1600 in MODE 0 (`LOAD "CAS:SL1600"`; 16 bit, 48 kHz, 6 s leader tone, 1 s of silence before and after, about 28 s) |
+| `wav/sl1600_mode0_CE-1600P.wav` | the installer as a tape recording for the PC-1600 in MODE 0 (`LOAD "CAS:SL1600"`; the BASIC text as an ASCII file in 256-byte blocks like `uart1600.wav` of the old repository, 6 s leader tone before every block, about 100 s; made with `bin2wav -t txt -p 1600 -s 6 -nSL1600 sl_v4.0.txt`) |
 | `wav/sl1600_mode1_CE-150.wav` | the same program in the PC-1500 tape format (MODE 1, CE-150 / PC-1500 `CLOAD`, 6 s leader tone, about 2.5 min); **confirmed: it can be loaded in MODE 1 and run in MODE 0** (see below) |
 | `Basic/sl_v3.2.txt`, `asm/uart1600_sl_v3.2.asm` | the previous version V3.2 (code fixed at `&C100` / `&C200`; programs up to about 10 KB when the BASIC memory starts in an extension module) |
 | `Basic/sl_v2.1.txt`, `asm/uart1600_sl_v2.1.asm` | the old version V2.1 (fixed 19200 bps), kept as a working fallback |
 | `asm/uart1600_sl.asm` | the source of SAVE and LOAD (position independent, no buffer; assembler `z80asm`) |
 | `tools/build_sl.py` | builds `Basic/sl_v4.0.txt` from the source |
-| `tools/make_wav_mode0.py` | makes the mode 0 WAV from the output of `bin2wav` (16 bit, 65 % level, rounded edges, silence at both ends) |
 | `tools/verify_sl.py` | emulator test (`pip install z80`), with `tools/verify_listing.py` |
 | `Basic/testlong_*.bas`, `longtest.bas`, `tools/make_testprog.py` | long test programs |
 | `Basic/tokentest*.txt/.img` | test files of the tokenizer |
