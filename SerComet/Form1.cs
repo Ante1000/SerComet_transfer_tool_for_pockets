@@ -1276,31 +1276,32 @@ namespace UartSlTest
 
         // text received in the text modes is saved only when it looks like a program: mostly printable characters and at least one
         // numbered BASIC line (or, without line numbers, a longer text); a few random bytes from the line are noise
-        // strict test for the message 'Start receiving': a BASIC text starts with a numbered line, in readable characters only
+        // test for the message 'Start receiving': the data must look like a program, not like noise
         static bool LooksLikeTextStart(byte[] d)
         {
             if (d.Length < 16) return false;
-            int n = Math.Min(d.Length, 200);
-            for (int i = 0; i < n; i++) { byte b = d[i]; if (!((b >= 32 && b < 127) || b == 9 || b == 10 || b == 13)) return false; }
+            int n = Math.Min(d.Length, 300), ok = 0;
+            for (int i = 0; i < n; i++) { byte b = d[i]; if ((b >= 32 && b < 127) || b == 9 || b == 10 || b == 13 || b == 26) ok++; }
+            if (ok < n * 0.9) return false;                     // mostly readable characters
             string text = Encoding.GetEncoding(28591).GetString(d, 0, n);
-            foreach (string line in text.Split('\n', '\r'))
+            foreach (string line in text.Split('\n', '\r'))     // any line "10 ..." (the first one may be cut or preceded by a stray byte)
             {
                 string t = line.Trim();
-                if (t.Length == 0) continue;
                 int i = 0;
                 while (i < t.Length && char.IsDigit(t[i])) i++;
-                return i > 0 && i < 6 && i < t.Length;           // the first line is "10 ..." (a line number of up to 5 digits)
+                if (i > 0 && i < 6 && i < t.Length) return true;
             }
             return false;
         }
 
-        // the Software UART stream: line number (2 bytes), length, the line, CR; the first line must be complete and well formed
+        // the Software UART stream: line number (2 bytes), length, the line, CR (the first line need not be complete yet)
         static bool LooksLikeImageStart(byte[] d)
         {
             if (d.Length < 16) return false;
             int len = d[2];
-            if (len < 2 || 3 + len > d.Length) return false;
-            return d[2 + len] == 0x0D && d[0] < 0xFF;
+            if (len < 2) return false;
+            if (3 + len > d.Length) return true;                 // the first line is still arriving
+            return d[2 + len] == 0x0D;
         }
 
         static bool LooksLikeProgramText(byte[] d)
