@@ -1161,7 +1161,13 @@ namespace UartSlTest
             {
                 int quiet = unchecked(Environment.TickCount - lastRx);
                 receiving = rx.Count > 0;
-                if (receiving && !rxStartLogged) { rxStartLogged = true; started = true; }      // a transmission has begun
+                // a transmission has begun: only when the data passes the garbage filter (a few stray bytes or garbage are not a transfer)
+                if (receiving && !rxStartLogged && rx.Count >= 16)
+                {
+                    bool real = true;
+                    if (rs232) { try { real = LooksLikeProgramText(rx.ToArray()); } catch { real = false; } }
+                    if (real) { rxStartLogged = true; started = true; }
+                }
                 if (!receiving) rxStartLogged = false;
                 int eofAt = rs232 ? rx.IndexOf(0x1A) : -1;     // 1Ah = end-of-file code of an ASCII file: finish at once
                 if (eofAt >= 0)
