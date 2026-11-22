@@ -1053,6 +1053,14 @@ namespace UartSlTest
         void ClosePort()
         {
             if (port == null) return;
+            // closing the port during a transmission: stop sending like Abort and clear the red mark of the file
+            if (sending)
+            {
+                abortRequested = true;
+                MarkSending(null);
+                lock (rxLock) { rx.Clear(); }
+                Log("Port closed: transmission aborted.");
+            }
             if (term != null) term.Close();
             try { port.DataReceived -= OnData; port.ErrorReceived -= OnPortError; if (port.IsOpen) port.Close(); } catch { }
             port = null;
