@@ -20,6 +20,7 @@ namespace UartSlTest
         int lastRx;
         volatile bool abortRequested;
         bool rxStartLogged;
+        int portOpenedAt = Environment.TickCount - 10000;     // time the port was opened (nothing is announced right after it)
         bool sendingFlag;
         // while a file is being sent the user cannot change the port, the target computer, the transmission mode and the check boxes
         // (the controls keep their look, see InputLock)
@@ -1018,6 +1019,7 @@ namespace UartSlTest
                 port.DataReceived += OnData;
                 port.ErrorReceived += OnPortError;
                 port.Open();
+                portOpenedAt = Environment.TickCount;
                 btnOpen.Text = "Close port";
                 btnOpen.Image = Icons.Cross();
                 SetRefreshMode(true);
@@ -1161,11 +1163,12 @@ namespace UartSlTest
             {
                 int quiet = unchecked(Environment.TickCount - lastRx);
                 receiving = rx.Count > 0;
-                // a transmission has begun: only when the data passes the garbage filter (a few stray bytes or garbage are not a transfer)
-                if (receiving && !rxStartLogged && rx.Count >= 16)
+                // a transmission has begun: only when the data look like a real program (stray bytes or garbage from opening the port or
+                // plugging the connector are not a transfer), and not within 2 s after the port was opened
+                if (receiving && !rxStartLogged && rx.Count >= 16 && unchecked(Environment.TickCount - portOpenedAt) > 2000)
                 {
-                    bool real = true;
-                    if (rs232) { try { real = LooksLikeProgramText(rx.ToArray()); } catch { real = false; } }
+                    bool real;
+                    try { real = rs232 ? LooksLikeTextStart(rx.ToArray()) : LooksLikeImageStart(rx.ToArray()); } catch { real = false; }
                     if (real) { rxStartLogged = true; started = true; }
                 }
                 if (!receiving) rxStartLogged = false;
@@ -1273,6 +1276,33 @@ namespace UartSlTest
 
         // text received in the text modes is saved only when it looks like a program: mostly printable characters and at least one
         // numbered BASIC line (or, without line numbers, a longer text); a few random bytes from the line are noise
+        // strict test for the message 'Start receiving': a BASIC text starts with a numbered line, in readable characters only
+        static bool LooksLikeTextStart(byte[] d)
+        {
+            if (d.Length < 16) return false;
+            int n = Math.Min(d.Length, 200);
+            for (int i = 0; i < n; i++) { byte b = d[i]; if (!((b >= 32 && b < 127) || b == 9 || b == 10 || b == 13)) return false; }
+            string text = Encoding.GetEncoding(28591).GetString(d, 0, n);
+            foreach (string line in text.Split('\n', '\r'))
+            {
+                string t = line.Trim();
+                if (t.Length == 0) continue;
+                int i = 0;
+                while (i < t.Length && char.IsDigit(t[i])) i++;
+                return i > 0 && i < 6 && i < t.Length;           // the first line is "10 ..." (a line number of up to 5 digits)
+            }
+            return false;
+        }
+
+        // the Software UART stream: line number (2 bytes), length, the line, CR; the first line must be complete and well formed
+        static bool LooksLikeImageStart(byte[] d)
+        {
+            if (d.Length < 16) return false;
+            int len = d[2];
+            if (len < 2 || 3 + len > d.Length) return false;
+            return d[2 + len] == 0x0D && d[0] < 0xFF;
+        }
+
         static bool LooksLikeProgramText(byte[] d)
         {
             if (d.Length < 8) return false;
