@@ -1179,6 +1179,7 @@ namespace UartSlTest
                     rxStartLogged = false;
                 }
             }
+            if (sending && port == null) sending = false;          // safety net: no port, so nothing can be sent (and received data must not be dropped)
             receiving |= unchecked(Environment.TickCount - lastRxAny) < 300;
             bool tx = sending || unchecked(Environment.TickCount - lastTxAny) < 300;
             bool changed = banner.Receiving != receiving || banner.Sending != tx;
@@ -1720,13 +1721,23 @@ int removed, kept, cut; List<string> moved;
             }
             abortRequested = false;
             sending = true;
-            MarkSending(path);
-            btnSend.Enabled = btnSendOther.Enabled = false;
-            CheckSharpName(path);
-            progText = "SENDING " + Path.GetFileName(path) + " (" + data.Length + " B)";
-            progStart = txtLog.TextLength;
-            Log(progText + " (0%)");
-            progEnd = txtLog.TextLength;
+            try
+            {
+                MarkSending(path);
+                btnSend.Enabled = btnSendOther.Enabled = false;
+                CheckSharpName(path);
+                progText = "SENDING " + Path.GetFileName(path) + " (" + data.Length + " B)";
+                progStart = txtLog.TextLength;
+                Log(progText + " (0%)");
+                progEnd = txtLog.TextLength;
+            }
+            catch (Exception ex)
+            {
+                // the flag must never stay on: while it is on the received data are dropped (nothing would be received any more)
+                Log("Send error: " + ex.Message);
+                sending = false; MarkSending(null); btnSendOther.Enabled = true; SelectionChanged();
+                return;
+            }
             int total = data.Length, lastPct = -1;
             Action<int> report = pct =>
             {
