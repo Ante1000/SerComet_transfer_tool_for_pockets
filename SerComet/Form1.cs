@@ -19,7 +19,11 @@ namespace UartSlTest
         readonly object rxLock = new object();
         int lastRx;
         volatile bool abortRequested;
-        bool sending, rxStartLogged;
+        bool rxStartLogged;
+        bool sendingFlag;
+        // while a file is being sent the user cannot change the port, the target computer, the transmission mode and the check boxes
+        // (the controls keep their look, see InputLock)
+        bool sending { get { return sendingFlag; } set { sendingFlag = value; InputLock.Active = value; } }
         readonly System.Diagnostics.Stopwatch blinkWatch = System.Diagnostics.Stopwatch.StartNew();
         Timer blinkTimer;
         int lastRxAny, lastTxAny;     // time of the last received / sent data (also in the terminal)
@@ -57,6 +61,13 @@ namespace UartSlTest
             FormClosing += delegate { SaveSettings(); ClosePort(); };
             RefreshPorts();
             UpdateMode();
+            InputLock.Notify = delegate
+            {
+                int now = Environment.TickCount;
+                if (unchecked(now - lastLockNote) < 4000) return;
+                lastLockNote = now;
+                Log("A file is being sent: the port, target computer, transmission mode and options cannot be changed now (Abort stops the transmission).");
+            };
             LoadSettings();
             // restore the last port and target computer, and with it that computer's mode and transmission settings
             if (startPort != null && comboPorts.Items.Contains(startPort)) comboPorts.SelectedItem = startPort;
@@ -86,7 +97,7 @@ namespace UartSlTest
             // the two boxes of the top area: Port settings (left) and Target computer (right), both 84 px high
             var gbPort = new GroupBox { Text = "Port settings", Left = 10, Top = 0, Width = 340, Height = 84, Anchor = TL };
             var lblPort = new Label { Text = "Port:", Left = 8, Top = 24, Width = 32 };
-            comboPorts = new ComboBox { Left = 44, Top = 20, Width = 100, DropDownStyle = ComboBoxStyle.DropDownList };
+            comboPorts = new LockCombo { Left = 44, Top = 20, Width = 100, DropDownStyle = ComboBoxStyle.DropDownList };
             led = new LedLabel { Left = 24, Top = 48, Width = 74, Height = 26 };
             btnTest = new Button { Text = "TEST", Left = 102, Top = 48, Width = 42, Height = 28, UseCompatibleTextRendering = false, FlatStyle = FlatStyle.Standard, Font = new Font("Segoe UI", 8F, FontStyle.Regular), Padding = new Padding(0), TextAlign = ContentAlignment.MiddleCenter, Anchor = TL };
             btnOpen = Btn("Open port", Icons.Plug(), 156, 16, 85, 28, TL);
@@ -96,28 +107,28 @@ namespace UartSlTest
             btnFlush.Enabled = btnReset.Enabled = btnTest.Enabled = false;
             gbPort.Controls.AddRange(new Control[] { lblPort, comboPorts, led, btnTest, btnOpen, btnRefresh, btnFlush, btnReset });
             var gbTarget = new GroupBox { Text = "Target computer", Left = 354, Top = 0, Width = 356, Height = 84, Anchor = TR };
-            radio1500 = new RadioButton { Text = "Sharp PC-1500", Left = 8, Top = 20, Width = 100 };
-            radio1600 = new RadioButton { Text = "Sharp PC-1600", Left = 126, Top = 20, Width = 100, Checked = true };
-            radioOther = new RadioButton { Text = "Sharp (other)", Left = 238, Top = 20, Width = 112 };
-            radioFx = new RadioButton { Text = "Casio FX-850..870", Left = 8, Top = 50, Width = 112 };
-            radioTrs = new RadioButton { Text = "NEC/TRS-80", Left = 126, Top = 50, Width = 100 };
-            radioUart = new RadioButton { Text = "UART other", Left = 238, Top = 50, Width = 112 };
+            radio1500 = new LockRadio { Text = "Sharp PC-1500", Left = 8, Top = 20, Width = 100 };
+            radio1600 = new LockRadio { Text = "Sharp PC-1600", Left = 126, Top = 20, Width = 100, Checked = true };
+            radioOther = new LockRadio { Text = "Sharp (other)", Left = 238, Top = 20, Width = 112 };
+            radioFx = new LockRadio { Text = "Casio FX-850..870", Left = 8, Top = 50, Width = 112 };
+            radioTrs = new LockRadio { Text = "NEC/TRS-80", Left = 126, Top = 50, Width = 100 };
+            radioUart = new LockRadio { Text = "UART other", Left = 238, Top = 50, Width = 112 };
             gbTarget.Controls.AddRange(new Control[] { radio1500, radio1600, radioOther, radioFx, radioTrs, radioUart });
 
             banner = new BannerPanel { Left = 10, Top = 88, Width = 700, Height = 132, Anchor = TLR };
 
             var gb = new GroupBox { Text = "Transmission mode", Left = 10, Top = 226, Width = 700, Height = 58, Anchor = TLR };
-            radioSoft = new RadioButton { Text = "Software Serial", Checked = true };
-            radioRs = new RadioButton { Text = "RS-232 serial" };
-            radioSio = new RadioButton { Text = "TTL-UART", Enabled = false };
+            radioSoft = new LockRadio { Text = "Software Serial", Checked = true };
+            radioRs = new LockRadio { Text = "RS-232 serial" };
+            radioSio = new LockRadio { Text = "TTL-UART", Enabled = false };
             var lblBaud = new Label { Text = "Baud:" };
-            comboBaud = new ComboBox { Width = 56, DropDownStyle = ComboBoxStyle.DropDownList };
+            comboBaud = new LockCombo { Width = 56, DropDownStyle = ComboBoxStyle.DropDownList };
             foreach (int b in new[] { 300, 600, 1200, 2400, 4800, 9600, 19200 }) comboBaud.Items.Add(b.ToString());
             comboBaud.SelectedItem = "9600";
             var lblDelay = new Label { Text = "Delay:" };
-            numDelay = new NumericUpDown { Width = 42, Minimum = 0, Maximum = 5000, Value = 100, Increment = 50 };
+            numDelay = new LockNumeric { Width = 42, Minimum = 0, Maximum = 5000, Value = 100, Increment = 50 };
             var lblEol = new Label { Text = "EOL:" };
-            comboEol = new ComboBox { Width = 50, DropDownStyle = ComboBoxStyle.DropDownList };
+            comboEol = new LockCombo { Width = 50, DropDownStyle = ComboBoxStyle.DropDownList };
             comboEol.Items.AddRange(new object[] { "CR", "CR+LF", "LF" });
             comboEol.SelectedIndex = 1;
             comboEol.DrawMode = DrawMode.OwnerDrawFixed;                  // CR alone or LF alone: red text where the machine expects CR+LF
@@ -133,7 +144,7 @@ namespace UartSlTest
             };
             comboEol.SelectedIndexChanged += delegate { comboEol.Invalidate(); };
             var lblFlow = new Label { Text = "Flow:" };
-            comboFlow = new ComboBox { Width = 74, DropDownStyle = ComboBoxStyle.DropDownList };
+            comboFlow = new LockCombo { Width = 74, DropDownStyle = ComboBoxStyle.DropDownList };
             comboFlow.Items.AddRange(new object[] { "None", "XON/XOFF", "RTS/CTS", "DSR/DTR" });
             comboFlow.SelectedIndex = 1;       // XON/XOFF, as it was fixed before
             foreach (RadioButton rb in new[] { radioSoft, radioRs, radioSio }) rb.AutoSize = true;   // identical height and baseline
@@ -203,9 +214,9 @@ namespace UartSlTest
                     de.DrawFocusRectangle();
                 }
             };
-            chkEof = new CheckBox { Text = "Add EOF marker", Left = 198, Top = 562, Width = 115, Checked = true };
-            chkAuto = new CheckBox { Text = "Auto token", Left = 316, Top = 562, Width = 86, Checked = true };
-            chkSkipRem = new CheckBox { Text = "Skip REM", Left = 402, Top = 562, Width = 82, Checked = false };
+            chkEof = new LockCheck { Text = "Add EOF marker", Left = 198, Top = 562, Width = 115, Checked = true };
+            chkAuto = new LockCheck { Text = "Auto token", Left = 316, Top = 562, Width = 86, Checked = true };
+            chkSkipRem = new LockCheck { Text = "Skip REM", Left = 402, Top = 562, Width = 82, Checked = false };
             btnAbort = Btn("Abort", Icons.Cross(), 485, 560, 90, 24, TR);
             btnConvert = Btn("Convert", Icons.File(), 104, 560, 90, 24, TL);
             btnView = Btn("View", Icons.File(), 10, 560, 90, 24, TL);
@@ -340,7 +351,7 @@ namespace UartSlTest
             radioFx.CheckedChanged += delegate { if (radioFx.Checked) SetTarget(); };
             radioTrs.CheckedChanged += delegate { if (radioTrs.Checked) SetTarget(); };
             radioUart.CheckedChanged += delegate { if (radioUart.Checked) SetTarget(); };
-            comboBaud.SelectedIndexChanged += delegate { if (comboBaud.Enabled && comboBaud.SelectedItem != null) { if (rs232) savedBaud = (string)comboBaud.SelectedItem; else savedSoftBaud = (string)comboBaud.SelectedItem; lblHint.Text = HintText(); } ApplyBaud(); };
+            comboBaud.SelectedIndexChanged += delegate { if (comboBaud.Enabled && comboBaud.SelectedItem != null) { if (rs232) { savedBaud = (string)comboBaud.SelectedItem; numDelay.Value = Math.Max(numDelay.Minimum, Math.Min(numDelay.Maximum, DefaultDelay(int.Parse(savedBaud), curModel))); } else savedSoftBaud = (string)comboBaud.SelectedItem; lblHint.Text = HintText(); } ApplyBaud(); };
             btnBrowse.Click += delegate
             {
                 using (var d = new FolderBrowserDialog())
@@ -399,9 +410,9 @@ namespace UartSlTest
             tips.SetToolTip(radioSio, "TTL-UART SIO text transfer through the 15-pin connector. The baud rate is selectable.");
             tips.SetToolTip(comboBaud, "Baud rate (8N1). Fixed and greyed out for Software Serial, selectable for the text modes.");
             tips.SetToolTip(numDelay, "Line delay: pause after each line sent from a text file, in ms (the Sharp needs time to store a line).\r\n" +
-                "Suggested starting values (tune by testing, raise it if lines are lost or garbled):\r\n" +
-                "  PC-1500 (CE-158): 200 ms\r\n  PC-1600: 100 ms\r\n  15-pin models: 100 ms\r\n" +
-                "The value is preset when you choose the target computer.\r\n" +
+                "It is set automatically when you choose the baud rate (tune it by testing, raise it if lines are lost or garbled):\r\n" +
+                "  300 to 2400 bps: 20 ms   4800: 50   9600: 100   19200: 125   38400 and 57600: 140   115200: 145\r\n" +
+                "  PC-1500 and NEC / TRS-80: twice these values.\r\n" +
                 "Note: a published PC-1600 setup (9600 baud, XON/XOFF) uses a delay of 2/60 s per character and 0 per line; this program delays per line only.");
             tips.SetToolTip(txtDir, "Folder where received files are saved and listed from.");
             tips.SetToolTip(btnBrowse, "Choose another folder.");
@@ -511,8 +522,24 @@ namespace UartSlTest
             public string Dir;                  // null = the default folder
         }
 
-        readonly ModelCfg[] cfg = { new ModelCfg { Delay = 200 }, new ModelCfg { Mode = 1, Baud = "4800" }, new ModelCfg { Mode = 2 }, new ModelCfg { Mode = 2, Baud = "4800" },
-            new ModelCfg { Mode = 1, Baud = "1200", Delay = 200, Eol = 0 }, new ModelCfg { Mode = 1 } };
+        // Line delay (ms) that goes with a baud rate: the pocket computer needs about P = 150 ms to tokenize and store a line, and its receive buffer
+        // (about 48 characters) takes up the characters that arrive meanwhile, so the pause after a line is P minus the time of the buffer:
+        //   delay = 150 - 480000 / baud   (rounded to 5 ms, at least 20 ms, at most 150 ms)
+        //   300..2400: 20   4800: 50   9600: 100   19200: 125   38400: 140   57600: 140   115200: 145
+        // The slow computers (PC-1500 and the NEC / TRS-80 machines, which always had twice the value) get twice that.
+        // The value is set when the baud rate is chosen (and for a new target computer); a delay saved in settings.ini is kept.
+        static int DefaultDelay(int baud, int model)
+        {
+            double d = 150.0 - 480000.0 / Math.Max(1, baud);
+            int ms = (int)(Math.Round(d / 5.0) * 5.0);
+            ms = Math.Max(20, Math.Min(150, ms));
+            if (model == 0 || model == 4) ms *= 2;
+            return ms;
+        }
+
+        readonly ModelCfg[] cfg = { new ModelCfg { Delay = DefaultDelay(9600, 0) }, new ModelCfg { Mode = 1, Baud = "4800", Delay = DefaultDelay(4800, 1) },
+            new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) }, new ModelCfg { Mode = 2, Baud = "4800", Delay = DefaultDelay(4800, 3) },
+            new ModelCfg { Mode = 1, Baud = "1200", Delay = DefaultDelay(1200, 4), Eol = 0 }, new ModelCfg { Mode = 1, Delay = DefaultDelay(9600, 5) } };
         int curModel = -1, startModel = 1;
         string startPort;
         static readonly string[] ModelNames = { "PC-1500", "PC-1600", "Other Sharp", "FX-850/870", "TRS-80", "UART Other" };
@@ -855,6 +882,7 @@ namespace UartSlTest
         // the TRS-80 / NEC (CR is their default) and the other UART computers can use any of them
         bool EolSuspect(int idx) { return (idx == 0 || idx == 2) && curModel >= 0 && curModel <= 3; }
 
+        int lastLockNote = Environment.TickCount - 10000;
         string sendingPath;                 // the file being sent (its row in the list is red)
         void MarkSending(string path) { sendingPath = path; if (lstFiles != null) lstFiles.Invalidate(); }
         Point dragStart;
@@ -1053,6 +1081,14 @@ namespace UartSlTest
         void ClosePort()
         {
             if (port == null) return;
+            // closing the port during a transmission: stop sending like Abort and clear the red mark of the file
+            if (sending)
+            {
+                abortRequested = true;
+                MarkSending(null);
+                lock (rxLock) { rx.Clear(); }
+                Log("Port closed: transmission aborted.");
+            }
             if (term != null) term.Close();
             try { port.DataReceived -= OnData; port.ErrorReceived -= OnPortError; if (port.IsOpen) port.Close(); } catch { }
             port = null;
@@ -1143,7 +1179,6 @@ namespace UartSlTest
                     rxStartLogged = false;
                 }
             }
-            if (started) Log("Start receiving ''");
             receiving |= unchecked(Environment.TickCount - lastRxAny) < 300;
             bool tx = sending || unchecked(Environment.TickCount - lastTxAny) < 300;
             bool changed = banner.Receiving != receiving || banner.Sending != tx;
@@ -1165,6 +1200,7 @@ namespace UartSlTest
                     return;
                 }
                 Directory.CreateDirectory(txtDir.Text);
+                if (rs232) Log("Start receiving ''");          // only for a program file (the data passed the garbage filter)
                 if (rs232)
                 {
                     string name = SharpBase(ProgImage.NameFromText(data));
@@ -1190,6 +1226,7 @@ namespace UartSlTest
                 }
                 if (img != null)
                 {
+                    Log("Start receiving ''");                 // only for a program file
                     string name = SharpBase(ProgImage.NameFromRem(img));
                     string path = null;
                     string note = "";
@@ -1626,6 +1663,9 @@ int removed, kept, cut; List<string> moved;
             if (port == null || !port.IsOpen) { Log("Open the port first."); return; }
             if (sending) return;
             if (term != null) { Log("Close the terminal first."); return; }
+            // before any sending: empty the receive buffers, so that they are ready for the answers of the Sharp
+            lock (rxLock) { rx.Clear(); rxStartLogged = false; }
+            try { port.DiscardInBuffer(); } catch { }
             byte[] data;
             try { data = File.ReadAllBytes(path); }
             catch (Exception ex) { Log("Read error: " + ex.Message); return; }
@@ -1764,6 +1804,11 @@ int removed, kept, cut; List<string> moved;
             catch (Exception ex) { Log("Send error: " + ex.Message); }
             finally
             {
+                // PC-1600 over the UART: 1 s pause after the end of the transmission, before the port is reset (the controls stay locked)
+                if (text && curModel == 1 && port != null && !abortRequested)
+                {
+                    try { await Task.Delay(1000); } catch { }
+                }
                 lock (rxLock) { rx.Clear(); }
                 sending = false;
                 MarkSending(null);
@@ -3742,9 +3787,66 @@ int removed, kept, cut; List<string> moved;
         }
     }
 
+    // While a file is being sent the user must not change the port, the target computer, the transmission mode (with its baud rate, delay, EOL and flow)
+    // and the check boxes. The controls are NOT disabled (they keep their normal look); they only ignore the user: a click, a key, the mouse wheel
+    // or a typed number changes nothing. The program itself can still set them (SetTarget, ApplyCfg).
+    public static class InputLock
+    {
+        static volatile bool active;
+        public static event Action Changed;               // the lock was switched on or off
+        public static Action Notify;                      // told when the user tries to change something (the Log message is rate limited)
+        public static bool Active
+        {
+            get { return active; }
+            set { if (active == value) return; active = value; var h = Changed; if (h != null) h(); }
+        }
+        public static bool Block() { if (!active) return false; var n = Notify; if (n != null) n(); return true; }
+    }
+
+    public class LockRadio : RadioButton
+    {
+        protected override void OnClick(EventArgs e) { if (InputLock.Block()) return; base.OnClick(e); }
+        protected override bool ProcessMnemonic(char charCode) { return !InputLock.Active && base.ProcessMnemonic(charCode); }
+    }
+
+    public class LockCheck : CheckBox
+    {
+        protected override void OnClick(EventArgs e) { if (InputLock.Block()) return; base.OnClick(e); }
+        protected override bool ProcessMnemonic(char charCode) { return !InputLock.Active && base.ProcessMnemonic(charCode); }
+    }
+
+    public class LockCombo : ComboBox
+    {
+        const int WM_KEYDOWN = 0x100, WM_CHAR = 0x102, WM_SYSKEYDOWN = 0x104, WM_LBUTTONDOWN = 0x201, WM_LBUTTONDBLCLK = 0x203, WM_MOUSEWHEEL = 0x20A;
+        protected override void WndProc(ref Message m)
+        {
+            if (InputLock.Active)
+                switch (m.Msg)
+                {
+                    case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK: case WM_KEYDOWN: case WM_SYSKEYDOWN: case WM_CHAR: case WM_MOUSEWHEEL:
+                        if (m.Msg == WM_LBUTTONDOWN || m.Msg == WM_KEYDOWN) InputLock.Block();
+                        return;
+                }
+            base.WndProc(ref m);
+        }
+    }
+
+    public class LockNumeric : NumericUpDown
+    {
+        // the box stays white (like an enabled one); while the lock is on its text is read-only and the arrows / wheel do nothing
+        public LockNumeric()
+        {
+            BackColor = SystemColors.Window;
+            InputLock.Changed += delegate { try { ReadOnly = InputLock.Active; } catch { } };
+        }
+        public override void UpButton() { if (InputLock.Block()) return; base.UpButton(); }
+        public override void DownButton() { if (InputLock.Block()) return; base.DownButton(); }
+        protected override void OnMouseWheel(MouseEventArgs e) { if (InputLock.Active) { var h = e as HandledMouseEventArgs; if (h != null) h.Handled = true; return; } base.OnMouseWheel(e); }
+    }
+
     public static class AppInfo
     {
-        public const string Version = "1.5";      // 1.5: port TEST button, Renumber and Remove REM in the Files menu; 1.1: Software UART speeds 1200 to 19200 (SL V3.0), settings.ini, .img files; 1.2: names of the programs checked for the Sharp; 1.4: file info tip, Skip REM, Check Basic, Files menu, drag out of the list; 1.3: PC-1500 Software UART (4800 bps), six target computers, Port settings box, Flush and Reset port, wrong baud rate warning
+        public const string Version = "1.5";      // 1.5: port TEST button, Renumber and Remove REM in the Files menu, no changes of the port / target / mode / options while a file is sent, default line delay for every baud rate; 1.1: Software UART speeds 1200 to 19200 (SL V3.0), settings.ini, .img files; 1.2: names of the programs checked for the Sharp; 1.4: file info tip, Skip REM, Check Basic, Files menu, drag out of the list; 1.3: PC-1500 Software UART (4800 bps), six target computers, Port settings box, Flush and Reset port, wrong baud rate warning
     }
 
     // Names of programs for the pocket computers: the length and the characters that the Sharp accepts
