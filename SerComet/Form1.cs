@@ -1228,7 +1228,7 @@ namespace UartSlTest
         }
 
         // text mode: the Sharp sent the program in its internal (intermediate / tokenized) format, e.g. SAVE "COM1:" without ,A.
-        // PC-1600 and PC-1500: converted to BASIC text. All other computers: saved as .img with a red warning (send a BASIC listing instead).
+        // PC-1600 and PC-1500: converted to BASIC text. All other computers: rejected with a red warning (send a BASIC listing instead).
         bool ReceivedInternalFormat(byte[] data)
         {
             byte[] img;
@@ -1253,9 +1253,11 @@ namespace UartSlTest
             }
             else
             {
-                LogBold("Detected a file in the internal (tokenized) format: it is NOT converted, it is saved as an image (.img)! Send the program as a BASIC LISTING (text): " +
+                // the tokens of these computers are not known: the file is rejected (nothing is saved)
+                LogBold("Detected a file in the internal (tokenized) format: it is REJECTED and not saved! Send the program as a BASIC LISTING (text): " +
                         "PC-1350 / PC-1360: OPEN \"1200,N,8,1,A,C,&1A\" and then SAVE; PC-E500(S): OPEN \"9600,N,8,1,A,C,&H1A,N,N\" and then SAVE \"COM:PROGRAM\",A " +
                         "(over COM the listing is ASCII); other computers: check the manual.");
+                return true;
             }
             string ipath = UniqueSharp(name, ".img");
             File.WriteAllBytes(ipath, img);
