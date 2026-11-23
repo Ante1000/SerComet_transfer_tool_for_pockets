@@ -221,9 +221,10 @@ namespace UartSlTest
             btnConvert = Btn("Convert", Icons.File(), 104, 560, 90, 24, TL);
             btnView = Btn("WAV", Icons.Note(), 10, 560, 90, 24, TL);
             btnView.Enabled = false;
-            btnView.TextImageRelation = TextImageRelation.ImageBeforeText;     // the text is centred in the space beside the note
-            btnView.TextAlign = ContentAlignment.MiddleCenter;
-            btnView.Padding = new Padding(0);
+            // like the Convert button (note at the left edge, the text at the right), but the caption is centred in the free space beside the note
+            // (the icon takes about 24 px at the left)
+            int capW = TextRenderer.MeasureText("WAV", btnView.Font).Width;
+            btnView.Padding = new Padding(0, 0, Math.Max(6, (btnView.Width - 24 - capW) / 2), 0);
             gbFiles.Controls.Add(lstFiles);
             // hovering over a file name: a tip with the size, dates and type of the file
             lstFiles.MouseMove += delegate (object sn, MouseEventArgs me)
@@ -2511,7 +2512,7 @@ int removed, kept, cut; List<string> moved;
         public static Bitmap Terminal() { return Make((g, p, b) => { g.DrawRectangle(p, 2, 3, 16, 13); g.DrawLine(p, 5, 7, 8, 10); g.DrawLine(p, 5, 13, 8, 10); g.DrawLine(p, 10, 13, 14, 13); }); }
         public static Bitmap Flush() { return Make((g, p, b) => { g.FillPolygon(b, new[] { new Point(3, 3), new Point(17, 3), new Point(11, 10), new Point(11, 14), new Point(9, 14), new Point(9, 10) }); g.FillEllipse(b, 8, 15, 4, 4); }); }   // funnel + drop
         public static Bitmap Plane() { return Make((g, p, b) => { g.FillPolygon(b, new[] { new Point(2, 10), new Point(18, 3), new Point(13, 17), new Point(10, 12) }); }); }
-        public static Bitmap Note() { return Make((g, p, b) => { g.TranslateTransform(10, 10); g.ScaleTransform(0.8f, 0.8f); g.TranslateTransform(-10, -10); g.FillEllipse(b, 4, 12, 8, 6); g.DrawLine(p, 11, 14, 11, 3); g.DrawLine(p, 11, 3, 16, 6); }); }   // 20 % smaller
+        public static Bitmap Note() { return Make((g, p, b) => { g.TranslateTransform(10, 8.5f); g.ScaleTransform(0.8f, 0.8f); g.TranslateTransform(-10, -10); g.FillEllipse(b, 4, 12, 8, 6); g.DrawLine(p, 11, 14, 11, 3); g.DrawLine(p, 11, 3, 16, 6); }); }   // 20 % smaller
         public static Bitmap File() { return Make((g, p, b) => { g.DrawRectangle(p, 5, 2, 10, 16); g.DrawLine(p, 8, 8, 12, 8); g.DrawLine(p, 8, 12, 12, 12); }); }
         // shooting star (yellow star head, curved light-blue forked tail) on a navy sky, drawn at any size
         public static Bitmap Comet(int size)
