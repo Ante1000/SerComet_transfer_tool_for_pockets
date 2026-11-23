@@ -1210,10 +1210,44 @@ namespace UartSlTest
             if (data != null) Received(data);
         }
 
+        // text mode: the Sharp sent the program in its internal (intermediate / tokenized) format, e.g. SAVE "COM1:" without ,A. It is converted to BASIC text.
+        bool ReceivedInternalFormat(byte[] data)
+        {
+            byte[] img;
+            if (!ProgImage.FindLines(data, out img)) return false;
+            LogBold("Detected a file in the internal (intermediate / tokenized) format: after the reception it is converted (detokenized) to a BASIC text file! " +
+                    "To send BASIC text at once use SAVE \"COM1:\",A (PC-1600); for the other computers check the command in the manual!");
+            Directory.CreateDirectory(txtDir.Text);
+            string name = SharpBase(ProgImage.NameFromRem(img));
+            // the tokens of the PC-1500 and PC-1600 are exact; the other Sharp computers (PC-1350/60, PC-E500) are tried with the PC-1600 table
+            if (curModel <= 2)
+            {
+                string problem;
+                string bas = Pc1600Basic.Detokenize(img, curModel == 0, out problem);
+                if (problem == null)
+                {
+                    string path = UniqueSharp(name, ".bas");
+                    File.WriteAllBytes(path, Encoding.GetEncoding(28591).GetBytes(bas));
+                    Log("RECEIVED " + data.Length + " B, " + ProgImage.CountLines(img) + " lines -> " + Path.GetFileName(path) + " (converted from the internal format" +
+                        (curModel == 2 ? "; the tokens of this computer are only approximate, check the listing" : "") + ").");
+                    RefreshFiles();
+                    return true;
+                }
+                Log("Conversion problem: " + problem + "; the program is kept as an image (.img).");
+            }
+            else Log("SerComet does not know the tokens of this computer; the program is kept as an image (.img).");
+            string ipath = UniqueSharp(name, ".img");
+            File.WriteAllBytes(ipath, img);
+            Log("RECEIVED " + data.Length + " B, " + ProgImage.CountLines(img) + " lines -> " + Path.GetFileName(ipath));
+            RefreshFiles();
+            return true;
+        }
+
         void Received(byte[] data)
         {
             try
             {
+                if (rs232 && ReceivedInternalFormat(data)) return;
                 if (rs232 && !LooksLikeProgramText(data))
                 {
                     string guess = GuessBaudProblem(data);
@@ -2167,6 +2201,31 @@ int removed, kept, cut; List<string> moved;
             img = new byte[p];
             Array.Copy(s, img, p);
             return true;
+        }
+
+        // a stream of program lines [number 2 B][length 1 B][content, ends with 0D] found anywhere in the first 64 bytes (a text mode SAVE
+        // without ,A sends the program as it is in the memory); at least 3 lines that fit exactly, up to the end marker FFh or the end of the data
+        public static bool FindLines(byte[] s, out byte[] img)
+        {
+            img = null;
+            for (int start = 0; start <= Math.Min(64, s.Length - 8); start++)
+            {
+                int p = start, lines = 0;
+                while (p + 3 <= s.Length && s[p] != 0xFF)
+                {
+                    int len = s[p + 2];
+                    if (len < 2 || p + 3 + len > s.Length || s[p + 2 + len] != 0x0D) break;
+                    p += 3 + len; lines++;
+                }
+                bool ended = p >= s.Length || s[p] == 0xFF || s[p] == 0x1A || s[p] == 0x00;
+                if (lines >= 3 && ended)
+                {
+                    img = new byte[p - start];
+                    Array.Copy(s, start, img, 0, img.Length);
+                    return true;
+                }
+            }
+            return false;
         }
 
         public static byte[] ImageFromStream(byte[] s)
