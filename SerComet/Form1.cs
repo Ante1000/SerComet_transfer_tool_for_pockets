@@ -260,7 +260,8 @@ namespace UartSlTest
             var miCheck = new ToolStripMenuItem("Check Basic", null, delegate { CheckBasicSelected(); });
             var miRenum = new ToolStripMenuItem("Renumber", null, delegate { RenumberSelected(); });
             var miNoRem = new ToolStripMenuItem("Remove REM", null, delegate { RemoveRemSelected(); });
-            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck, miRenum, miNoRem });
+            var miCompare = new ToolStripMenuItem("Compare", null, delegate { CompareSelected(); });
+            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck, miRenum, miNoRem, miCompare });
             fileMenu.Opening += delegate (object sn, System.ComponentModel.CancelEventArgs ce)
             {
                 if (lstFiles.SelectedItem == null || lstFiles.IndexFromPoint(lstFiles.PointToClient(Cursor.Position)) < 0) { ce.Cancel = true; return; }
@@ -370,8 +371,16 @@ namespace UartSlTest
             btnAbort.Click += delegate { Abort(); };
             btnConvert.Click += delegate { ConvertSelected(); };
             btnView.Click += delegate { ViewSelected(); };
+            lstFiles.MouseDoubleClick += delegate (object sn, MouseEventArgs me)      // double click on a file name = View
+            {
+                int i = lstFiles.IndexFromPoint(me.Location);
+                if (i < 0 || i >= lstFiles.Items.Count) return;
+                lstFiles.SelectedIndex = i;
+                ViewSelected();
+            };
             lstFiles.SelectedIndexChanged += delegate { SelectionChanged(); };
             btnSend.Enabled = false;
+            btnSendOther.Enabled = false;          // the port is closed at the start
             btnDelete.Enabled = false;
             btnConvert.Enabled = false;
             comboFlow.SelectedIndexChanged += delegate { ApplyFlow(); };
@@ -1018,10 +1027,13 @@ namespace UartSlTest
                 port.DataReceived += OnData;
                 port.ErrorReceived += OnPortError;
                 port.Open();
+                // like Tera Term: DTR and RTS are switched on (many adapters and the Sharp interfaces send only when they see them)
+                try { port.DtrEnable = true; if (port.Handshake != Handshake.RequestToSend) port.RtsEnable = true; } catch { }
                 btnOpen.Text = "Close port";
                 btnOpen.Image = Icons.Cross();
                 SetRefreshMode(true);
                 SetStatus(true);
+                UpdateSendButtons();
                 Log("Port " + name + " open (" + port.BaudRate + " 8N1).");
             }
             catch (Exception ex)
@@ -1098,6 +1110,7 @@ namespace UartSlTest
             banner.PortOpen = false;
             banner.Invalidate();
             led.IsOpen = false;
+            UpdateSendButtons();
         }
 
         void OnData(object sender, SerialDataReceivedEventArgs e)
@@ -1161,7 +1174,13 @@ namespace UartSlTest
             {
                 int quiet = unchecked(Environment.TickCount - lastRx);
                 receiving = rx.Count > 0;
-                if (receiving && !rxStartLogged) { rxStartLogged = true; started = true; }      // a transmission has begun
+                // a program has begun to arrive: the data so far look like a program (not like stray bytes or garbage)
+                if (receiving && !rxStartLogged && rx.Count >= 8)
+                {
+                    bool prog;
+                    try { prog = rs232 ? LooksLikeProgramText(rx.ToArray()) : LooksLikeImageBegin(rx); } catch { prog = false; }
+                    if (prog) { rxStartLogged = true; started = true; }
+                }
                 if (!receiving) rxStartLogged = false;
                 int eofAt = rs232 ? rx.IndexOf(0x1A) : -1;     // 1Ah = end-of-file code of an ASCII file: finish at once
                 if (eofAt >= 0)
@@ -1179,6 +1198,8 @@ namespace UartSlTest
                     rxStartLogged = false;
                 }
             }
+            if (sending && port == null) sending = false;          // safety net: no port, so nothing can be sent (and received data must not be dropped)
+            if (started) Log("Start receiving program data");
             receiving |= unchecked(Environment.TickCount - lastRxAny) < 300;
             bool tx = sending || unchecked(Environment.TickCount - lastTxAny) < 300;
             bool changed = banner.Receiving != receiving || banner.Sending != tx;
@@ -1200,7 +1221,6 @@ namespace UartSlTest
                     return;
                 }
                 Directory.CreateDirectory(txtDir.Text);
-                if (rs232) Log("Start receiving ''");          // only for a program file (the data passed the garbage filter)
                 if (rs232)
                 {
                     string name = SharpBase(ProgImage.NameFromText(data));
@@ -1226,7 +1246,6 @@ namespace UartSlTest
                 }
                 if (img != null)
                 {
-                    Log("Start receiving ''");                 // only for a program file
                     string name = SharpBase(ProgImage.NameFromRem(img));
                     string path = null;
                     string note = "";
@@ -1268,6 +1287,16 @@ namespace UartSlTest
 
         // text received in the text modes is saved only when it looks like a program: mostly printable characters and at least one
         // numbered BASIC line (or, without line numbers, a longer text); a few random bytes from the line are noise
+        // Software UART: the stream begins with a program line: line number (2 bytes), length, the line, CR (the first line may be still arriving)
+        static bool LooksLikeImageBegin(List<byte> d)
+        {
+            if (d.Count < 8) return false;
+            int len = d[2];
+            if (len < 2) return false;
+            if (3 + len > d.Count) return true;
+            return d[2 + len] == 0x0D;
+        }
+
         static bool LooksLikeProgramText(byte[] d)
         {
             if (d.Length < 8) return false;
@@ -1365,6 +1394,248 @@ namespace UartSlTest
         }
 
         // preview of the selected file: text as it is, program images as BASIC text, anything else as a hex dump
+        // a REM outside quotation marks followed by a space loses that one space ("10 REM TEXT" is sent as "10 REMTEXT")
+        static string FixRemSpace(string src)
+        {
+            var sb = new StringBuilder();
+            foreach (string line in src.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+            {
+                var o = new StringBuilder();
+                bool q = false;
+                for (int i = 0; i < line.Length; i++)
+                {
+                    char c = line[i];
+                    if (c == '"') q = !q;
+                    o.Append(c);
+                    if (!q && (c == 'R' || c == 'r') && i + 3 < line.Length && string.Compare(line, i, "REM", 0, 3, StringComparison.OrdinalIgnoreCase) == 0
+                        && (i == 0 || !char.IsLetter(line[i - 1])) && line[i + 3] == ' ')
+                    {
+                        o.Append(line, i + 1, 2);                 // "EM"
+                        o.Append(line, i + 4, line.Length - (i + 4));   // the comment without the space
+                        break;
+                    }
+                }
+                sb.Append(o).Append('\n');
+            }
+            string r = sb.ToString();
+            return r.EndsWith("\n") && !src.EndsWith("\n") && !src.EndsWith("\r") ? r.Substring(0, r.Length - 1) : r;
+        }
+
+        // ---- Compare: the listing of the selected file against another file (only the content, not the dates)
+        string ListingOf(string path)
+        {
+            return Encoding.GetEncoding(28591).GetString(File.ReadAllBytes(path));
+        }
+
+        // lines of a listing: text split at CR / LF, empty lines and the end-of-file code dropped; the number of the line (or -1)
+        static List<KeyValuePair<int, string>> ListingLines(string text)
+        {
+            var res = new List<KeyValuePair<int, string>>();
+            foreach (string raw in text.Replace("\u001A", "").Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+            {
+                string t = raw.TrimEnd();
+                if (t.Trim().Length == 0) continue;
+                int i = 0;
+                string tt = t.TrimStart();
+                while (i < tt.Length && char.IsDigit(tt[i])) i++;
+                int num = -1;
+                if (i > 0 && i < 6) int.TryParse(tt.Substring(0, i), out num);
+                res.Add(new KeyValuePair<int, string>(num, t));
+            }
+            return res;
+        }
+
+        // a line for the comparison: the spaces outside quotation marks are dropped (the PC-1600 lists "IF A THEN" as "IF A THEN" or
+        // "IF G$="F"THEN", "RND (4)" and so on), and in a REM the spaces before the comment; the text of strings and comments stays
+        static string NormLine(string line)
+        {
+            var o = new StringBuilder();
+            bool q = false;
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+                if (c == '"') { q = !q; o.Append(c); continue; }
+                if (q) { o.Append(c); continue; }
+                if (c == ' ' || c == '\t') continue;
+                o.Append(c);
+                if ((c == 'M' || c == 'm') && o.Length >= 3 && string.Compare(o.ToString(o.Length - 3, 3), "REM", StringComparison.OrdinalIgnoreCase) == 0
+                    && (o.Length == 3 || !char.IsLetter(o[o.Length - 4])))
+                { o.Append(line.Substring(i + 1).TrimStart()); break; }
+            }
+            return o.ToString();
+        }
+
+        void CompareSelected()
+        {
+            if (lstFiles.SelectedItem == null) return;
+            string nameA = (string)lstFiles.SelectedItem;
+            string pathA = Path.Combine(txtDir.Text, nameA);
+            string pathB;
+            // only files of the same kind: program images (.img) with .img, BASIC text (.bas = .txt) with .bas / .txt
+            bool img = Path.GetExtension(nameA).Equals(".img", StringComparison.OrdinalIgnoreCase);
+            using (var d = new OpenFileDialog { Title = "Compare " + nameA + " with ...", InitialDirectory = txtDir.Text,
+                Filter = img ? "Program images (*.img)|*.img" : "BASIC text (*.bas;*.txt)|*.bas;*.txt" })
+            {
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                pathB = d.FileName;
+            }
+            if (Path.GetExtension(pathB).Equals(".img", StringComparison.OrdinalIgnoreCase) != img)
+            { Log("Compare: choose a file of the same kind (" + (img ? ".img" : ".bas / .txt") + ")."); return; }
+            string nameB = Path.GetFileName(pathB);
+            string report;
+            try { report = CompareReport(nameA, pathA, nameB, pathB); }
+            catch (Exception ex) { Log("Compare error: " + ex.Message); return; }
+            new PreviewForm("Compare: " + nameA + " / " + nameB, report).Show(this);
+        }
+
+        // program images: the lines [number 2 B][length 1 B][content ending with 0D], compared as bytes
+        static List<KeyValuePair<int, byte[]>> ImageLines(byte[] d)
+        {
+            var res = new List<KeyValuePair<int, byte[]>>();
+            int p = 0;
+            while (p + 3 <= d.Length && d[p] != 0xFF)
+            {
+                int len = d[p + 2], end = Math.Min(d.Length, p + 3 + len);
+                var c = new byte[end - p];
+                Array.Copy(d, p, c, 0, c.Length);
+                res.Add(new KeyValuePair<int, byte[]>(d[p] * 256 + d[p + 1], c));
+                p = end;
+            }
+            return res;
+        }
+
+        string CompareImages(string nameA, byte[] a, string nameB, byte[] b)
+        {
+            var la = ImageLines(a); var lb = ImageLines(b);
+            var sb = new StringBuilder();
+            sb.AppendLine("A: " + nameA + "   B: " + nameB);
+            sb.AppendLine("Program images are compared byte by byte (not converted to BASIC); dates are not compared.");
+            sb.AppendLine();
+            bool eq = a.Length == b.Length;
+            for (int i = 0; eq && i < a.Length; i++) if (a[i] != b[i]) eq = false;
+            if (eq) { sb.AppendLine("The images are IDENTICAL (" + la.Count + " lines, " + a.Length + " B)."); return sb.ToString(); }
+            sb.AppendLine("The images are DIFFERENT:");
+            sb.AppendLine("  size:           A " + a.Length + " B, B " + b.Length + " B" + (a.Length == b.Length ? " (the same)" : " (different)"));
+            sb.AppendLine("  lines:          A " + la.Count + ", B " + lb.Count + (la.Count == lb.Count ? " (the same)" : " (different number of lines)"));
+            Func<List<KeyValuePair<int, byte[]>>, string> first = l => l.Count == 0 ? "-" : l[0].Key.ToString();
+            Func<List<KeyValuePair<int, byte[]>>, string> last = l => l.Count == 0 ? "-" : l[l.Count - 1].Key.ToString();
+            sb.AppendLine("  first line no.: A " + first(la) + ", B " + first(lb) + (first(la) == first(lb) ? " (the same)" : " (different start numbering)"));
+            sb.AppendLine("  last line no.:  A " + last(la) + ", B " + last(lb) + (last(la) == last(lb) ? " (the same)" : " (different end numbering)"));
+            var mapB = new Dictionary<int, byte[]>();
+            foreach (var kv in lb) if (!mapB.ContainsKey(kv.Key)) mapB[kv.Key] = kv.Value;
+            int same = 0, diff = 0, onlyA = 0;
+            var diffs = new List<string>();
+            foreach (var kv in la)
+            {
+                byte[] o;
+                if (!mapB.TryGetValue(kv.Key, out o)) { onlyA++; continue; }
+                bool e = o.Length == kv.Value.Length;
+                int k = 0;
+                while (k < o.Length && k < kv.Value.Length && o[k] == kv.Value[k]) k++;
+                if (e && k == o.Length) { same++; continue; }
+                diff++;
+                if (diffs.Count < 25) diffs.Add("  line " + kv.Key + " (first difference at byte " + (k + 1) + ", A " + kv.Value.Length + " B, B " + o.Length + " B)");
+            }
+            var setA = new HashSet<int>();
+            foreach (var kv in la) setA.Add(kv.Key);
+            int onlyB = 0;
+            foreach (var kv in lb) if (!setA.Contains(kv.Key)) onlyB++;
+            sb.AppendLine("  lines with the same number: " + same + " identical, " + diff + " with other content; only in A: " + onlyA + ", only in B: " + onlyB);
+            sb.AppendLine();
+            string verdict = diff == 0 && onlyA + onlyB > 0 ? "The lines that exist in both are identical; the images differ in the numbering / the number of lines."
+                : onlyA + onlyB == 0 && la.Count > 0 && diff <= Math.Max(3, la.Count / 5) ? "A similar structure (the same line numbers) but there are errors in " + diff + " line(s)."
+                : onlyA + onlyB == 0 && la.Count > 0 ? "The same line numbers, but the content is different (" + diff + " of " + la.Count + " lines)."
+                : "The content is different.";
+            sb.AppendLine("Result: " + verdict);
+            if (diffs.Count > 0) { sb.AppendLine(); sb.AppendLine("Differing lines" + (diff > diffs.Count ? " (the first " + diffs.Count + " of " + diff + ")" : "") + ":"); foreach (string d in diffs) sb.AppendLine(d); }
+            return sb.ToString().Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
+        }
+
+        string CompareReport(string nameA, string pathA, string nameB, string pathB)
+        {
+            if (Path.GetExtension(pathA).Equals(".img", StringComparison.OrdinalIgnoreCase))
+                return CompareImages(nameA, File.ReadAllBytes(pathA), nameB, File.ReadAllBytes(pathB));
+            string ta = ListingOf(pathA), tb = ListingOf(pathB);
+            var sb = new StringBuilder();
+            var oa = ListingLines(ta);
+            var ob = ListingLines(tb);
+            string rawA = string.Join("\n", oa.Select(x => x.Value).ToArray());
+            string rawB = string.Join("\n", ob.Select(x => x.Value).ToArray());
+            int bytesA = Encoding.GetEncoding(28591).GetByteCount(rawA), bytesB = Encoding.GetEncoding(28591).GetByteCount(rawB);
+            var origA = new Dictionary<int, string>(); var origB = new Dictionary<int, string>();
+            foreach (var kv in oa) if (kv.Key >= 0 && !origA.ContainsKey(kv.Key)) origA[kv.Key] = kv.Value;
+            foreach (var kv in ob) if (kv.Key >= 0 && !origB.ContainsKey(kv.Key)) origB[kv.Key] = kv.Value;
+            // compared without the spaces outside strings and comments (they are the listing style of the machine, not the program)
+            var la = oa.Select(x => new KeyValuePair<int, string>(x.Key, NormLine(x.Value))).ToList();
+            var lb = ob.Select(x => new KeyValuePair<int, string>(x.Key, NormLine(x.Value))).ToList();
+            string sa = string.Join("\n", la.Select(x => x.Value).ToArray());
+            string sbb = string.Join("\n", lb.Select(x => x.Value).ToArray());
+            Func<List<KeyValuePair<int, string>>, string> first = l => l.Count == 0 ? "-" : (l[0].Key >= 0 ? l[0].Key.ToString() : "(no number)");
+            Func<List<KeyValuePair<int, string>>, string> last = l => l.Count == 0 ? "-" : (l[l.Count - 1].Key >= 0 ? l[l.Count - 1].Key.ToString() : "(no number)");
+            sb.AppendLine("A: " + nameA + "   B: " + nameB);
+            sb.AppendLine("Only the listings are compared (dates and the line ends are not); the spaces outside quotation marks and before a REM comment are ignored.");
+            sb.AppendLine();
+            if (sa == sbb)
+            {
+                sb.AppendLine("The listings are IDENTICAL (" + la.Count + " lines)" + (rawA == rawB ? "." : ", only the spacing differs (A " + bytesA + " B, B " + bytesB + " B)."));
+                return sb.ToString().Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
+            }
+            sb.AppendLine("The listings are DIFFERENT:");
+            sb.AppendLine("  size:           A " + bytesA + " B, B " + bytesB + " B" + (bytesA == bytesB ? " (the same)" : " (different)"));
+            sb.AppendLine("  lines:          A " + la.Count + ", B " + lb.Count + (la.Count == lb.Count ? " (the same)" : " (different number of lines)"));
+            sb.AppendLine("  first line no.: A " + first(la) + ", B " + first(lb) + (first(la) == first(lb) ? " (the same)" : " (different start numbering)"));
+            sb.AppendLine("  last line no.:  A " + last(la) + ", B " + last(lb) + (last(la) == last(lb) ? " (the same)" : " (different end numbering)"));
+            // the same line numbers (in the same order)?
+            bool sameNumbers = la.Count == lb.Count;
+            for (int i = 0; sameNumbers && i < la.Count; i++) if (la[i].Key != lb[i].Key) sameNumbers = false;
+            sb.AppendLine("  numbering:      " + (sameNumbers ? "the same line numbers" : "different line numbers"));
+            // lines with the same number: equal or not
+            var mapB = new Dictionary<int, string>();
+            foreach (var kv in lb) if (kv.Key >= 0 && !mapB.ContainsKey(kv.Key)) mapB[kv.Key] = kv.Value;
+            int same = 0, diff = 0, onlyA = 0;
+            var diffs = new List<string>();
+            foreach (var kv in la)
+            {
+                if (kv.Key < 0) continue;
+                string o;
+                if (!mapB.TryGetValue(kv.Key, out o)) { onlyA++; continue; }
+                if (o == kv.Value) same++;
+                else
+                {
+                    diff++;
+                    if (diffs.Count < 25)
+                    {
+                        int k = 0;
+                        while (k < kv.Value.Length && k < o.Length && kv.Value[k] == o[k]) k++;
+                        string oA, oB;
+                        if (!origA.TryGetValue(kv.Key, out oA)) oA = kv.Value;
+                        if (!origB.TryGetValue(kv.Key, out oB)) oB = o;
+                        diffs.Add("  line " + kv.Key + " (first difference at character " + (k + 1) + " of the line without spaces)\n    A: " + oA + "\n    B: " + oB);
+                    }
+                }
+            }
+            int onlyB = 0;
+            var mapA = new HashSet<int>();
+            foreach (var kv in la) if (kv.Key >= 0) mapA.Add(kv.Key);
+            foreach (var kv in lb) if (kv.Key >= 0 && !mapA.Contains(kv.Key)) onlyB++;
+            sb.AppendLine("  lines with the same number: " + same + " identical, " + diff + " with other text; only in A: " + onlyA + ", only in B: " + onlyB);
+            sb.AppendLine();
+            string verdict;
+            if (sameNumbers && diff > 0 && diff <= Math.Max(3, la.Count / 5)) verdict = "A similar structure (the same line numbers) but there are errors in " + diff + " line(s).";
+            else if (sameNumbers && diff > 0) verdict = "The same line numbers, but the content is different (" + diff + " of " + la.Count + " lines).";
+            else if (!sameNumbers && diff == 0 && same > 0) verdict = "The lines that exist in both are identical; the files differ in the numbering / the number of lines.";
+            else if (same > 0 && diff + onlyA + onlyB <= Math.Max(3, la.Count / 5)) verdict = "A similar structure, but there are differences (other numbering and / or errors).";
+            else verdict = "The content is different.";
+            sb.AppendLine("Result: " + verdict);
+            if (diffs.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("Differing lines" + (diff > diffs.Count ? " (the first " + diffs.Count + " of " + diff + ")" : "") + ":");
+                foreach (string d in diffs) sb.AppendLine(d);
+            }
+            return sb.ToString().Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
+        }
+
         void ViewSelected()
         {
             if (lstFiles.SelectedItem == null) return;
@@ -1414,11 +1685,19 @@ namespace UartSlTest
         }
 
         // View and Send selected are available only when a file is selected (Send also not while a transfer runs)
+        // Send selected and Send file are active (not grey) only while the port is open and nothing is being sent
+        void UpdateSendButtons()
+        {
+            bool open = port != null && port.IsOpen;
+            if (btnSendOther != null) btnSendOther.Enabled = open && !sending;
+            SelectionChanged();
+        }
+
         void SelectionChanged()
         {
             bool sel = lstFiles.SelectedItem != null;
             if (btnView != null) btnView.Enabled = sel;
-            if (btnSend != null) btnSend.Enabled = sel && !sending;
+            if (btnSend != null) btnSend.Enabled = sel && !sending && port != null && port.IsOpen;
             if (btnDelete != null) btnDelete.Enabled = sel;
             if (btnConvert != null)
             {
@@ -1679,6 +1958,12 @@ int removed, kept, cut; List<string> moved;
             {
                 var latin = Encoding.GetEncoding(28591);
                 string src = latin.GetString(data);
+                if (curModel == 1)
+                {
+                    // the PC-1600 keeps the space after REM as the first character of the comment and its listing adds one more: send REM without it
+                    string fx = FixRemSpace(src);
+                    if (fx != src) { src = fx; data = latin.GetBytes(src); Log("PC-1600: the space after REM is left out (the Sharp would show two)."); }
+                }
                 if (chkSkipRem.Checked)
                 {
                     int rm, kp;
@@ -1720,13 +2005,23 @@ int removed, kept, cut; List<string> moved;
             }
             abortRequested = false;
             sending = true;
-            MarkSending(path);
-            btnSend.Enabled = btnSendOther.Enabled = false;
-            CheckSharpName(path);
-            progText = "SENDING " + Path.GetFileName(path) + " (" + data.Length + " B)";
-            progStart = txtLog.TextLength;
-            Log(progText + " (0%)");
-            progEnd = txtLog.TextLength;
+            try
+            {
+                MarkSending(path);
+                btnSend.Enabled = btnSendOther.Enabled = false;
+                CheckSharpName(path);
+                progText = "SENDING " + Path.GetFileName(path) + " (" + data.Length + " B)";
+                progStart = txtLog.TextLength;
+                Log(progText + " (0%)");
+                progEnd = txtLog.TextLength;
+            }
+            catch (Exception ex)
+            {
+                // the flag must never stay on: while it is on the received data are dropped (nothing would be received any more)
+                Log("Send error: " + ex.Message);
+                sending = false; MarkSending(null); UpdateSendButtons();
+                return;
+            }
             int total = data.Length, lastPct = -1;
             Action<int> report = pct =>
             {
@@ -1812,8 +2107,7 @@ int removed, kept, cut; List<string> moved;
                 lock (rxLock) { rx.Clear(); }
                 sending = false;
                 MarkSending(null);
-                btnSendOther.Enabled = true;
-                SelectionChanged();
+                UpdateSendButtons();
                 if (text && curModel == 1 && port != null) ResetPort();      // PC-1600 over the UART: the port is closed and opened again after the transmission (or Abort)
             }
         }
