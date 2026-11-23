@@ -1663,6 +1663,9 @@ int removed, kept, cut; List<string> moved;
             if (port == null || !port.IsOpen) { Log("Open the port first."); return; }
             if (sending) return;
             if (term != null) { Log("Close the terminal first."); return; }
+            // before any sending: empty the receive buffers, so that they are ready for the answers of the Sharp
+            lock (rxLock) { rx.Clear(); rxStartLogged = false; }
+            try { port.DiscardInBuffer(); } catch { }
             byte[] data;
             try { data = File.ReadAllBytes(path); }
             catch (Exception ex) { Log("Read error: " + ex.Message); return; }
