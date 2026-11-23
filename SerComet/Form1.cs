@@ -1210,32 +1210,36 @@ namespace UartSlTest
             if (data != null) Received(data);
         }
 
-        // text mode: the Sharp sent the program in its internal (intermediate / tokenized) format, e.g. SAVE "COM1:" without ,A. It is converted to BASIC text.
+        // text mode: the Sharp sent the program in its internal (intermediate / tokenized) format, e.g. SAVE "COM1:" without ,A.
+        // PC-1600 and PC-1500: converted to BASIC text. All other computers: saved as .img with a red warning (send a BASIC listing instead).
         bool ReceivedInternalFormat(byte[] data)
         {
             byte[] img;
             if (!ProgImage.FindLines(data, out img)) return false;
-            LogBold("Detected a file in the internal (intermediate / tokenized) format: after the reception it is converted (detokenized) to a BASIC text file! " +
-                    "To send BASIC text at once use SAVE \"COM1:\",A (PC-1600); for the other computers check the command in the manual!");
             Directory.CreateDirectory(txtDir.Text);
             string name = SharpBase(ProgImage.NameFromRem(img));
-            // the tokens of the PC-1500 and PC-1600 are exact; the other Sharp computers (PC-1350/60, PC-E500) are tried with the PC-1600 table
-            if (curModel <= 2)
+            if (curModel <= 1)
             {
+                LogBold("Detected a file in the internal (intermediate / tokenized) format: after the reception it is converted (detokenized) to a BASIC text file! " +
+                        (curModel == 1 ? "To send BASIC text at once use SAVE \"COM1:\",A (PC-1600)." : "To send BASIC text at once check the SAVE command of the PC-1500 (CE-158) in the manual."));
                 string problem;
                 string bas = Pc1600Basic.Detokenize(img, curModel == 0, out problem);
                 if (problem == null)
                 {
                     string path = UniqueSharp(name, ".bas");
                     File.WriteAllBytes(path, Encoding.GetEncoding(28591).GetBytes(bas));
-                    Log("RECEIVED " + data.Length + " B, " + ProgImage.CountLines(img) + " lines -> " + Path.GetFileName(path) + " (converted from the internal format" +
-                        (curModel == 2 ? "; the tokens of this computer are only approximate, check the listing" : "") + ").");
+                    Log("RECEIVED " + data.Length + " B, " + ProgImage.CountLines(img) + " lines -> " + Path.GetFileName(path) + " (converted from the internal format).");
                     RefreshFiles();
                     return true;
                 }
                 Log("Conversion problem: " + problem + "; the program is kept as an image (.img).");
             }
-            else Log("SerComet does not know the tokens of this computer; the program is kept as an image (.img).");
+            else
+            {
+                LogBold("Detected a file in the internal (tokenized) format: it is NOT converted, it is saved as an image (.img)! Send the program as a BASIC LISTING (text): " +
+                        "PC-1350 / PC-1360: OPEN \"1200,N,8,1,A,C,&1A\" and then SAVE; PC-E500(S): OPEN \"9600,N,8,1,A,C,&H1A,N,N\" and then SAVE \"COM:PROGRAM\",A " +
+                        "(over COM the listing is ASCII); other computers: check the manual.");
+            }
             string ipath = UniqueSharp(name, ".img");
             File.WriteAllBytes(ipath, img);
             Log("RECEIVED " + data.Length + " B, " + ProgImage.CountLines(img) + " lines -> " + Path.GetFileName(ipath));
