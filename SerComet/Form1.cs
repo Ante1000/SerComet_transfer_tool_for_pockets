@@ -1163,7 +1163,13 @@ namespace UartSlTest
             {
                 int quiet = unchecked(Environment.TickCount - lastRx);
                 receiving = rx.Count > 0;
-                if (receiving && !rxStartLogged) { rxStartLogged = true; started = true; }      // a transmission has begun
+                // a program has begun to arrive: the data so far look like a program (not like stray bytes or garbage)
+                if (receiving && !rxStartLogged && rx.Count >= 8)
+                {
+                    bool prog;
+                    try { prog = rs232 ? LooksLikeProgramText(rx.ToArray()) : LooksLikeImageBegin(rx); } catch { prog = false; }
+                    if (prog) { rxStartLogged = true; started = true; }
+                }
                 if (!receiving) rxStartLogged = false;
                 int eofAt = rs232 ? rx.IndexOf(0x1A) : -1;     // 1Ah = end-of-file code of an ASCII file: finish at once
                 if (eofAt >= 0)
@@ -1182,6 +1188,7 @@ namespace UartSlTest
                 }
             }
             if (sending && port == null) sending = false;          // safety net: no port, so nothing can be sent (and received data must not be dropped)
+            if (started) Log("Start receiving program data");
             receiving |= unchecked(Environment.TickCount - lastRxAny) < 300;
             bool tx = sending || unchecked(Environment.TickCount - lastTxAny) < 300;
             bool changed = banner.Receiving != receiving || banner.Sending != tx;
@@ -1203,7 +1210,6 @@ namespace UartSlTest
                     return;
                 }
                 Directory.CreateDirectory(txtDir.Text);
-                if (rs232) Log("Start receiving ''");          // only for a program file (the data passed the garbage filter)
                 if (rs232)
                 {
                     string name = SharpBase(ProgImage.NameFromText(data));
@@ -1229,7 +1235,6 @@ namespace UartSlTest
                 }
                 if (img != null)
                 {
-                    Log("Start receiving ''");                 // only for a program file
                     string name = SharpBase(ProgImage.NameFromRem(img));
                     string path = null;
                     string note = "";
@@ -1271,6 +1276,16 @@ namespace UartSlTest
 
         // text received in the text modes is saved only when it looks like a program: mostly printable characters and at least one
         // numbered BASIC line (or, without line numbers, a longer text); a few random bytes from the line are noise
+        // Software UART: the stream begins with a program line: line number (2 bytes), length, the line, CR (the first line may be still arriving)
+        static bool LooksLikeImageBegin(List<byte> d)
+        {
+            if (d.Count < 8) return false;
+            int len = d[2];
+            if (len < 2) return false;
+            if (3 + len > d.Count) return true;
+            return d[2 + len] == 0x0D;
+        }
+
         static bool LooksLikeProgramText(byte[] d)
         {
             if (d.Length < 8) return false;
