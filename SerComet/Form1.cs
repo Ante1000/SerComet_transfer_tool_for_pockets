@@ -370,6 +370,13 @@ namespace UartSlTest
             btnAbort.Click += delegate { Abort(); };
             btnConvert.Click += delegate { ConvertSelected(); };
             btnView.Click += delegate { ViewSelected(); };
+            lstFiles.MouseDoubleClick += delegate (object sn, MouseEventArgs me)      // double click on a file name = View
+            {
+                int i = lstFiles.IndexFromPoint(me.Location);
+                if (i < 0 || i >= lstFiles.Items.Count) return;
+                lstFiles.SelectedIndex = i;
+                ViewSelected();
+            };
             lstFiles.SelectedIndexChanged += delegate { SelectionChanged(); };
             btnSend.Enabled = false;
             btnDelete.Enabled = false;
