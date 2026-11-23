@@ -260,7 +260,8 @@ namespace UartSlTest
             var miCheck = new ToolStripMenuItem("Check Basic", null, delegate { CheckBasicSelected(); });
             var miRenum = new ToolStripMenuItem("Renumber", null, delegate { RenumberSelected(); });
             var miNoRem = new ToolStripMenuItem("Remove REM", null, delegate { RemoveRemSelected(); });
-            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck, miRenum, miNoRem });
+            var miCompare = new ToolStripMenuItem("Compare", null, delegate { CompareSelected(); });
+            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck, miRenum, miNoRem, miCompare });
             fileMenu.Opening += delegate (object sn, System.ComponentModel.CancelEventArgs ce)
             {
                 if (lstFiles.SelectedItem == null || lstFiles.IndexFromPoint(lstFiles.PointToClient(Cursor.Position)) < 0) { ce.Cancel = true; return; }
@@ -1390,6 +1391,128 @@ namespace UartSlTest
         }
 
         // preview of the selected file: text as it is, program images as BASIC text, anything else as a hex dump
+        // ---- Compare: the listing of the selected file against another file (only the content, not the dates)
+        string ListingOf(string path)
+        {
+            byte[] data = File.ReadAllBytes(path);
+            string ext = Path.GetExtension(path).ToLowerInvariant();
+            string imgErr;
+            if (ext == ".img" || (ext == ".bin" && ProgImage.CheckImage(data, out imgErr)))
+            {
+                string problem;
+                return Pc1600Basic.Detokenize(data, radio1500.Checked, out problem);
+            }
+            return Encoding.GetEncoding(28591).GetString(data);
+        }
+
+        // lines of a listing: text split at CR / LF, empty lines and the end-of-file code dropped; the number of the line (or -1)
+        static List<KeyValuePair<int, string>> ListingLines(string text)
+        {
+            var res = new List<KeyValuePair<int, string>>();
+            foreach (string raw in text.Replace("\u001A", "").Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+            {
+                string t = raw.TrimEnd();
+                if (t.Trim().Length == 0) continue;
+                int i = 0;
+                string tt = t.TrimStart();
+                while (i < tt.Length && char.IsDigit(tt[i])) i++;
+                int num = -1;
+                if (i > 0 && i < 6) int.TryParse(tt.Substring(0, i), out num);
+                res.Add(new KeyValuePair<int, string>(num, t));
+            }
+            return res;
+        }
+
+        void CompareSelected()
+        {
+            if (lstFiles.SelectedItem == null) return;
+            string nameA = (string)lstFiles.SelectedItem;
+            string pathA = Path.Combine(txtDir.Text, nameA);
+            string pathB;
+            using (var d = new OpenFileDialog { Title = "Compare " + nameA + " with ...", InitialDirectory = txtDir.Text, Filter = "BASIC files (*.bas;*.txt;*.img;*.bin)|*.bas;*.txt;*.img;*.bin|All files (*.*)|*.*" })
+            {
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                pathB = d.FileName;
+            }
+            string nameB = Path.GetFileName(pathB);
+            string report;
+            try { report = CompareReport(nameA, pathA, nameB, pathB); }
+            catch (Exception ex) { Log("Compare error: " + ex.Message); return; }
+            new PreviewForm("Compare: " + nameA + " / " + nameB, report).Show(this);
+        }
+
+        string CompareReport(string nameA, string pathA, string nameB, string pathB)
+        {
+            string ta = ListingOf(pathA), tb = ListingOf(pathB);
+            var la = ListingLines(ta);
+            var lb = ListingLines(tb);
+            var sb = new StringBuilder();
+            string sa = string.Join("\n", la.Select(x => x.Value).ToArray());
+            string sbb = string.Join("\n", lb.Select(x => x.Value).ToArray());
+            int bytesA = Encoding.GetEncoding(28591).GetByteCount(sa), bytesB = Encoding.GetEncoding(28591).GetByteCount(sbb);
+            Func<List<KeyValuePair<int, string>>, string> first = l => l.Count == 0 ? "-" : (l[0].Key >= 0 ? l[0].Key.ToString() : "(no number)");
+            Func<List<KeyValuePair<int, string>>, string> last = l => l.Count == 0 ? "-" : (l[l.Count - 1].Key >= 0 ? l[l.Count - 1].Key.ToString() : "(no number)");
+            sb.AppendLine("A: " + nameA + "   B: " + nameB);
+            sb.AppendLine("Only the listings are compared (dates and the line ends are not).");
+            sb.AppendLine();
+            if (sa == sbb)
+            {
+                sb.AppendLine("The listings are IDENTICAL (" + la.Count + " lines, " + bytesA + " B).");
+                return sb.ToString().Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
+            }
+            sb.AppendLine("The listings are DIFFERENT:");
+            sb.AppendLine("  size:           A " + bytesA + " B, B " + bytesB + " B" + (bytesA == bytesB ? " (the same)" : " (different)"));
+            sb.AppendLine("  lines:          A " + la.Count + ", B " + lb.Count + (la.Count == lb.Count ? " (the same)" : " (different number of lines)"));
+            sb.AppendLine("  first line no.: A " + first(la) + ", B " + first(lb) + (first(la) == first(lb) ? " (the same)" : " (different start numbering)"));
+            sb.AppendLine("  last line no.:  A " + last(la) + ", B " + last(lb) + (last(la) == last(lb) ? " (the same)" : " (different end numbering)"));
+            // the same line numbers (in the same order)?
+            bool sameNumbers = la.Count == lb.Count;
+            for (int i = 0; sameNumbers && i < la.Count; i++) if (la[i].Key != lb[i].Key) sameNumbers = false;
+            sb.AppendLine("  numbering:      " + (sameNumbers ? "the same line numbers" : "different line numbers"));
+            // lines with the same number: equal or not
+            var mapB = new Dictionary<int, string>();
+            foreach (var kv in lb) if (kv.Key >= 0 && !mapB.ContainsKey(kv.Key)) mapB[kv.Key] = kv.Value;
+            int same = 0, diff = 0, onlyA = 0;
+            var diffs = new List<string>();
+            foreach (var kv in la)
+            {
+                if (kv.Key < 0) continue;
+                string o;
+                if (!mapB.TryGetValue(kv.Key, out o)) { onlyA++; continue; }
+                if (o == kv.Value) same++;
+                else
+                {
+                    diff++;
+                    if (diffs.Count < 25)
+                    {
+                        int k = 0;
+                        while (k < kv.Value.Length && k < o.Length && kv.Value[k] == o[k]) k++;
+                        diffs.Add("  line " + kv.Key + " (first difference at character " + (k + 1) + ")\n    A: " + kv.Value + "\n    B: " + o);
+                    }
+                }
+            }
+            int onlyB = 0;
+            var mapA = new HashSet<int>();
+            foreach (var kv in la) if (kv.Key >= 0) mapA.Add(kv.Key);
+            foreach (var kv in lb) if (kv.Key >= 0 && !mapA.Contains(kv.Key)) onlyB++;
+            sb.AppendLine("  lines with the same number: " + same + " identical, " + diff + " with other text; only in A: " + onlyA + ", only in B: " + onlyB);
+            sb.AppendLine();
+            string verdict;
+            if (sameNumbers && diff > 0 && diff <= Math.Max(3, la.Count / 5)) verdict = "A similar structure (the same line numbers) but there are errors in " + diff + " line(s).";
+            else if (sameNumbers && diff > 0) verdict = "The same line numbers, but the content is different (" + diff + " of " + la.Count + " lines).";
+            else if (!sameNumbers && diff == 0 && same > 0) verdict = "The lines that exist in both are identical; the files differ in the numbering / the number of lines.";
+            else if (same > 0 && diff + onlyA + onlyB <= Math.Max(3, la.Count / 5)) verdict = "A similar structure, but there are differences (other numbering and / or errors).";
+            else verdict = "The content is different.";
+            sb.AppendLine("Result: " + verdict);
+            if (diffs.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("Differing lines" + (diff > diffs.Count ? " (the first " + diffs.Count + " of " + diff + ")" : "") + ":");
+                foreach (string d in diffs) sb.AppendLine(d);
+            }
+            return sb.ToString().Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
+        }
+
         void ViewSelected()
         {
             if (lstFiles.SelectedItem == null) return;
