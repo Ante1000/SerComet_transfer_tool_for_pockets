@@ -219,7 +219,7 @@ namespace UartSlTest
             chkSkipRem = new LockCheck { Text = "Skip REM", Left = 402, Top = 562, Width = 82, Checked = false };
             btnAbort = Btn("Abort", Icons.Cross(), 485, 560, 90, 24, TR);
             btnConvert = Btn("Convert", Icons.File(), 104, 560, 90, 24, TL);
-            btnView = Btn("View", Icons.File(), 10, 560, 90, 24, TL);
+            btnView = Btn("WAV", Icons.Note(), 10, 560, 90, 24, TL);
             btnView.Enabled = false;
             gbFiles.Controls.Add(lstFiles);
             // hovering over a file name: a tip with the size, dates and type of the file
@@ -261,12 +261,17 @@ namespace UartSlTest
             var miRenum = new ToolStripMenuItem("Renumber", null, delegate { RenumberSelected(); });
             var miNoRem = new ToolStripMenuItem("Remove REM", null, delegate { RemoveRemSelected(); });
             var miCompare = new ToolStripMenuItem("Compare", null, delegate { CompareSelected(); });
-            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck, miRenum, miNoRem, miCompare });
+            var miPlay = new ToolStripMenuItem("Play", null, delegate { PlaySelected(); });
+            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck, miRenum, miNoRem, miCompare, miPlay });
             fileMenu.Opening += delegate (object sn, System.ComponentModel.CancelEventArgs ce)
             {
                 if (lstFiles.SelectedItem == null || lstFiles.IndexFromPoint(lstFiles.PointToClient(Cursor.Position)) < 0) { ce.Cancel = true; return; }
                 string ext = Path.GetExtension((string)lstFiles.SelectedItem).ToLowerInvariant();
-                miEdit.Enabled = ext != ".img" && ext != ".bin";          // a program image is edited as BASIC text (Convert first)
+                bool wav = ext == ".wav";                                  // a recording: no View, Edit, Check Basic, Renumber, Remove REM; Compare and Play work
+                miView.Enabled = !wav;
+                miCheck.Enabled = !wav;
+                miPlay.Enabled = wav;
+                miEdit.Enabled = ext != ".img" && ext != ".bin" && !wav;          // a program image is edited as BASIC text (Convert first)
                 miDelete.Enabled = !sending;
                 miRenum.Enabled = miNoRem.Enabled = ext == ".bas" || ext == ".txt";       // BASIC text only
             };
@@ -370,13 +375,13 @@ namespace UartSlTest
             btnTerminal.Click += delegate { OpenTerminal(); };
             btnAbort.Click += delegate { Abort(); };
             btnConvert.Click += delegate { ConvertSelected(); };
-            btnView.Click += delegate { ViewSelected(); };
+            btnView.Click += delegate { WavSelected(); };
             lstFiles.MouseDoubleClick += delegate (object sn, MouseEventArgs me)      // double click on a file name = View
             {
                 int i = lstFiles.IndexFromPoint(me.Location);
                 if (i < 0 || i >= lstFiles.Items.Count) return;
                 lstFiles.SelectedIndex = i;
-                ViewSelected();
+                if (Path.GetExtension((string)lstFiles.SelectedItem).Equals(".wav", StringComparison.OrdinalIgnoreCase)) PlaySelected(); else ViewSelected();
             };
             lstFiles.SelectedIndexChanged += delegate { SelectionChanged(); };
             btnSend.Enabled = false;
@@ -432,7 +437,7 @@ namespace UartSlTest
             tips.SetToolTip(btnRefreshFiles, "Re-read the folder and refresh the file list.");
             tips.SetToolTip(btnTerminal, "Open a terminal window (like TeraTerm): typed characters are sent, received data is shown. Text modes only.");
             tips.SetToolTip(comboEol, "Line end sent after every line of a text file: CR, CR+LF (TeraTerm style) or LF. Red = CR alone or LF alone is probably a wrong choice for the Sharp and Casio computers (they expect CR+LF); TRS-80 / NEC and other UART computers can use any of them.");
-            tips.SetToolTip(btnView, "Show the contents of the selected file (BASIC text; program images are shown as BASIC).");
+            tips.SetToolTip(btnView, "WAV: PC-1500 and PC-1600. A BASIC text file (.bas / .txt) is converted to a tape recording (.wav; the PC-1600 asks for MODE 0 = CE-1600P or MODE 1 = CE-150), a .wav recording is converted back to BASIC text.");
             tips.SetToolTip(chkEof, "Add the end-of-file marker. Text modes: after the file (and the dummy line) send the end-of-file character 1Ah (Ctrl-Z) so that the Sharp finishes the reception (1Ah is the end-of-file code of an ASCII file). Switch it off if the Sharp reports an error.");
             tips.SetToolTip(btnAbort, "Abort the transmission at once: stops sending the file and discards data waiting to be sent or received.");
             tips.SetToolTip(btnConvert, "Software UART mode only. Convert the selected file: BASIC text (.bas, .txt) to a program image (.img), or a program image (.img, or a .bin that is a BASIC program) to BASIC text (.bas).");
@@ -943,12 +948,20 @@ namespace UartSlTest
                 var fi = new FileInfo(Path.Combine(txtDir.Text, name));
                 if (!fi.Exists) return name;
                 string ext = fi.Extension.ToLowerInvariant();
-                string kind = ext == ".img" ? "Program image" : ext == ".bas" || ext == ".txt" ? "BASIC text" : ext == ".bin" ? "Binary file" : "File";
+                string kind = ext == ".img" ? "Program image" : ext == ".bas" || ext == ".txt" ? "BASIC text" : ext == ".bin" ? "Binary file" : ext == ".wav" ? "WAV recording" : "File";
                 string extra = "";
                 if (ext == ".img")
                 {
                     string err; byte[] d = File.ReadAllBytes(fi.FullName);
                     if (ProgImage.CheckImage(d, out err)) extra = "\r\nLines: " + ProgImage.CountLines(d);
+                }
+                else if (ext == ".wav")
+                {
+                    TapeWav.WavInfo wi; int wo, wl;
+                    byte[] head = new byte[Math.Min(fi.Length, 4096)];
+                    using (var fs = File.OpenRead(fi.FullName)) fs.Read(head, 0, head.Length);
+                    // the header is in the first bytes; the length of the data is taken from the file size
+                    if (TapeWav.Parse(head, fi.Length, out wi, out wo, out wl)) extra = "\r\n" + TapeWav.Describe(wi);
                 }
                 else if (ext == ".bas" || ext == ".txt")
                 {
@@ -972,7 +985,7 @@ namespace UartSlTest
                 {
                     if (!File.Exists(f)) continue;
                     string ext = Path.GetExtension(f).ToLowerInvariant();
-                    if (ext != ".bas" && ext != ".txt" && ext != ".img") { Log("Drop: skipped " + Path.GetFileName(f) + " (only .bas, .txt, .img)"); continue; }
+                    if (ext != ".bas" && ext != ".txt" && ext != ".img" && ext != ".wav") { Log("Drop: skipped " + Path.GetFileName(f) + " (only .bas, .txt, .img, .wav)"); continue; }
                     if (string.Equals(Path.GetDirectoryName(Path.GetFullPath(f)), Path.GetFullPath(txtDir.Text), StringComparison.OrdinalIgnoreCase)) continue;   // already there
                     string dest = Path.Combine(txtDir.Text, Path.GetFileName(f));
                     if (File.Exists(dest))
@@ -1004,7 +1017,7 @@ namespace UartSlTest
                 if (Directory.Exists(txtDir.Text))
                 {
                     var found = new List<string>();
-                    foreach (string pat in rs232 ? new[] { "*.bas", "*.txt" } : chkAuto.Checked ? new[] { "*.img", "*.bas", "*.txt" } : new[] { "*.img" })
+                    foreach (string pat in rs232 ? new[] { "*.bas", "*.txt", "*.wav" } : chkAuto.Checked ? new[] { "*.img", "*.bas", "*.txt", "*.wav" } : new[] { "*.img", "*.wav" })
                         foreach (string f in Directory.GetFiles(txtDir.Text, pat)) found.Add(Path.GetFileName(f));
                     found.Sort(StringComparer.OrdinalIgnoreCase);
                     lstFiles.Items.AddRange(found.ToArray());
@@ -1509,6 +1522,17 @@ namespace UartSlTest
             string nameA = (string)lstFiles.SelectedItem;
             string pathA = Path.Combine(txtDir.Text, nameA);
             string pathB;
+            if (Path.GetExtension(nameA).Equals(".wav", StringComparison.OrdinalIgnoreCase))
+            {
+                using (var dw = new OpenFileDialog { Title = "Compare " + nameA + " with ...", InitialDirectory = txtDir.Text, Filter = "WAV recordings (*.wav)|*.wav" })
+                {
+                    if (dw.ShowDialog(this) != DialogResult.OK) return;
+                    pathB = dw.FileName;
+                }
+                try { new PreviewForm("Compare: " + nameA + " / " + Path.GetFileName(pathB), CompareWavs(nameA, pathA, Path.GetFileName(pathB), pathB)).Show(this); }
+                catch (Exception ex) { Log("Compare error: " + ex.Message); }
+                return;
+            }
             // only files of the same kind: program images (.img) with .img, BASIC text (.bas = .txt) with .bas / .txt
             bool img = Path.GetExtension(nameA).Equals(".img", StringComparison.OrdinalIgnoreCase);
             using (var d = new OpenFileDialog { Title = "Compare " + nameA + " with ...", InitialDirectory = txtDir.Text,
@@ -1674,10 +1698,134 @@ namespace UartSlTest
             return sb.ToString().Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
         }
 
+        // ---- WAV: BASIC text <-> tape recording (PC-1500 and PC-1600), Play, Compare of recordings
+        string UniquePath2(string path)
+        {
+            string dir = Path.GetDirectoryName(path), b = Path.GetFileNameWithoutExtension(path), e = Path.GetExtension(path);
+            for (int i = 2; File.Exists(path); i++) path = Path.Combine(dir, b + "_" + i + e);
+            return path;
+        }
+
+        void WavSelected()
+        {
+            if (lstFiles.SelectedItem == null) return;
+            string name = (string)lstFiles.SelectedItem;
+            string path = Path.Combine(txtDir.Text, name);
+            string ext = Path.GetExtension(name).ToLowerInvariant();
+            if (curModel != 0 && curModel != 1) { Log("WAV: the converters are for the PC-1500 and PC-1600 (choose one of them as the target computer)."); return; }
+            try
+            {
+                if (ext == ".wav") WavToBasic(path);
+                else if (ext == ".bas" || ext == ".txt") BasicToWav(path);
+                else Log("WAV: select a BASIC text file (.bas / .txt) or a .wav recording.");
+            }
+            catch (Exception ex) { Log("WAV error: " + ex.Message); }
+        }
+
+        void BasicToWav(string path)
+        {
+            string src = Encoding.GetEncoding(28591).GetString(File.ReadAllBytes(path));
+            string baseName = Path.GetFileNameWithoutExtension(path);
+            string tape = new string(baseName.ToUpperInvariant().Where(c => (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')).ToArray());
+            if (tape.Length == 0) tape = "PROGRAM";
+            int mode = 1;
+            if (curModel == 1)
+            {
+                var r = MessageBox.Show(this, "PC-1600 tape format:\r\n\r\nYes = MODE 0 (CE-1600P / CE-152, ASCII BASIC file, LOAD \"CAS:NAME\")\r\nNo = MODE 1 (CE-150, PC-1500 format, CLOAD)",
+                    "WAV: " + Path.GetFileName(path), MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                if (r == DialogResult.Cancel) return;
+                mode = r == DialogResult.Yes ? 0 : 1;
+            }
+            byte[] wav;
+            if (mode == 0) wav = TapeWav.Encode0(src, tape.Substring(0, Math.Min(8, tape.Length)));
+            else
+            {
+                string problem;
+                byte[] img = Pc1600Basic.Tokenize(src, curModel == 0, out problem);
+                if (img == null) { Log("WAV: tokenizer error: " + problem); return; }
+                if (img.Length == 0 || img[img.Length - 1] != 0xFF) { Array.Resize(ref img, img.Length + 1); img[img.Length - 1] = 0xFF; }
+                wav = TapeWav.Encode1(tape.Substring(0, Math.Min(7, tape.Length)), img);
+            }
+            string suffix = mode == 0 ? "_mode0_CE-1600P" : curModel == 1 ? "_mode1_CE-150" : "_CE-150";
+            string outPath = UniquePath2(Path.Combine(txtDir.Text, baseName + suffix + ".wav"));
+            File.WriteAllBytes(outPath, wav);
+            TapeWav.WavInfo wi; int wo, wl; TapeWav.Parse(wav, out wi, out wo, out wl);
+            Log("WAV written: " + Path.GetFileName(outPath) + " (" + (mode == 0 ? "MODE 0, CE-1600P, tape name " + tape.Substring(0, Math.Min(8, tape.Length)) : "CE-150 format, tape name " + tape.Substring(0, Math.Min(7, tape.Length))) + ", " + wi.Seconds.ToString("0") + " s).");
+            RefreshFiles();
+            int ix = lstFiles.Items.IndexOf(Path.GetFileName(outPath));
+            if (ix >= 0) lstFiles.SelectedIndex = ix;
+        }
+
+        void WavToBasic(string path)
+        {
+            byte[] wav = File.ReadAllBytes(path);
+            string name = null, text = null, why0 = null, why1 = null;
+            string how = null;
+            if (curModel == 1)
+            {
+                try { text = TapeWav.Decode0(wav, out name); how = "MODE 0 (CE-1600P)"; } catch (Exception ex) { why0 = ex.Message; }
+            }
+            if (text == null)
+            {
+                try
+                {
+                    byte[] prog = TapeWav.Decode1(wav, out name);
+                    string problem;
+                    text = Pc1600Basic.Detokenize(prog, curModel == 0, out problem);
+                    if (problem != null) { Log("WAV: conversion problem: " + problem); }
+                    how = "CE-150 format";
+                }
+                catch (Exception ex) { why1 = ex.Message; }
+            }
+            if (text == null) { Log("WAV: the recording cannot be decoded" + (why0 != null ? " (MODE 0: " + why0 + ")" : "") + (why1 != null ? " (CE-150 format: " + why1 + ")" : "") + "."); return; }
+            string baseName = SharpBase(Path.GetFileNameWithoutExtension(path));
+            string outPath = UniqueSharp(baseName, ".bas");
+            File.WriteAllBytes(outPath, Encoding.GetEncoding(28591).GetBytes(text));
+            Log("WAV decoded (" + how + (string.IsNullOrEmpty(name) ? "" : ", tape name " + name) + ") -> " + Path.GetFileName(outPath) + ".");
+            RefreshFiles();
+            int ix = lstFiles.Items.IndexOf(Path.GetFileName(outPath));
+            if (ix >= 0) lstFiles.SelectedIndex = ix;
+        }
+
+        void PlaySelected()
+        {
+            if (lstFiles.SelectedItem == null) return;
+            string path = Path.Combine(txtDir.Text, (string)lstFiles.SelectedItem);
+            if (!Path.GetExtension(path).Equals(".wav", StringComparison.OrdinalIgnoreCase)) return;
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true }); }
+            catch (Exception ex) { Log("Play error: " + ex.Message); }
+        }
+
+        // two recordings: only the audio data are compared, they are not decoded
+        string CompareWavs(string nameA, string pathA, string nameB, string pathB)
+        {
+            byte[] fa = File.ReadAllBytes(pathA), fb = File.ReadAllBytes(pathB);
+            TapeWav.WavInfo ia, ib; int oa, la, ob, lb;
+            if (!TapeWav.Parse(fa, out ia, out oa, out la)) throw new Exception(nameA + " is not a PCM WAV file");
+            if (!TapeWav.Parse(fb, out ib, out ob, out lb)) throw new Exception(nameB + " is not a PCM WAV file");
+            var sb = new StringBuilder();
+            sb.AppendLine("A: " + nameA + "   B: " + nameB);
+            sb.AppendLine("The recordings are compared as audio data (dates are not compared, the tape is not decoded).");
+            sb.AppendLine();
+            bool sameFmt = ia.Rate == ib.Rate && ia.Bits == ib.Bits && ia.Channels == ib.Channels;
+            int firstDiff = -1;
+            if (la == lb) for (int i = 0; i < la; i++) if (fa[oa + i] != fb[ob + i]) { firstDiff = i; break; }
+            if (sameFmt && la == lb && firstDiff < 0) { sb.AppendLine("The recordings are IDENTICAL (" + TapeWav.Describe(ia).Replace("\r\n", ", ") + ")."); return sb.ToString().Replace("\n", "\r\n").Replace("\r\r\n", "\r\n"); }
+            sb.AppendLine("The recordings are DIFFERENT:");
+            sb.AppendLine("  sampling:   A " + ia.Rate + " Hz, B " + ib.Rate + " Hz" + (ia.Rate == ib.Rate ? " (the same)" : " (different)"));
+            sb.AppendLine("  resolution: A " + ia.Bits + " bit, " + ia.Channels + " ch; B " + ib.Bits + " bit, " + ib.Channels + " ch" + (ia.Bits == ib.Bits && ia.Channels == ib.Channels ? " (the same)" : " (different)"));
+            sb.AppendLine("  duration:   A " + ia.Seconds.ToString("0.00") + " s, B " + ib.Seconds.ToString("0.00") + " s" + (Math.Abs(ia.Seconds - ib.Seconds) < 0.0005 ? " (the same)" : " (different)"));
+            sb.AppendLine("  audio data: A " + la.ToString("N0") + " B, B " + lb.ToString("N0") + " B" + (la == lb ? " (the same size)" : " (different size)"));
+            if (firstDiff >= 0 && sameFmt) sb.AppendLine("  the first different sample at " + (firstDiff / (double)(ia.Channels * (ia.Bits / 8)) / ia.Rate).ToString("0.000") + " s");
+            else if (la == lb && !sameFmt) sb.AppendLine("  the audio data have the same size but another format");
+            return sb.ToString().Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
+        }
+
         void ViewSelected()
         {
             if (lstFiles.SelectedItem == null) return;
             string name = (string)lstFiles.SelectedItem;
+            if (Path.GetExtension(name).Equals(".wav", StringComparison.OrdinalIgnoreCase)) return;
             try
             {
                 string path = Path.Combine(txtDir.Text, name);
@@ -1734,8 +1882,9 @@ namespace UartSlTest
         void SelectionChanged()
         {
             bool sel = lstFiles.SelectedItem != null;
-            if (btnView != null) btnView.Enabled = sel;
-            if (btnSend != null) btnSend.Enabled = sel && !sending && port != null && port.IsOpen;
+            string selExt = sel ? Path.GetExtension((string)lstFiles.SelectedItem).ToLowerInvariant() : "";
+            if (btnView != null) btnView.Enabled = sel && (selExt == ".bas" || selExt == ".txt" || selExt == ".wav");       // the WAV converter
+            if (btnSend != null) btnSend.Enabled = sel && selExt != ".wav" && !sending && port != null && port.IsOpen;
             if (btnDelete != null) btnDelete.Enabled = sel;
             if (btnConvert != null)
             {
@@ -1980,6 +2129,7 @@ int removed, kept, cut; List<string> moved;
             if (port == null || !port.IsOpen) { Log("Open the port first."); return; }
             if (sending) return;
             if (term != null) { Log("Close the terminal first."); return; }
+            if (Path.GetExtension(path).Equals(".wav", StringComparison.OrdinalIgnoreCase)) { Log("A WAV recording cannot be sent through the port (convert it to BASIC text with the WAV button first)."); return; }
             // before any sending: empty the receive buffers, so that they are ready for the answers of the Sharp
             lock (rxLock) { rx.Clear(); rxStartLogged = false; }
             try { port.DiscardInBuffer(); } catch { }
@@ -2331,6 +2481,7 @@ int removed, kept, cut; List<string> moved;
         public static Bitmap Terminal() { return Make((g, p, b) => { g.DrawRectangle(p, 2, 3, 16, 13); g.DrawLine(p, 5, 7, 8, 10); g.DrawLine(p, 5, 13, 8, 10); g.DrawLine(p, 10, 13, 14, 13); }); }
         public static Bitmap Flush() { return Make((g, p, b) => { g.FillPolygon(b, new[] { new Point(3, 3), new Point(17, 3), new Point(11, 10), new Point(11, 14), new Point(9, 14), new Point(9, 10) }); g.FillEllipse(b, 8, 15, 4, 4); }); }   // funnel + drop
         public static Bitmap Plane() { return Make((g, p, b) => { g.FillPolygon(b, new[] { new Point(2, 10), new Point(18, 3), new Point(13, 17), new Point(10, 12) }); }); }
+        public static Bitmap Note() { return Make((g, p, b) => { g.FillEllipse(b, 4, 12, 8, 6); g.DrawLine(p, 11, 14, 11, 3); g.DrawLine(p, 11, 3, 16, 6); }); }
         public static Bitmap File() { return Make((g, p, b) => { g.DrawRectangle(p, 5, 2, 10, 16); g.DrawLine(p, 8, 8, 12, 8); g.DrawLine(p, 8, 12, 12, 12); }); }
         // shooting star (yellow star head, curved light-blue forked tail) on a navy sky, drawn at any size
         public static Bitmap Comet(int size)
@@ -4199,6 +4350,351 @@ int removed, kept, cut; List<string> moved;
         public override void UpButton() { if (InputLock.Block()) return; base.UpButton(); }
         public override void DownButton() { if (InputLock.Block()) return; base.DownButton(); }
         protected override void OnMouseWheel(MouseEventArgs e) { if (InputLock.Active) { var h = e as HandledMouseEventArgs; if (h != null) h.Handled = true; return; } base.OnMouseWheel(e); }
+    }
+
+    // Tape recordings (WAV) of BASIC programs, ported from the converters of the repositories
+    // Sharp_PC-1600_Software_UART / Sharp_PC-1600_I2C_interface (tools/pc1600_bas2wav.py, pc1600_cas_bas2wav.py) and Sharp_PC-1500_I2C_interface:
+    //   MODE 1: the PC-1500 / CE-150 tape format (PC-1500 and the PC-1600 in MODE 1), the program is the tokenized image,
+    //   MODE 0: the PC-1600 format for the CE-1600P (LOAD "CAS:NAME"), the program is an ASCII BASIC file.
+    // 44100 Hz, 8 bit, mono. Decoding reads back what the encoders write (and the recordings of the same tools).
+    public static class TapeWav
+    {
+        public struct WavInfo { public int Channels, Rate, Bits; public long DataBytes; public double Seconds; }
+
+        // ---- the WAV container
+        public static bool Parse(byte[] f, out WavInfo info, out int dataOffset, out int dataLength) { return Parse(f, f == null ? 0 : f.Length, out info, out dataOffset, out dataLength); }
+
+        // fileLength = the real length of the file when only its first bytes are in f (the tip reads only the header)
+        public static bool Parse(byte[] f, long fileLength, out WavInfo info, out int dataOffset, out int dataLength)
+        {
+            info = new WavInfo(); dataOffset = 0; dataLength = 0;
+            if (f == null || f.Length < 44 || f[0] != 'R' || f[1] != 'I' || f[2] != 'F' || f[3] != 'F' || f[8] != 'W' || f[9] != 'A' || f[10] != 'V' || f[11] != 'E') return false;
+            int p = 12; bool fmt = false;
+            while (p + 8 <= f.Length)
+            {
+                string id = Encoding.ASCII.GetString(f, p, 4);
+                int len = BitConverter.ToInt32(f, p + 4);
+                if (id == "fmt " && p + 24 <= f.Length)
+                {
+                    int tag = BitConverter.ToUInt16(f, p + 8);
+                    info.Channels = BitConverter.ToUInt16(f, p + 10);
+                    info.Rate = BitConverter.ToInt32(f, p + 12);
+                    info.Bits = BitConverter.ToUInt16(f, p + 22);
+                    fmt = (tag == 1 || tag == 0xFFFE) && info.Channels > 0 && info.Rate > 0 && info.Bits > 0;
+                }
+                else if (id == "data")
+                {
+                    dataOffset = p + 8;
+                    dataLength = (int)(len < 0 ? fileLength - dataOffset : Math.Min((long)len, fileLength - dataOffset));
+                    break;
+                }
+                if (len < 0) return false;
+                p += 8 + len + (len & 1);
+            }
+            if (!fmt || dataOffset == 0) return false;
+            info.DataBytes = dataLength;
+            int frame = info.Channels * ((info.Bits + 7) / 8);
+            info.Seconds = frame > 0 ? dataLength / (double)frame / info.Rate : 0;
+            return true;
+        }
+
+        public static string Describe(WavInfo i)
+        {
+            int m = (int)(i.Seconds / 60);
+            return "Duration: " + m + ":" + (i.Seconds - m * 60).ToString("00.0", System.Globalization.CultureInfo.InvariantCulture) + " (" + i.Seconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " s)" +
+                   "\r\nSampling: " + i.Rate + " Hz\r\nResolution: " + i.Bits + " bit, " + (i.Channels == 1 ? "mono" : i.Channels == 2 ? "stereo" : i.Channels + " channels");
+        }
+
+        // the first channel as 8 bit unsigned samples
+        static byte[] Samples(byte[] f, out int rate)
+        {
+            WavInfo info; int off, len;
+            if (!Parse(f, out info, out off, out len)) throw new Exception("not a PCM WAV file");
+            rate = info.Rate;
+            int step = info.Channels * (info.Bits / 8);
+            if (info.Bits != 8 && info.Bits != 16) throw new Exception("only 8 and 16 bit recordings are supported");
+            int n = len / step;
+            var d = new byte[n];
+            for (int i = 0; i < n; i++)
+                d[i] = info.Bits == 8 ? f[off + i * step] : (byte)((BitConverter.ToInt16(f, off + i * step) >> 8) + 128);
+            return d;
+        }
+
+        static byte[] WavFile(byte[] data, int rate)
+        {
+            var o = new MemoryStream();
+            var w = new BinaryWriter(o);
+            w.Write(Encoding.ASCII.GetBytes("RIFF")); w.Write(36 + data.Length); w.Write(Encoding.ASCII.GetBytes("WAVEfmt "));
+            w.Write(16); w.Write((short)1); w.Write((short)1); w.Write(rate); w.Write(rate); w.Write((short)1); w.Write((short)8);
+            w.Write(Encoding.ASCII.GetBytes("data")); w.Write(data.Length); w.Write(data);
+            w.Flush();
+            return o.ToArray();
+        }
+
+        static long Round(double v) { return (long)Math.Round(v, MidpointRounding.ToEven); }
+
+        // ================================================================ MODE 1 (CE-150 format)
+        const double Fs = 44100.0;
+
+        static byte[] Header1(string name, byte[] prog)
+        {
+            byte[] nm = Encoding.GetEncoding(28591).GetBytes(name.ToUpperInvariant());
+            var h = new List<byte> { 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x01 };
+            for (int i = 0; i < 26; i++) h.Add(i < nm.Length && i < 7 ? nm[i] : (byte)0);
+            int n = prog.Length - 1;
+            h.AddRange(new byte[] { 0xC5, (byte)(n >> 8), (byte)n, 0, 0 });
+            int s = 0; foreach (byte b in h) s += b;
+            h.Add((byte)(s >> 8)); h.Add((byte)s);
+            return h.ToArray();
+        }
+
+        static byte[] Chunks1(byte[] prog)
+        {
+            var o = new List<byte>();
+            for (int p = 0; p < prog.Length; p += 80)
+            {
+                int n = Math.Min(80, prog.Length - p), s = 0;
+                for (int i = 0; i < n; i++) { o.Add(prog[p + i]); s += prog[p + i]; }
+                o.Add((byte)(s >> 8)); o.Add((byte)s);
+            }
+            return o.ToArray();
+        }
+
+        static List<int> Nibbles(byte[] bs) { var r = new List<int>(); foreach (byte b in bs) { r.Add(b & 15); r.Add(b >> 4); } return r; }
+
+        // the program = the tokenized image ending with FFh
+        public static byte[] Encode1(string name, byte[] prog)
+        {
+            var bits = new List<int>();
+            Action<IEnumerable<int>> frames = nibs => { foreach (int x in nibs) { bits.Add(0); for (int k = 0; k < 4; k++) bits.Add((x >> k) & 1); for (int k = 0; k < 6; k++) bits.Add(1); } };
+            var first = new List<int> { 0xA }; first.AddRange(Nibbles(Header1(name, prog)));
+            frames(first);
+            for (int i = 0; i < 76; i++) bits.Add(1);
+            frames(Nibbles(Chunks1(prog)));
+            for (int i = 0; i < 73; i++) bits.Add(1);
+            frames(new[] { 5, 5 });
+            for (int i = 0; i < 71; i++) bits.Add(1);
+            var edges = new List<double>();
+            double t = 0;
+            Action<double, int> tone = (f, cycles) => { double half = Fs / f / 2; for (int c = 0; c < cycles; c++) { t += half; edges.Add(t); t += half; edges.Add(t); } };
+            tone(2500, (int)Round(8.0 * 2500));
+            foreach (int b in bits) { if (b != 0) tone(2500, 8); else tone(1250, 4); }
+            int total = (int)t + 1;
+            var buf = new byte[total];
+            for (int i = 0; i < total; i++) buf[i] = 128;
+            const byte lo = 30, hi = 226;
+            double pos = 0; bool high = true;
+            foreach (double e in edges)
+            {
+                long a = Round(pos), z = Round(e);
+                byte v = high ? hi : lo;
+                for (long i = a; i < z && i < total; i++) buf[i] = v;
+                pos = e; high = !high;
+            }
+            return WavFile(buf, (int)Fs);
+        }
+
+        // returns the tape name and the program bytes (the tokenized image, FFh at the end)
+        public static byte[] Decode1(byte[] wav, out string name)
+        {
+            int rate;
+            byte[] d = Samples(wav, out rate);
+            double scale = Fs / rate;
+            var cr = new List<int>();
+            bool prev = d.Length > 0 && d[0] >= 128;
+            for (int i = 0; i < d.Length; i++) { bool s = d[i] >= 128; if (s && !prev) cr.Add(i); prev = s; }
+            var runs = new List<KeyValuePair<char, double>>();
+            for (int i = 1; i < cr.Count; i++)
+            {
+                double p = (cr[i] - cr[i - 1]) * scale;
+                char c = p >= 30 ? 'S' : (p < 22 ? 'F' : 'T');
+                if (c == 'T') continue;
+                if (runs.Count > 0 && runs[runs.Count - 1].Key == c) runs[runs.Count - 1] = new KeyValuePair<char, double>(c, runs[runs.Count - 1].Value + p);
+                else runs.Add(new KeyValuePair<char, double>(c, p));
+            }
+            var r = new List<int>();
+            foreach (var run in runs)
+            {
+                long n = Round((run.Value + (run.Key == 'S' ? 35 : 17.6)) / 140.0);
+                for (long k = 0; k < n; k++) r.Add(run.Key == 'S' ? 0 : 1);
+            }
+            int i2 = 0;
+            while (i2 < r.Count && r[i2] == 1) i2++;
+            var segs = new List<List<int>>(); var cur = new List<int>();
+            while (i2 + 11 <= r.Count)
+            {
+                bool ok = r[i2] == 0;
+                for (int k = 5; ok && k < 11; k++) if (r[i2 + k] != 1) ok = false;
+                if (ok)
+                {
+                    int v = 0; for (int k = 0; k < 4; k++) v |= r[i2 + 1 + k] << k;
+                    cur.Add(v); i2 += 11;
+                }
+                else { if (cur.Count > 0) { segs.Add(cur); cur = new List<int>(); } i2++; }
+            }
+            if (cur.Count > 0) segs.Add(cur);
+            if (segs.Count < 2 || segs[0].Count < 3) throw new Exception("no PC-1500 / CE-150 tape recording found");
+            var hdr = new List<byte>();
+            for (int k = 1; k < segs[0].Count - 1; k += 2) hdr.Add((byte)((segs[0][k + 1] << 4) | segs[0][k]));
+            var raw = new List<byte>();
+            for (int k = 0; k + 1 < segs[1].Count; k += 2) raw.Add((byte)((segs[1][k + 1] << 4) | segs[1][k]));
+            var prog = new List<byte>();
+            int q = 0;
+            while (q < raw.Count)
+            {
+                int end = Math.Min(q + 80, raw.Count - 2);
+                if (end <= q) break;
+                int s = 0; for (int k = q; k < end; k++) s += raw[k];
+                if ((s & 0xFFFF) != raw[end] * 256 + raw[end + 1]) throw new Exception("checksum error in the data at byte " + q);
+                for (int k = q; k < end; k++) prog.Add(raw[k]);
+                q = end + 2;
+            }
+            name = hdr.Count >= 35 ? Encoding.GetEncoding(28591).GetString(hdr.ToArray(), 9, 26).TrimEnd('\0', ' ') : "";
+            if (prog.Count == 0) throw new Exception("no program in the recording");
+            return prog.ToArray();
+        }
+
+        // ================================================================ MODE 0 (CE-1600P, ASCII BASIC file)
+        const double SHORT_HI = 163.0, SHORT_LO = 164.0, LONG_HI = 409.0, LONG_LO = 409.0;
+        const int HDR_S1 = 10000, HDR_L = 40, HDR_S2 = 40, DAT_S1 = 11000, DAT_L = 20, DAT_S2 = 20, BLOCK = 256;
+        const byte EOFC = 0x1A;
+
+        sealed class Synth0
+        {
+            readonly int rate;
+            public readonly List<byte> Buf = new List<byte>();
+            double pos;
+            const byte Hi = 226, Lo = 30;
+            public Synth0(int r) { rate = r; }
+            void Seg(double us, byte level)
+            {
+                double end = pos + us * rate / 1e6;
+                long a = Round(pos), b = Round(end);
+                for (long i = a; i < b; i++) Buf.Add(level);
+                pos = end;
+            }
+            public void Silence(double s)
+            {
+                double end = pos + s * rate;
+                long a = Round(pos), b = Round(end);
+                for (long i = a; i < b; i++) Buf.Add(128);
+                pos = end;
+            }
+            public void Bit(int v) { if (v != 0) { Seg(LONG_HI, Hi); Seg(LONG_LO, Lo); } else { Seg(SHORT_HI, Hi); Seg(SHORT_LO, Lo); } }
+            public void Bits(int v, int n) { for (int i = 0; i < n; i++) Bit(v); }
+            public void Byte(int b) { Bit(1); for (int i = 7; i >= 0; i--) Bit((b >> i) & 1); }
+            public void Block(byte[] data, int s1, int l1, int s2)
+            {
+                Bits(0, s1); Bits(1, l1); Bits(0, s2); Bit(1);
+                int total = 0;
+                foreach (byte b in data) { Byte(b); for (int k = 0; k < 8; k++) total += (b >> k) & 1; }
+                total &= 0xFFFF;
+                Byte(total >> 8); Byte(total & 0xFF); Bit(1);
+            }
+        }
+
+        // text = the BASIC listing (every line starts with a line number, at most 80 characters)
+        public static byte[] Encode0(string text, string name)
+        {
+            var lines = new List<string>();
+            foreach (string l in text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n')) lines.Add(l.TrimEnd());
+            while (lines.Count > 0 && lines[lines.Count - 1].Length == 0) lines.RemoveAt(lines.Count - 1);
+            foreach (string l in lines)
+            {
+                if (l.Length == 0 || !char.IsDigit(l[0])) throw new Exception("every line must start with a line number: " + (l.Length > 30 ? l.Substring(0, 30) : l));
+                if (l.Length > 80) throw new Exception("a line is longer than 80 characters: " + l.Substring(0, 30));
+            }
+            var data = new List<byte>(Encoding.GetEncoding(28591).GetBytes(string.Join("\r\n", lines.ToArray()) + "\r\n"));
+            data.Add(EOFC);
+            while (data.Count % BLOCK != 0) data.Add(0);
+            var hdr = new byte[48];
+            hdr[0] = 0x04;
+            byte[] nm = Encoding.ASCII.GetBytes(name.ToUpperInvariant());
+            for (int i = 0; i < 13; i++) hdr[1 + i] = i < nm.Length && i < 8 ? nm[i] : (byte)' ';
+            hdr[14] = (byte)'B'; hdr[15] = (byte)'A'; hdr[16] = (byte)'S';
+            hdr[17] = 0x0D; hdr[24] = 0x04; hdr[25] = 1; hdr[26] = 1;
+            var s = new Synth0(44100);
+            s.Silence(8.0);
+            s.Bits(0, HDR_S1); s.Bits(1, HDR_L); s.Bits(0, HDR_S2); s.Bit(1);
+            int total = 0;
+            foreach (byte b in hdr) { s.Byte(b); for (int k = 0; k < 8; k++) total += (b >> k) & 1; }
+            total &= 0xFFFF;
+            s.Byte(total >> 8); s.Byte(total & 0xFF); s.Bit(1);
+            s.Silence(2.0);
+            for (int p = 0; p < data.Count; p += BLOCK)
+            {
+                s.Block(data.GetRange(p, BLOCK).ToArray(), DAT_S1, DAT_L, DAT_S2);
+                s.Silence(4.0);
+            }
+            return WavFile(s.Buf.ToArray(), 44100);
+        }
+
+        static List<List<int>> Bursts(byte[] d, int rate)
+        {
+            var rising = new List<int>();
+            bool prev = d.Length > 0 && d[0] >= 128;
+            for (int i = 0; i < d.Length; i++) { bool s = d[i] >= 128; if (s && !prev) rising.Add(i); prev = s; }
+            var res = new List<List<int>>(); var cur = new List<int>();
+            for (int i = 1; i < rising.Count; i++)
+            {
+                double us = (rising[i] - rising[i - 1]) * 1e6 / rate;
+                if (us > 5000) { if (cur.Count > 0) res.Add(cur); cur = new List<int>(); }
+                else cur.Add(us > 520 ? 1 : 0);
+            }
+            if (cur.Count > 0) res.Add(cur);
+            return res;
+        }
+
+        static byte[] ParseBurst(List<int> bits, int s1min, int l1min, int s2min, out bool sumOk)
+        {
+            sumOk = false;
+            int i = 0, n = bits.Count, s1 = 0, l1 = 0, s2 = 0;
+            while (i < n && bits[i] == 0) { i++; s1++; }
+            while (i < n && bits[i] == 1) { i++; l1++; }
+            while (i < n && bits[i] == 0) { i++; s2++; }
+            if (s1 < s1min * 0.9 || l1 < l1min * 0.9 || s2 < s2min * 0.9) return null;
+            i++;
+            int count = (n - i - 1) / 9;
+            var o = new List<int>();
+            for (int k = 0; k < count; k++)
+            {
+                if (bits[i] != 1) return null;
+                int v = 0; for (int b = 1; b <= 8; b++) v = (v << 1) | bits[i + b];
+                o.Add(v); i += 9;
+            }
+            if (o.Count < 2) return null;
+            int calc = 0;
+            for (int k = 0; k < o.Count - 2; k++) for (int b = 0; b < 8; b++) calc += (o[k] >> b) & 1;
+            sumOk = (calc & 0xFFFF) == o[o.Count - 2] * 256 + o[o.Count - 1];
+            var res = new byte[o.Count - 2];
+            for (int k = 0; k < res.Length; k++) res[k] = (byte)o[k];
+            return res;
+        }
+
+        // returns the text of the ASCII file (up to the end-of-file code 1AH) and the tape name
+        public static string Decode0(byte[] wav, out string name)
+        {
+            int rate;
+            byte[] d = Samples(wav, out rate);
+            var bs = Bursts(d, rate);
+            if (bs.Count < 2) throw new Exception("no PC-1600 (CE-1600P) tape recording found");
+            bool ok;
+            byte[] hdr = ParseBurst(bs[0], HDR_S1, HDR_L, HDR_S2, out ok);
+            if (hdr == null || hdr.Length != 48) throw new Exception("no PC-1600 (CE-1600P) tape header found");
+            name = Encoding.GetEncoding(28591).GetString(hdr, 1, 13).Trim();
+            var data = new List<byte>();
+            for (int k = 1; k < bs.Count; k++)
+            {
+                bool sok;
+                byte[] blk = ParseBurst(bs[k], DAT_S1, DAT_L, DAT_S2, out sok);
+                if (blk == null) throw new Exception("block " + k + " cannot be read");
+                if (!sok) throw new Exception("checksum error in block " + k);
+                data.AddRange(blk);
+            }
+            int e = data.IndexOf(EOFC);
+            if (e < 0) e = data.Count;
+            return Encoding.GetEncoding(28591).GetString(data.GetRange(0, e).ToArray());
+        }
     }
 
     public static class AppInfo
