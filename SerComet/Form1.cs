@@ -1018,6 +1018,8 @@ namespace UartSlTest
                 port.DataReceived += OnData;
                 port.ErrorReceived += OnPortError;
                 port.Open();
+                // like Tera Term: DTR and RTS are switched on (many adapters and the Sharp interfaces send only when they see them)
+                try { port.DtrEnable = true; if (port.Handshake != Handshake.RequestToSend) port.RtsEnable = true; } catch { }
                 btnOpen.Text = "Close port";
                 btnOpen.Image = Icons.Cross();
                 SetRefreshMode(true);
