@@ -1556,6 +1556,7 @@ namespace UartSlTest
             if (Path.GetExtension(pathA).Equals(".img", StringComparison.OrdinalIgnoreCase))
                 return CompareImages(nameA, File.ReadAllBytes(pathA), nameB, File.ReadAllBytes(pathB));
             string ta = ListingOf(pathA), tb = ListingOf(pathB);
+            var sb = new StringBuilder();
             var oa = ListingLines(ta);
             var ob = ListingLines(tb);
             string rawA = string.Join("\n", oa.Select(x => x.Value).ToArray());
