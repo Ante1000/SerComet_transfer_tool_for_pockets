@@ -380,6 +380,7 @@ namespace UartSlTest
             };
             lstFiles.SelectedIndexChanged += delegate { SelectionChanged(); };
             btnSend.Enabled = false;
+            btnSendOther.Enabled = false;          // the port is closed at the start
             btnDelete.Enabled = false;
             btnConvert.Enabled = false;
             comboFlow.SelectedIndexChanged += delegate { ApplyFlow(); };
@@ -1032,6 +1033,7 @@ namespace UartSlTest
                 btnOpen.Image = Icons.Cross();
                 SetRefreshMode(true);
                 SetStatus(true);
+                UpdateSendButtons();
                 Log("Port " + name + " open (" + port.BaudRate + " 8N1).");
             }
             catch (Exception ex)
@@ -1108,6 +1110,7 @@ namespace UartSlTest
             banner.PortOpen = false;
             banner.Invalidate();
             led.IsOpen = false;
+            UpdateSendButtons();
         }
 
         void OnData(object sender, SerialDataReceivedEventArgs e)
@@ -1442,6 +1445,26 @@ namespace UartSlTest
             return res;
         }
 
+        // a line for the comparison: the spaces outside quotation marks are dropped (the PC-1600 lists "IF A THEN" as "IF A THEN" or
+        // "IF G$="F"THEN", "RND (4)" and so on), and in a REM the spaces before the comment; the text of strings and comments stays
+        static string NormLine(string line)
+        {
+            var o = new StringBuilder();
+            bool q = false;
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+                if (c == '"') { q = !q; o.Append(c); continue; }
+                if (q) { o.Append(c); continue; }
+                if (c == ' ' || c == '\t') continue;
+                o.Append(c);
+                if ((c == 'M' || c == 'm') && o.Length >= 3 && string.Compare(o.ToString(o.Length - 3, 3), "REM", StringComparison.OrdinalIgnoreCase) == 0
+                    && (o.Length == 3 || !char.IsLetter(o[o.Length - 4])))
+                { o.Append(line.Substring(i + 1).TrimStart()); break; }
+            }
+            return o.ToString();
+        }
+
         void CompareSelected()
         {
             if (lstFiles.SelectedItem == null) return;
@@ -1533,20 +1556,27 @@ namespace UartSlTest
             if (Path.GetExtension(pathA).Equals(".img", StringComparison.OrdinalIgnoreCase))
                 return CompareImages(nameA, File.ReadAllBytes(pathA), nameB, File.ReadAllBytes(pathB));
             string ta = ListingOf(pathA), tb = ListingOf(pathB);
-            var la = ListingLines(ta);
-            var lb = ListingLines(tb);
-            var sb = new StringBuilder();
+            var oa = ListingLines(ta);
+            var ob = ListingLines(tb);
+            string rawA = string.Join("\n", oa.Select(x => x.Value).ToArray());
+            string rawB = string.Join("\n", ob.Select(x => x.Value).ToArray());
+            int bytesA = Encoding.GetEncoding(28591).GetByteCount(rawA), bytesB = Encoding.GetEncoding(28591).GetByteCount(rawB);
+            var origA = new Dictionary<int, string>(); var origB = new Dictionary<int, string>();
+            foreach (var kv in oa) if (kv.Key >= 0 && !origA.ContainsKey(kv.Key)) origA[kv.Key] = kv.Value;
+            foreach (var kv in ob) if (kv.Key >= 0 && !origB.ContainsKey(kv.Key)) origB[kv.Key] = kv.Value;
+            // compared without the spaces outside strings and comments (they are the listing style of the machine, not the program)
+            var la = oa.Select(x => new KeyValuePair<int, string>(x.Key, NormLine(x.Value))).ToList();
+            var lb = ob.Select(x => new KeyValuePair<int, string>(x.Key, NormLine(x.Value))).ToList();
             string sa = string.Join("\n", la.Select(x => x.Value).ToArray());
             string sbb = string.Join("\n", lb.Select(x => x.Value).ToArray());
-            int bytesA = Encoding.GetEncoding(28591).GetByteCount(sa), bytesB = Encoding.GetEncoding(28591).GetByteCount(sbb);
             Func<List<KeyValuePair<int, string>>, string> first = l => l.Count == 0 ? "-" : (l[0].Key >= 0 ? l[0].Key.ToString() : "(no number)");
             Func<List<KeyValuePair<int, string>>, string> last = l => l.Count == 0 ? "-" : (l[l.Count - 1].Key >= 0 ? l[l.Count - 1].Key.ToString() : "(no number)");
             sb.AppendLine("A: " + nameA + "   B: " + nameB);
-            sb.AppendLine("Only the listings are compared (dates and the line ends are not).");
+            sb.AppendLine("Only the listings are compared (dates and the line ends are not); the spaces outside quotation marks and before a REM comment are ignored.");
             sb.AppendLine();
             if (sa == sbb)
             {
-                sb.AppendLine("The listings are IDENTICAL (" + la.Count + " lines, " + bytesA + " B).");
+                sb.AppendLine("The listings are IDENTICAL (" + la.Count + " lines)" + (rawA == rawB ? "." : ", only the spacing differs (A " + bytesA + " B, B " + bytesB + " B)."));
                 return sb.ToString().Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
             }
             sb.AppendLine("The listings are DIFFERENT:");
@@ -1576,7 +1606,10 @@ namespace UartSlTest
                     {
                         int k = 0;
                         while (k < kv.Value.Length && k < o.Length && kv.Value[k] == o[k]) k++;
-                        diffs.Add("  line " + kv.Key + " (first difference at character " + (k + 1) + ")\n    A: " + kv.Value + "\n    B: " + o);
+                        string oA, oB;
+                        if (!origA.TryGetValue(kv.Key, out oA)) oA = kv.Value;
+                        if (!origB.TryGetValue(kv.Key, out oB)) oB = o;
+                        diffs.Add("  line " + kv.Key + " (first difference at character " + (k + 1) + " of the line without spaces)\n    A: " + oA + "\n    B: " + oB);
                     }
                 }
             }
@@ -1651,11 +1684,19 @@ namespace UartSlTest
         }
 
         // View and Send selected are available only when a file is selected (Send also not while a transfer runs)
+        // Send selected and Send file are active (not grey) only while the port is open and nothing is being sent
+        void UpdateSendButtons()
+        {
+            bool open = port != null && port.IsOpen;
+            if (btnSendOther != null) btnSendOther.Enabled = open && !sending;
+            SelectionChanged();
+        }
+
         void SelectionChanged()
         {
             bool sel = lstFiles.SelectedItem != null;
             if (btnView != null) btnView.Enabled = sel;
-            if (btnSend != null) btnSend.Enabled = sel && !sending;
+            if (btnSend != null) btnSend.Enabled = sel && !sending && port != null && port.IsOpen;
             if (btnDelete != null) btnDelete.Enabled = sel;
             if (btnConvert != null)
             {
@@ -1977,7 +2018,7 @@ int removed, kept, cut; List<string> moved;
             {
                 // the flag must never stay on: while it is on the received data are dropped (nothing would be received any more)
                 Log("Send error: " + ex.Message);
-                sending = false; MarkSending(null); btnSendOther.Enabled = true; SelectionChanged();
+                sending = false; MarkSending(null); UpdateSendButtons();
                 return;
             }
             int total = data.Length, lastPct = -1;
@@ -2065,8 +2106,7 @@ int removed, kept, cut; List<string> moved;
                 lock (rxLock) { rx.Clear(); }
                 sending = false;
                 MarkSending(null);
-                btnSendOther.Enabled = true;
-                SelectionChanged();
+                UpdateSendButtons();
                 if (text && curModel == 1 && port != null) ResetPort();      // PC-1600 over the UART: the port is closed and opened again after the transmission (or Abort)
             }
         }
