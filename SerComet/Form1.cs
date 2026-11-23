@@ -441,7 +441,7 @@ namespace UartSlTest
             tips.SetToolTip(btnRefreshFiles, "Re-read the folder and refresh the file list.");
             tips.SetToolTip(btnTerminal, "Open a terminal window (like TeraTerm): typed characters are sent, received data is shown. Text modes only.");
             tips.SetToolTip(comboEol, "Line end sent after every line of a text file: CR, CR+LF (TeraTerm style) or LF. Red = CR alone or LF alone is probably a wrong choice for the Sharp and Casio computers (they expect CR+LF); TRS-80 / NEC and other UART computers can use any of them.");
-            tips.SetToolTip(btnView, "WAV: PC-1500 and PC-1600. A BASIC text file (.bas / .txt) is converted to a tape recording (.wav; the PC-1600 asks for MODE 0 = CE-1600P or MODE 1 = CE-150), a .wav recording is converted back to BASIC text.");
+            tips.SetToolTip(btnView, "WAV: PC-1500, PC-1600, PC-1350, PC-1360 and PC-E500 (the last three under Sharp (other)). A BASIC text file (.bas / .txt) is converted to a tape recording (.wav; the PC-1600 asks for MODE 0 = CE-1600P or MODE 1 = CE-150), a .wav recording is converted back to BASIC text.");
             tips.SetToolTip(chkEof, "Add the end-of-file marker. Text modes: after the file (and the dummy line) send the end-of-file character 1Ah (Ctrl-Z) so that the Sharp finishes the reception (1Ah is the end-of-file code of an ASCII file). Switch it off if the Sharp reports an error.");
             tips.SetToolTip(btnAbort, "Abort the transmission at once: stops sending the file and discards data waiting to be sent or received.");
             tips.SetToolTip(btnConvert, "Software UART mode only. Convert the selected file: BASIC text (.bas, .txt) to a program image (.img), or a program image (.img, or a .bin that is a BASIC program) to BASIC text (.bas).");
@@ -1726,7 +1726,7 @@ namespace UartSlTest
             string name = (string)lstFiles.SelectedItem;
             string path = Path.Combine(txtDir.Text, name);
             string ext = Path.GetExtension(name).ToLowerInvariant();
-            if (curModel != 0 && curModel != 1) { Log("WAV: the converters are for the PC-1500 and PC-1600 (choose one of them as the target computer)."); return; }
+            if (curModel > 2) { Log("WAV: the converters are for the Sharp PC-1500, PC-1600, PC-1350, PC-1360 and PC-E500 (choose Sharp PC-1500, Sharp PC-1600 or Sharp (other) as the target computer)."); return; }
             try
             {
                 if (ext == ".wav") WavToBasic(path);
@@ -1765,12 +1765,71 @@ namespace UartSlTest
             return result;
         }
 
+        // Sharp (other): which computer? returns 1350, 1360, 500 or -1
+        int AskOtherSharp(string file)
+        {
+            int result = -1;
+            using (var f = new Form())
+            {
+                f.Text = "WAV: " + file;
+                f.FormBorderStyle = FormBorderStyle.FixedDialog; f.MaximizeBox = false; f.MinimizeBox = false; f.ShowInTaskbar = false;
+                f.StartPosition = FormStartPosition.CenterParent;
+                f.ClientSize = new Size(470, 170);
+                var lbl = new Label
+                {
+                    Left = 14, Top = 12, Width = 442, Height = 100, AutoSize = false,
+                    Text = "Choose the computer for the tape recording:\r\n\r\n" +
+                           "PC-1350 / PC-1360 - the tokenized program on the tape (CLOAD).\r\n" +
+                           "PC-E500(S) - an ASCII BASIC file as SAVE \"CAS:NAME\" writes it (LOAD \"CAS:NAME\")."
+                };
+                var b1 = new Button { Text = "PC-1350", Left = 14, Top = 126, Width = 100, Height = 28 };
+                var b2 = new Button { Text = "PC-1360", Left = 124, Top = 126, Width = 100, Height = 28 };
+                var b3 = new Button { Text = "PC-E500(S)", Left = 234, Top = 126, Width = 100, Height = 28 };
+                var bc = new Button { Text = "Cancel", Left = 356, Top = 126, Width = 100, Height = 28, DialogResult = DialogResult.Cancel };
+                b1.Click += delegate { result = 1350; f.DialogResult = DialogResult.OK; };
+                b2.Click += delegate { result = 1360; f.DialogResult = DialogResult.OK; };
+                b3.Click += delegate { result = 500; f.DialogResult = DialogResult.OK; };
+                f.Controls.AddRange(new Control[] { lbl, b1, b2, b3, bc });
+                f.CancelButton = bc;
+                f.ShowDialog(this);
+            }
+            return result;
+        }
+
         void BasicToWav(string path)
         {
             string src = Encoding.GetEncoding(28591).GetString(File.ReadAllBytes(path));
             string baseName = Path.GetFileNameWithoutExtension(path);
             string tape = new string(baseName.ToUpperInvariant().Where(c => (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')).ToArray());
             if (tape.Length == 0) tape = "PROGRAM";
+            if (curModel == 2)
+            {
+                int pc = AskOtherSharp(Path.GetFileName(path));
+                if (pc < 0) return;
+                byte[] w2;
+                string suffix2;
+                if (pc == 500)
+                {
+                    w2 = TapeWav.EncodeAscii(src, tape.Substring(0, Math.Min(8, tape.Length)), true);
+                    suffix2 = "_E500_CAS";
+                }
+                else
+                {
+                    string problem2;
+                    byte[] img2 = SharpTok.Tokenize(src, pc, out problem2);
+                    if (img2 == null) { Log("WAV: tokenizer error: " + problem2); return; }
+                    w2 = TapeWav.Encode1350(tape.Substring(0, Math.Min(7, tape.Length)), img2, pc == 1350 ? 0x70 : 0x72);
+                    suffix2 = "_PC" + pc;
+                }
+                string out2 = UniquePath2(Path.Combine(txtDir.Text, baseName + suffix2 + ".wav"));
+                File.WriteAllBytes(out2, w2);
+                TapeWav.WavInfo wi2; int wo2, wl2; TapeWav.Parse(w2, out wi2, out wo2, out wl2);
+                Log("WAV written: " + Path.GetFileName(out2) + " (PC-" + (pc == 500 ? "E500(S)" : pc.ToString()) + ", tape name " + tape.Substring(0, Math.Min(pc == 500 ? 8 : 7, tape.Length)) + ", " + wi2.Seconds.ToString("0") + " s).");
+                RefreshFiles();
+                int ix2 = lstFiles.Items.IndexOf(Path.GetFileName(out2));
+                if (ix2 >= 0) lstFiles.SelectedIndex = ix2;
+                return;
+            }
             int mode = 1;
             if (curModel == 1)
             {
@@ -1802,6 +1861,55 @@ namespace UartSlTest
             byte[] wav = File.ReadAllBytes(path);
             string name = null, text = null, why0 = null, why1 = null;
             string how = null;
+            if (curModel == 2)
+            {
+                string warn2;
+                try
+                {
+                    int idb;
+                    byte[] prog = TapeWav.Decode1350(wav, out name, out idb, out warn2);
+                    string pr2;
+                    text = SharpTok.Detokenize(prog, idb == 0x70 ? 1350 : 1360, out pr2);
+                    how = "PC-" + (idb == 0x70 ? "1350" : "1360");
+                    if (warn2 != null) Log("WAV: " + warn2 + ".");
+                    if (pr2 != null) Log("WAV: conversion problem: " + pr2);
+                }
+                catch (Exception ex) { why0 = ex.Message; }
+                if (text == null)
+                {
+                    try
+                    {
+                        byte[] hdr, data;
+                        TapeWav.DecodeTape0(wav, true, out hdr, out data);
+                        name = Encoding.GetEncoding(28591).GetString(hdr, 1, 13).Trim();
+                        if (hdr[0] == 0x04)
+                        {
+                            int e = Array.IndexOf(data, (byte)0x1A);
+                            text = Encoding.GetEncoding(28591).GetString(data, 0, e < 0 ? data.Length : e);
+                            how = "PC-E500(S), ASCII file";
+                        }
+                        else
+                        {
+                            byte[] img;
+                            if (!ProgImage.FindLines(data, out img)) throw new Exception("no BASIC program in the recording (header type " + hdr[0].ToString("X2") + ")");
+                            string pr3;
+                            text = SharpTok.DetokenizeE500(img, out pr3);
+                            how = "PC-E500(S), CSAVE";
+                            if (pr3 != null) Log("WAV: conversion problem: " + pr3);
+                        }
+                    }
+                    catch (Exception ex) { why1 = ex.Message; }
+                }
+                if (text == null) { Log("WAV: the recording cannot be decoded (PC-1350/1360: " + why0 + ") (PC-E500: " + why1 + ")."); return; }
+                string base2 = SharpBase(Path.GetFileNameWithoutExtension(path));
+                string out3 = UniqueSharp(base2, ".bas");
+                File.WriteAllBytes(out3, Encoding.GetEncoding(28591).GetBytes(text));
+                Log("WAV decoded (" + how + (string.IsNullOrEmpty(name) ? "" : ", tape name " + name) + ") -> " + Path.GetFileName(out3) + ".");
+                RefreshFiles();
+                int ix3 = lstFiles.Items.IndexOf(Path.GetFileName(out3));
+                if (ix3 >= 0) lstFiles.SelectedIndex = ix3;
+                return;
+            }
             if (curModel == 1)
             {
                 try { text = TapeWav.Decode0(wav, out name); how = "MODE 0 (CE-1600P)"; } catch (Exception ex) { why0 = ex.Message; }
@@ -4393,6 +4501,273 @@ int removed, kept, cut; List<string> moved;
         protected override void OnMouseWheel(MouseEventArgs e) { if (InputLock.Active) { var h = e as HandledMouseEventArgs; if (h != null) h.Handled = true; return; } base.OnMouseWheel(e); }
     }
 
+    // BASIC tokens (intermediate codes) of the Sharp PC-1350, PC-1360 and PC-E500(S): the table word = code is a fact about the ROM of these computers,
+    // the tokenizer, the detokenizer and the tape routines are written from the formats (checked against recordings made by the computers).
+    //   PC-1350: one byte tokens (ID 70H on the tape); PC-1360: two byte tokens FExx and line numbers after GOTO ... as 1F hi lo (ID 72H);
+    //   PC-E500: two byte tokens FExx, numbers as 1D + 7 BCD bytes, line numbers 1F hi lo, 1E = a jump length (REM, IF).
+    public static class SharpTok
+    {
+        const string S1350 = "ABS=99;ACS=9E;AHC=8E;AHS=8D;AHT=8F;AND=A1;AREAD=E1;ASC=A4;ASN=9D;ATN=9F;BASIC=EC;BEEP=C4;CALL=CC;CHAIN=E5;CHR$=A8;CLEAR=C9;CLOAD=B7;CLOSE=BC;CLS=CE;CONSOLE=BF;CONT=B2;COS=96;CSAVE=B6;CUR=89;CURSOR=CF;DATA=DC;DECI=84;DEG=9B;DEGREE=C1;DIM=CB;DMS=9C;END=D8;EQU#=B9;EXP=93;FACT=90;FOR=D5;GCURSOR=E6;GOSUB=E0;GOTO=C6;GPRINT=E7;GRAD=C3;HCS=8B;HEX=85;HSN=8A;HTN=8C;IF=D4;INKEY$=AD;INPUT=DF;INT=98;LEFT$=AB;LEN=A6;LET=D6;LINE=E8;LIST=B4;LLIST=B5;LN=91;LOAD=BE;LOG=92;LPRINT=E2;MDF=80;MEM=AF;MEM#=BA;MERGE=B8;MID$=AA;NEW=B1;NEXT=D9;NOT=A3;ON=D3;OPEN=BB;OPEN$=EE;OR=A2;PASS=B3;PAUSE=DD;PEEK=A7;PI=AE;POINT=E9;POKE=CD;POL=82;PRESET=EB;PRINT=DE;PSET=EA;RADIAN=C2;RANDOM=C0;RCP=87;READ=DB;REC=81;REM=D7;RESTORE=E4;RETURN=E3;RIGHT$=AC;RND=A0;ROT=83;RUN=B0;SAVE=BD;SGN=9A;SIN=95;SQR=94;SQU=88;STEP=D1;STOP=DA;STR$=A9;TAN=97;TEN=86;TEXT=ED;THEN=D2;TO=D0;TROFF=C8;TRON=C7;USING=CA;VAL=A5;WAIT=C5";
+        const string S1360 = "ABS=FE99;ACS=FE9E;AHC=FE8E;AHS=FE8D;AHT=FE8F;AKCNV$=FEE0;AND=FEA1;APPEND=FE72;AREAD=FE63;ARUN=FE74;AS=FE73;ASC=FED0;ASN=FE9D;ATN=FE9F;AUTO=FE1A;AUTOGOTO=FE75;BASIC=FE36;BEEP=FE29;CALL=FE31;CHAIN=FE67;CHR$=FEF0;CIRCLE=FE6F;CLEAR=FE2E;CLOAD=FE16;CLOSE=FE22;CLS=FE50;COLOR=FE44;CONSOLE=FE24;CONT=FE12;CONVERT=FE1E;COPY=FE3D;COS=FE96;CROTATE=FE6E;CSAVE=FE20;CSIZE=FE43;CUB=FEBF;CUR=FE89;CURSOR=FE51;DATA=FE5E;DECI=FE84;DEFDBL=FE46;DEFSNG=FE47;DEG=FE9B;DEGREE=FE26;DELETE=FE1B;DIM=FE30;DMS=FE9C;DSKF=FEB1;END=FE5A;EOF=FEB0;ERASE=FE3A;ERL=FEC1;ERN=FEC0;ERROR=FE78;EXP=FE93;FACT=FE90;FIELD=FE48;FILES=FE1C;FOR=FE57;GCURSOR=FE68;GET=FE4A;GLCURSOR=FE6C;GOSUB=FE62;GOTO=FE2B;GPRINT=FE33;GRAD=FE28;GRAPH=FE41;HCS=FE8B;HEX=FE85;HEX$=FEF2;HSN=FE8A;HTN=FE8C;IF=FE56;INIT=FE1D;INKEY$=FEE9;INPUT=FE61;INT=FE98;JIS$=FEE2;KACNV$=FEE1;KILL=FE3C;KLEFT$=FEEE;KLEN=FED3;KMID$=FEED;KRIGHT$=FEEF;LEFT$=FEEB;LEN=FED2;LET=FE58;LF=FE42;LFILES=FE3B;LINE=FE69;LIST=FE14;LLINE=FE6A;LLIST=FE15;LN=FE91;LOAD=FE18;LOC=FEB3;LOCATE=FE51;LOF=FEB2;LOG=FE92;LPRINT=FE64;LSET=FE4B;LTEXT=FE40;MDF=FE80;MEM=FEAF;MERGE=FE17;MID$=FEEA;NAME=FE3E;NCR=FEB6;NEW=FE11;NEXT=FE5B;NOT=FEA3;NPR=FEB7;ON=FE55;OPEN=FE21;OPEN$=FEE8;OR=FEA2;OUTPUT=FE71;PAINT=FE70;PASS=FE13;PAUSE=FE5F;PEEK=FEA4;PI=FEAE;POINT=FEAD;POKE=FE32;POL=FE82;PRESET=FE35;PRINT=FE60;PSET=FE34;PUT=FE49;RADIAN=FE27;RANDOM=FE25;RANDOMIZE=FE25;RCP=FE87;READ=FE5D;REC=FE81;REM=FE59;RENUM=FE19;RESTORE=FE66;RETURN=FE65;RIGHT$=FEEC;RLINE=FE6B;RND=FEA0;ROT=FE83;RSET=FE4C;RUN=FE10;SAVE=FE23;SET=FE3F;SGN=FE9A;SIN=FE95;SORGN=FE6D;SQR=FE94;SQU=FE88;STEP=FE53;STOP=FE5C;STR$=FEF1;TAN=FE97;TEN=FE86;TEXT=FE37;THEN=FE54;TO=FE52;TROFF=FE2D;TRON=FE2C;USING=FE2F;VAL=FED1;WAIT=FE2A;WIDTH=FE38;XOR=FEA5";
+        const string SE500 = "ABS=FE99;ACS=FE9E;AER=FEBE;AHC=FE8E;AHS=FE8D;AHT=FE8F;AKCNV$=FEE0;AND=FEA1;APPEND=FE72;ARUN=FE74;AS=FE73;ASC=FED0;ASN=FE9D;ATN=FE9F;AUTO=FE1A;AUTOGOTO=FE75;BASIC=FE36;BDATA$=FE0C;BEEP=FE29;BTEXT$=FE0B;CALL=FE31;CASE=FE7D;CHAIN=FE67;CHR$=FEF0;CIRCLE=FE6F;CLEAR=FE2E;CLOAD=FE16;CLOSE=FE22;CLS=FE50;COLOR=FE44;CONSOLE=FE24;CONT=FE12;CONVERT=FE1E;COPY=FE3D;COS=FE96;CROTATE=FE6E;CSAVE=FE20;CSIZE=FE43;CUB=FEBF;CUR=FE89;CURSOR=FE51;DATA=FE5E;DECI=FE84;DEFAULT=FE7E;DEFDBL=FE46;DEFSNG=FE47;DEG=FE9B;DEGREE=FE26;DELETE=FE1B;DIM=FE30;DMS=FE9C;DSKF=FEB1;ELSE=FE76;END=FE5A;ENDIF=FE4D;ENDSWITCH=FE7F;EOF=FEB0;ERASE=FE3A;ERL=FEC1;ERN=FEC0;ERROR=FE78;EVAL=FEA7;EXP=FE93;FACT=FE90;FIELD=FE48;FILES=FE1C;FOR=FE57;FRE=FEAF;GCURSOR=FE68;GET=FE4A;GLCURSOR=FE6C;GOSUB=FE62;GOTO=FE2B;GPRINT=FE33;GRAD=FE28;GRAPH=FE41;HCS=FE8B;HEX=FE85;HEX$=FEF2;HSN=FE8A;HTN=FE8C;IF=FE56;INIT=FE1D;INKEY$=FEE9;INPUT=FE61;INT=FE98;JIS$=FEE2;KACNV$=FEE1;KEY=FE79;KILL=FE3C;KLEFT$=FEEE;KLEN=FED3;KMID$=FEED;KRIGHT$=FEEF;LEFT$=FEEB;LEN=FED2;LET=FE58;LF=FE42;LFILES=FE3B;LINE=FE69;LIST=FE14;LLINE=FE6A;LLIST=FE15;LN=FE91;LOAD=FE18;LOC=FEB3;LOCATE=FE51;LOF=FEB2;LOG=FE92;LPRINT=FE64;LSET=FE4B;LTEXT=FE40;MDF=FE80;MEM$=FE0D;MERGE=FE17;MID$=FEEA;NAME=FE3E;NCR=FEB6;NEW=FE11;NEXT=FE5B;NOT=FEA3;NPR=FEB7;ON=FE55;OPEN=FE21;OPEN$=FEE8;OR=FEA2;OUTPUT=FE71;PAINT=FE70;PASS=FE13;PAUSE=FE5F;PEEK=FEA4;PI=FEAE;POINT=FEAD;POKE=FE32;POL=FE82;PRESET=FE35;PRINT=FE60;PSET=FE34;PUT=FE49;RADIAN=FE27;RANDOM=FE25;RANDOMIZE=FE25;RCP=FE87;READ=FE5D;REC=FE81;REM=FE59;RENUM=FE19;REPEAT=FE4E;RESERVED=FE00;RESTORE=FE66;RESUME=FE77;RETURN=FE65;RIGHT$=FEEC;RLINE=FE6B;RND=FEA0;ROT=FE83;RSET=FE4C;RUN=FE10;SAVE=FE23;SET=FE3F;SGN=FE9A;SIN=FE95;SORGN=FE6D;SQR=FE94;SQU=FE88;STEP=FE53;STOP=FE5C;STR$=FEF1;SWITCH=FE7C;TAN=FE97;TEN=FE86;TEXT=FE37;THEN=FE54;TO=FE52;TROFF=FE2D;TRON=FE2C;UNTIL=FE4F;USING=FE2F;VAL=FED1;WAIT=FE2A;WEND=FE7B;WHILE=FE7A;WIDTH=FE38;XOR=FEA5";
+
+        sealed class Table
+        {
+            public readonly Dictionary<string, int> Code = new Dictionary<string, int>();
+            public readonly Dictionary<int, string> Name = new Dictionary<int, string>();
+            public readonly List<string> Words = new List<string>();
+            public Table(string spec, params string[] prefer)
+            {
+                var all = new List<string>(spec.Split(';'));
+                all.Sort(StringComparer.Ordinal);
+                foreach (string item in all)
+                {
+                    int k = item.LastIndexOf('=');
+                    string w = item.Substring(0, k);
+                    int v = Convert.ToInt32(item.Substring(k + 1), 16);
+                    Code[w] = v;
+                    if (!Name.ContainsKey(v)) Name[v] = w;          // for a code with several words the first one (alphabetically) is listed
+                }
+                foreach (string pw in prefer) { int pv; if (Code.TryGetValue(pw, out pv)) Name[pv] = pw; }
+                Words.AddRange(Code.Keys);
+                Words.Sort((a, b) => b.Length != a.Length ? b.Length - a.Length : string.CompareOrdinal(a, b));
+            }
+        }
+
+        static Table t1350, t1360, tE500;
+        static Table Get(int pc)
+        {
+            if (pc == 1350) return t1350 ?? (t1350 = new Table(S1350));
+            if (pc == 1360) return t1360 ?? (t1360 = new Table(S1360));
+            return tE500 ?? (tE500 = new Table(SE500, "LOCATE"));
+        }
+
+        // codes after which a line number may follow (PC-1360 / PC-E500): GOSUB GOTO LIST RESTORE RESUME RUN THEN ARUN AUTO AUTOGOTO ELSE
+        static readonly int[] Lbl = { 0xFE62, 0xFE2B, 0xFE14, 0xFE66, 0xFE77, 0xFE10, 0xFE54, 0xFE74, 0xFE1A, 0xFE75, 0xFE76 };
+        // ... and lists of numbers: DELETE LLIST RENUM CHAIN
+        static readonly int[] LbLst = { 0xFE1B, 0xFE15, 0xFE19, 0xFE67 };
+        const int OnCode = 0xFE55;
+
+        static void AddCode(List<byte> o, int v) { if (v > 255) o.Add((byte)(v >> 8)); o.Add((byte)v); }
+
+        static List<byte> Line(string body, Table t, bool two)
+        {
+            var o = new List<byte>();
+            int i = 0, n = body.Length;
+            bool on = false;
+            while (i < n)
+            {
+                char c = body[i];
+                if (c == ' ') { i++; continue; }
+                if (c == '"')
+                {
+                    int j = body.IndexOf('"', i + 1);
+                    if (j < 0) j = n - 1;
+                    for (int k = i; k <= j; k++) o.Add((byte)body[k]);
+                    i = j + 1;
+                    continue;
+                }
+                string u = body.Substring(i).ToUpperInvariant();
+                string hit = null;
+                foreach (string w in t.Words) if (u.StartsWith(w, StringComparison.Ordinal)) { hit = w; break; }
+                if (hit != null)
+                {
+                    int v = t.Code[hit];
+                    AddCode(o, v);
+                    i += hit.Length;
+                    if (two && v == OnCode) on = true;
+                    if (two && (Array.IndexOf(Lbl, v) >= 0 || Array.IndexOf(LbLst, v) >= 0))
+                    {
+                        bool lst = Array.IndexOf(LbLst, v) >= 0 || on;
+                        while (true)
+                        {
+                            while (i < n && body[i] == ' ') i++;
+                            int k = i;
+                            while (k < n && char.IsDigit(body[k])) k++;
+                            if (k == i) break;
+                            int num;
+                            if (!int.TryParse(body.Substring(i, k - i), out num) || num > 65279) break;
+                            o.Add(0x1F); o.Add((byte)(num >> 8)); o.Add((byte)num);
+                            i = k;
+                            int m = i;
+                            while (m < n && body[m] == ' ') m++;
+                            if (lst && m < n && body[m] == ',') { o.Add((byte)','); i = m + 1; continue; }
+                            break;
+                        }
+                    }
+                    if (hit == "REM")
+                    {
+                        string rest = body.Substring(i).TrimStart(' ');
+                        foreach (char ch in rest) o.Add((byte)ch);
+                        i = n;
+                    }
+                    else if (hit == "DATA")
+                    {
+                        string rest = body.Substring(i).TrimStart(' ');
+                        bool q = false; int k = 0;
+                        while (k < rest.Length)
+                        {
+                            if (rest[k] == '"') q = !q;
+                            if (rest[k] == ':' && !q) break;
+                            k++;
+                        }
+                        for (int m = 0; m < k; m++) o.Add((byte)rest[m]);
+                        i = n - (rest.Length - k);
+                    }
+                    continue;
+                }
+                o.Add((byte)(c >= 'a' && c <= 'z' ? c - 32 : c));
+                i++;
+            }
+            return o;
+        }
+
+        // pc = 1350 or 1360: the BASIC text -> the program image (lines [number 2 B][length][tokens ... 0D]) without the end marker
+        public static byte[] Tokenize(string text, int pc, out string problem)
+        {
+            problem = null;
+            Table t = Get(pc);
+            bool two = pc != 1350;
+            var lines = new SortedDictionary<int, byte[]>();
+            foreach (string raw in text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+            {
+                string s = raw.Trim().TrimEnd('\u001A');
+                if (s.Length == 0) continue;
+                int i = 0;
+                while (i < s.Length && char.IsDigit(s[i])) i++;
+                int no;
+                if (i == 0 || !int.TryParse(s.Substring(0, i), out no)) { problem = "no line number: " + (s.Length > 30 ? s.Substring(0, 30) : s); return null; }
+                if (no < 1 || no > 65279) { problem = "line number out of range: " + no; return null; }
+                List<byte> b = Line(s.Substring(i).TrimStart(), t, two);
+                b.Add(0x0D);
+                if (b.Count > 255) { problem = "line " + no + " is too long (" + b.Count + " bytes)"; return null; }
+                var l = new List<byte> { (byte)(no >> 8), (byte)no, (byte)b.Count };
+                l.AddRange(b);
+                lines[no] = l.ToArray();
+            }
+            var o = new List<byte>();
+            foreach (var kv in lines) o.AddRange(kv.Value);
+            return o.ToArray();
+        }
+
+        // pc = 1350 or 1360: the program image -> BASIC text
+        public static string Detokenize(byte[] img, int pc, out string problem)
+        {
+            problem = null;
+            Table t = Get(pc);
+            bool two = pc != 1350;
+            var sb = new StringBuilder();
+            int p = 0;
+            while (p + 3 <= img.Length && img[p] != 0xFF)
+            {
+                int no = img[p] * 256 + img[p + 1], ln = img[p + 2];
+                if (p + 3 + ln > img.Length) { problem = "the last line is cut"; break; }
+                int end = p + 3 + ln;
+                if (end > p + 3 && img[end - 1] == 0x0D) end--;
+                var s = new StringBuilder();
+                bool q = false;
+                int i = p + 3;
+                while (i < end)
+                {
+                    int b = img[i];
+                    if (q) { s.Append((char)b); i++; if (b == 34) q = false; continue; }
+                    if (b == 34) { q = true; s.Append('"'); i++; continue; }
+                    if (two && b == 0x1F && i + 2 < end) { s.Append(img[i + 1] * 256 + img[i + 2]); i += 3; continue; }
+                    int v = -1;
+                    if (two) { if (i + 1 < end && b >= 0xE0) { int c2 = (b << 8) | img[i + 1]; if (t.Name.ContainsKey(c2)) { v = c2; i += 2; } } }
+                    else if (t.Name.ContainsKey(b)) { v = b; i++; }
+                    if (v >= 0)
+                    {
+                        string w = t.Name[v];
+                        if (s.Length > 0 && char.IsLetterOrDigit(s[s.Length - 1])) s.Append(' ');
+                        s.Append(w).Append(' ');
+                        if (w == "REM" || w == "DATA") { while (i < end) s.Append((char)img[i++]); }
+                        continue;
+                    }
+                    s.Append((char)b); i++;
+                }
+                sb.Append(no).Append(' ').Append(s.ToString().TrimEnd()).Append("\r\n");
+                p += 3 + ln;
+            }
+            return sb.ToString();
+        }
+
+        // PC-E500: the number 1D + exponent (2 BCD bytes) + mantissa (5 BCD bytes) -> text; null if the bytes are no BCD
+        static string E500Number(byte[] b, int i)
+        {
+            var d = new StringBuilder();
+            for (int k = 0; k < 7; k++) { int hi = b[i + k] >> 4, lo = b[i + k] & 15; if (hi > 9 || lo > 9) return null; d.Append(hi).Append(lo); }
+            string all = d.ToString();
+            int ex = int.Parse(all.Substring(0, 4));
+            if (ex >= 5000) ex -= 10000;
+            string ds = all.Substring(4).TrimEnd('0');
+            if (ds.Length == 0) return "0";
+            if (ex >= 0)
+            {
+                int ip = ex + 1;
+                if (ds.Length <= ip) return ds.PadRight(ip, '0');
+                return ds.Substring(0, ip) + "." + ds.Substring(ip);
+            }
+            return "." + new string('0', -ex - 1) + ds;
+        }
+
+        // PC-E500(S): the program image (CSAVE) -> BASIC text; the lines are "number: statements"
+        public static string DetokenizeE500(byte[] img, out string problem)
+        {
+            problem = null;
+            Table t = Get(500);
+            var sb = new StringBuilder();
+            int p = 0;
+            while (p + 3 <= img.Length && img[p] != 0xFF)
+            {
+                int no = img[p] * 256 + img[p + 1], ln = img[p + 2];
+                if (p + 3 + ln > img.Length) { problem = "the last line is cut"; break; }
+                int end = p + 3 + ln;
+                if (end > p + 3 && img[end - 1] == 0x0D) end--;
+                var s = new StringBuilder();
+                bool q = false;
+                int i = p + 3;
+                while (i < end)
+                {
+                    int b = img[i];
+                    if (q) { s.Append((char)b); i++; if (b == 34) q = false; continue; }
+                    if (b == 34) { q = true; s.Append('"'); i++; continue; }
+                    if (b == 0xFE && i + 1 < end)
+                    {
+                        int v = 0xFE00 | img[i + 1];
+                        string w;
+                        if (t.Name.TryGetValue(v, out w))
+                        {
+                            i += 2;
+                            if (s.Length > 0 && char.IsLetterOrDigit(s[s.Length - 1])) s.Append(' ');
+                            s.Append(w);
+                            if (w == "REM")
+                            {
+                                s.Append(' ');
+                                while (i < end && img[i] != 0x1E) s.Append((char)img[i++]);          // spaces before the jump length
+                                if (i + 1 < end) i += 2;                                              // 1E, the length of the comment
+                                while (i < end) s.Append((char)img[i++]);
+                            }
+                            else s.Append(' ');
+                            continue;
+                        }
+                    }
+                    if (b == 0x1F && i + 2 < end) { s.Append(img[i + 1] * 256 + img[i + 2]); i += 3; continue; }
+                    if (b == 0x1E && i + 1 < end) { i += 2; continue; }
+                    if (b == 0x1D && i + 7 < end)
+                    {
+                        string num = E500Number(img, i + 1);
+                        if (num != null) { s.Append(num); i += 8; continue; }
+                    }
+                    s.Append((char)b); i++;
+                }
+                sb.Append(no).Append(": ").Append(s.ToString().Trim()).Append("\r\n");
+                p += 3 + ln;
+            }
+            return sb.ToString();
+        }
+    }
+
     // Tape recordings (WAV) of BASIC programs, ported from the converters of the repositories
     // Sharp_PC-1600_Software_UART / Sharp_PC-1600_I2C_interface (tools/pc1600_bas2wav.py, pc1600_cas_bas2wav.py) and Sharp_PC-1500_I2C_interface:
     //   MODE 1: the PC-1500 / CE-150 tape format (PC-1500 and the PC-1600 in MODE 1), the program is the tokenized image,
@@ -4606,7 +4981,9 @@ int removed, kept, cut; List<string> moved;
             public readonly List<byte> Buf = new List<byte>();
             double pos;
             const byte Hi = 226, Lo = 30;
+            readonly double sh = SHORT_HI, sl = SHORT_LO, lh = LONG_HI, ll = LONG_LO;
             public Synth0(int r) { rate = r; }
+            public Synth0(int r, double sHi, double sLo, double lHi, double lLo) { rate = r; sh = sHi; sl = sLo; lh = lHi; ll = lLo; }
             void Seg(double us, byte level)
             {
                 double end = pos + us * rate / 1e6;
@@ -4621,7 +4998,7 @@ int removed, kept, cut; List<string> moved;
                 for (long i = a; i < b; i++) Buf.Add(128);
                 pos = end;
             }
-            public void Bit(int v) { if (v != 0) { Seg(LONG_HI, Hi); Seg(LONG_LO, Lo); } else { Seg(SHORT_HI, Hi); Seg(SHORT_LO, Lo); } }
+            public void Bit(int v) { if (v != 0) { Seg(lh, Hi); Seg(ll, Lo); } else { Seg(sh, Hi); Seg(sl, Lo); } }
             public void Bits(int v, int n) { for (int i = 0; i < n; i++) Bit(v); }
             public void Byte(int b) { Bit(1); for (int i = 7; i >= 0; i--) Bit((b >> i) & 1); }
             public void Block(byte[] data, int s1, int l1, int s2)
@@ -4635,7 +5012,11 @@ int removed, kept, cut; List<string> moved;
         }
 
         // text = the BASIC listing (every line starts with a line number, at most 80 characters)
-        public static byte[] Encode0(string text, string name)
+        public static byte[] Encode0(string text, string name) { return EncodeAscii(text, name, false); }
+
+        // e500 = the PC-E500(S) (SAVE "CAS:" ASCII): the same file layout as the PC-1600 MODE 0, the pulses of a recording of the PC-E500
+        // (333 / 833 us), 6405 and 7536 leading pulses; the layout was checked with a CSAVE recording of the PC-E500, an ASCII recording was not available
+        public static byte[] EncodeAscii(string text, string name, bool e500)
         {
             var lines = new List<string>();
             foreach (string l in text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n')) lines.Add(l.TrimEnd());
@@ -4654,9 +5035,10 @@ int removed, kept, cut; List<string> moved;
             for (int i = 0; i < 13; i++) hdr[1 + i] = i < nm.Length && i < 8 ? nm[i] : (byte)' ';
             hdr[14] = (byte)'B'; hdr[15] = (byte)'A'; hdr[16] = (byte)'S';
             hdr[17] = 0x0D; hdr[24] = 0x04; hdr[25] = 1; hdr[26] = 1;
-            var s = new Synth0(44100);
+            int hs1 = e500 ? 6405 : HDR_S1, ds1 = e500 ? 7536 : DAT_S1;
+            var s = e500 ? new Synth0(44100, 166.5, 166.5, 416.5, 416.5) : new Synth0(44100);
             s.Silence(8.0);
-            s.Bits(0, HDR_S1); s.Bits(1, HDR_L); s.Bits(0, HDR_S2); s.Bit(1);
+            s.Bits(0, hs1); s.Bits(1, HDR_L); s.Bits(0, HDR_S2); s.Bit(1);
             int total = 0;
             foreach (byte b in hdr) { s.Byte(b); for (int k = 0; k < 8; k++) total += (b >> k) & 1; }
             total &= 0xFFFF;
@@ -4664,7 +5046,7 @@ int removed, kept, cut; List<string> moved;
             s.Silence(2.0);
             for (int p = 0; p < data.Count; p += BLOCK)
             {
-                s.Block(data.GetRange(p, BLOCK).ToArray(), DAT_S1, DAT_L, DAT_S2);
+                s.Block(data.GetRange(p, BLOCK).ToArray(), ds1, DAT_L, DAT_S2);
                 s.Silence(4.0);
             }
             return WavFile(s.Buf.ToArray(), 44100);
@@ -4712,29 +5094,174 @@ int removed, kept, cut; List<string> moved;
             return res;
         }
 
-        // returns the text of the ASCII file (up to the end-of-file code 1AH) and the tape name
-        public static string Decode0(byte[] wav, out string name)
+        // the PC-1600 MODE 0 and PC-E500 tape: the header (48 bytes) and the data of the blocks (the sums are the numbers of 1 bits)
+        public static void DecodeTape0(byte[] wav, bool e500, out byte[] hdr, out byte[] data)
         {
             int rate;
             byte[] d = Samples(wav, out rate);
             var bs = Bursts(d, rate);
-            if (bs.Count < 2) throw new Exception("no PC-1600 (CE-1600P) tape recording found");
+            if (bs.Count < 2) throw new Exception("no " + (e500 ? "PC-E500" : "PC-1600 (CE-1600P)") + " tape recording found");
             bool ok;
-            byte[] hdr = ParseBurst(bs[0], HDR_S1, HDR_L, HDR_S2, out ok);
-            if (hdr == null || hdr.Length != 48) throw new Exception("no PC-1600 (CE-1600P) tape header found");
-            name = Encoding.GetEncoding(28591).GetString(hdr, 1, 13).Trim();
-            var data = new List<byte>();
+            hdr = ParseBurst(bs[0], e500 ? 6000 : HDR_S1, HDR_L, HDR_S2, out ok);
+            if (hdr == null || hdr.Length != 48) throw new Exception("no " + (e500 ? "PC-E500" : "PC-1600 (CE-1600P)") + " tape header found");
+            var all = new List<byte>();
             for (int k = 1; k < bs.Count; k++)
             {
                 bool sok;
-                byte[] blk = ParseBurst(bs[k], DAT_S1, DAT_L, DAT_S2, out sok);
+                byte[] blk = ParseBurst(bs[k], e500 ? 7000 : DAT_S1, DAT_L, DAT_S2, out sok);
                 if (blk == null) throw new Exception("block " + k + " cannot be read");
                 if (!sok) throw new Exception("checksum error in block " + k);
-                data.AddRange(blk);
+                all.AddRange(blk);
             }
-            int e = data.IndexOf(EOFC);
-            if (e < 0) e = data.Count;
-            return Encoding.GetEncoding(28591).GetString(data.GetRange(0, e).ToArray());
+            data = all.ToArray();
+        }
+
+        // returns the text of the ASCII file (up to the end-of-file code 1AH) and the tape name
+        public static string Decode0(byte[] wav, out string name)
+        {
+            byte[] hdr, data;
+            DecodeTape0(wav, false, out hdr, out data);
+            name = Encoding.GetEncoding(28591).GetString(hdr, 1, 13).Trim();
+            int e = Array.IndexOf(data, EOFC);
+            if (e < 0) e = data.Length;
+            return Encoding.GetEncoding(28591).GetString(data, 0, e);
+        }
+
+        // ================================================================ PC-1350 / PC-1360 tape (2 ms per bit: 0 = four 2 kHz pulses, 1 = eight 4 kHz pulses)
+        // the check sum: an 8 bit register; for a byte its first nibble is added, then the second one with the carry of the first addition
+        static int NibSum(List<int> nibs)
+        {
+            int c = 0, carry = 0;
+            for (int j = 0; j < nibs.Count; j++)
+            {
+                if (j % 2 == 0) { c += nibs[j]; carry = c >> 8; c &= 255; }
+                else { c += nibs[j] + carry; c &= 255; }
+            }
+            return c;
+        }
+
+        static int Cs8(byte[] b, int off, int len)
+        {
+            var n = new List<int>();
+            for (int k = 0; k < len; k++) { n.Add(b[off + k] >> 4); n.Add(b[off + k] & 15); }
+            return NibSum(n);
+        }
+
+        // prog = the program image (lines of the tokenizer), idByte = 70H (PC-1350) or 72H (PC-1360)
+        public static byte[] Encode1350(string name, byte[] prog, int idByte)
+        {
+            if (prog.Length > 0 && prog[prog.Length - 1] == 0xFF) Array.Resize(ref prog, prog.Length - 1);
+            byte[] nm = Encoding.GetEncoding(28591).GetBytes(name.ToUpperInvariant());
+            int len = Math.Min(7, nm.Length);
+            var nb = new List<byte>();                                   // the name: zeros, the characters from the last one, F5H
+            for (int k = 0; k < 7 - len; k++) nb.Add(0);
+            for (int k = len - 1; k >= 0; k--) nb.Add(nm[k]);
+            nb.Add(0xF5);
+            var nibs = new List<int> { idByte >> 4, idByte & 15 };
+            var nn = new List<int>();
+            foreach (byte b in nb) { nn.Add(b & 15); nn.Add(b >> 4); }      // the name: low nibble first
+            nibs.AddRange(nn);
+            int csn = NibSum(nn);
+            nibs.Add(csn >> 4); nibs.Add(csn & 15);
+            int hdrBytes = nibs.Count / 2;
+            int p = 0;
+            while (prog.Length - p >= 120)
+            {
+                int c = Cs8(prog, p, 120);
+                for (int k = 0; k < 120; k++) { nibs.Add(prog[p + k] >> 4); nibs.Add(prog[p + k] & 15); }
+                nibs.Add(c >> 4); nibs.Add(c & 15);
+                p += 120;
+            }
+            int tl = prog.Length - p;
+            var tail = new byte[tl + 1];
+            Array.Copy(prog, p, tail, 0, tl);
+            tail[tl] = 0xFF;
+            int cf = Cs8(tail, 0, tail.Length);                           // the last sum: the rest of the program and one FFH
+            for (int k = 0; k < tl; k++) { nibs.Add(prog[p + k] >> 4); nibs.Add(prog[p + k] & 15); }
+            nibs.AddRange(new[] { 15, 15, 15, 15, cf >> 4, cf & 15 });
+            int lastByte = nibs.Count / 2 - 1;
+            var bits = new List<int>();
+            for (int k = 0; k < 4000; k++) bits.Add(1);                   // 8 s of ones
+            for (int j = 0; j < nibs.Count; j++)
+            {
+                bits.Add(0);
+                for (int k = 0; k < 4; k++) bits.Add((nibs[j] >> k) & 1);
+                if (j % 2 == 0) bits.Add(1);
+                else { int stop = (j / 2 < hdrBytes || j / 2 == lastByte) ? 5 : 3; for (int k = 0; k < stop; k++) bits.Add(1); }
+            }
+            for (int k = 0; k < 100; k++) bits.Add(1);
+            var edges = new List<double>();
+            double t = 0;
+            Action<double, int> tone = (f, cycles) => { double half = Fs / f / 2; for (int c = 0; c < cycles; c++) { t += half; edges.Add(t); t += half; edges.Add(t); } };
+            foreach (int b in bits) { if (b != 0) tone(4000, 8); else tone(2000, 4); }
+            int total = (int)t + 1;
+            var buf = new byte[total];
+            for (int i = 0; i < total; i++) buf[i] = 128;
+            double pos = 0; bool high = true;
+            foreach (double e in edges)
+            {
+                long a = Round(pos), z = Round(e);
+                byte v = high ? (byte)226 : (byte)30;
+                for (long i = a; i < z && i < total; i++) buf[i] = v;
+                pos = e; high = !high;
+            }
+            return WavFile(buf, (int)Fs);
+        }
+
+        // returns the program image (without the end marker); warn = a message when a check sum does not agree
+        public static byte[] Decode1350(byte[] wav, out string name, out int idByte, out string warn)
+        {
+            warn = null;
+            int rate;
+            byte[] d = Samples(wav, out rate);
+            var rise = new List<int>();
+            bool prev = d.Length > 0 && d[0] >= 128;
+            for (int i = 0; i < d.Length; i++) { bool s = d[i] >= 128; if (s && !prev) rise.Add(i); prev = s; }
+            var bits = new List<int>();
+            char cur = ' '; double acc = 0;
+            Action flush = () => { if (cur == 'S' || cur == 'F') { long n = Round(acc / 2000.0); for (long k = 0; k < n; k++) bits.Add(cur == 'F' ? 1 : 0); } };
+            for (int i = 1; i < rise.Count; i++)
+            {
+                double us = (rise[i] - rise[i - 1]) * 1e6 / rate;
+                char c = us > 1500 ? 'G' : (us > 375 ? 'S' : 'F');
+                if (c == cur) acc += us; else { flush(); cur = c; acc = us; }
+            }
+            flush();
+            int ix = 0;
+            while (ix < bits.Count && bits[ix] == 1) ix++;
+            var nibs = new List<int>();
+            while (ix + 5 <= bits.Count)
+            {
+                if (bits[ix] != 0) { ix++; continue; }
+                int v = 0; for (int k = 0; k < 4; k++) v |= bits[ix + 1 + k] << k;
+                nibs.Add(v); ix += 5;
+                while (ix < bits.Count && bits[ix] == 1) ix++;
+            }
+            var by = new List<int>();
+            for (int k = 0; k + 1 < nibs.Count; k += 2) by.Add((nibs[k] << 4) | nibs[k + 1]);
+            idByte = by.Count > 0 ? by[0] : 0;
+            if (by.Count < 14 || (idByte != 0x70 && idByte != 0x72)) throw new Exception("no PC-1350 / PC-1360 tape recording found");
+            var chars = new List<char>();
+            for (int k = 1; k <= 7; k++) { int ch = ((by[k] & 15) << 4) | (by[k] >> 4); if (ch != 0) chars.Insert(0, (char)ch); }
+            name = new string(chars.ToArray());
+            int r = by.Count - 10;
+            if (r < 3) throw new Exception("the recording is too short");
+            int blocks = (r - 3) / 121, tl = (r - 3) % 121;
+            var prog = new List<byte>();
+            int q = 10;
+            for (int bk = 0; bk < blocks; bk++)
+            {
+                var blk = new byte[120];
+                for (int k = 0; k < 120; k++) blk[k] = (byte)by[q + k];
+                if (Cs8(blk, 0, 120) != by[q + 120]) { warn = "check sum error in block " + (bk + 1); }
+                prog.AddRange(blk);
+                q += 121;
+            }
+            var tail = new byte[tl + 1];
+            for (int k = 0; k < tl; k++) { tail[k] = (byte)by[q + k]; prog.Add(tail[k]); }
+            tail[tl] = 0xFF;
+            if (Cs8(tail, 0, tail.Length) != by[q + tl + 2] && warn == null) warn = "check sum error at the end of the recording";
+            return prog.ToArray();
         }
     }
 
