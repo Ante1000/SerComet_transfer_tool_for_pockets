@@ -1541,7 +1541,7 @@ namespace UartSlTest
                     if (dw.ShowDialog(this) != DialogResult.OK) return;
                     pathB = dw.FileName;
                 }
-                if (SameFile(pathA, pathB)) { Log("Compare: choose another file (it is the same file)."); return; }
+                if (SameFile(pathA, pathB)) { LogBold("Compare: choose another file (it is the same file)."); return; }
                 try { new PreviewForm("Compare: " + nameA + " / " + Path.GetFileName(pathB), CompareWavs(nameA, pathA, Path.GetFileName(pathB), pathB)).Show(this); }
                 catch (Exception ex) { Log("Compare error: " + ex.Message); }
                 return;
@@ -1554,7 +1554,7 @@ namespace UartSlTest
                 if (d.ShowDialog(this) != DialogResult.OK) return;
                 pathB = d.FileName;
             }
-            if (SameFile(pathA, pathB)) { Log("Compare: choose another file (it is the same file)."); return; }
+            if (SameFile(pathA, pathB)) { LogBold("Compare: choose another file (it is the same file)."); return; }
             if (Path.GetExtension(pathB).Equals(".img", StringComparison.OrdinalIgnoreCase) != img)
             { Log("Compare: choose a file of the same kind (" + (img ? ".img" : ".bas / .txt") + ")."); return; }
             string nameB = Path.GetFileName(pathB);
