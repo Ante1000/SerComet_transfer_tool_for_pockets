@@ -221,6 +221,9 @@ namespace UartSlTest
             btnConvert = Btn("Convert", Icons.File(), 104, 560, 90, 24, TL);
             btnView = Btn("WAV", Icons.Note(), 10, 560, 90, 24, TL);
             btnView.Enabled = false;
+            btnView.TextImageRelation = TextImageRelation.ImageBeforeText;     // the text is centred in the space beside the note
+            btnView.TextAlign = ContentAlignment.MiddleCenter;
+            btnView.Padding = new Padding(0);
             gbFiles.Controls.Add(lstFiles);
             // hovering over a file name: a tip with the size, dates and type of the file
             lstFiles.MouseMove += delegate (object sn, MouseEventArgs me)
@@ -1722,6 +1725,35 @@ namespace UartSlTest
             catch (Exception ex) { Log("WAV error: " + ex.Message); }
         }
 
+        // PC-1600: MODE 0 / MODE 1 / Cancel (returns 0, 1 or -1)
+        int AskTapeMode(string file)
+        {
+            int result = -1;
+            using (var f = new Form())
+            {
+                f.Text = "WAV: " + file;
+                f.FormBorderStyle = FormBorderStyle.FixedDialog; f.MaximizeBox = false; f.MinimizeBox = false; f.ShowInTaskbar = false;
+                f.StartPosition = FormStartPosition.CenterParent;
+                f.ClientSize = new Size(470, 190);
+                var lbl = new Label
+                {
+                    Left = 14, Top = 12, Width = 442, Height = 120, AutoSize = false,
+                    Text = "Choose the tape format for the PC-1600:\r\n\r\n" +
+                           "MODE 0 - the PC-1600 mode (CE-1600P / CE-152): the program is an ASCII BASIC file; load it in MODE 0 with LOAD \"CAS:NAME\".\r\n\r\n" +
+                           "MODE 1 - the PC-1500 compatible mode (CE-150): the program is recorded tokenized; switch the PC-1600 to MODE 1 and load it with CLOAD."
+                };
+                var b0 = new Button { Text = "MODE 0", Left = 14, Top = 146, Width = 100, Height = 28 };
+                var b1 = new Button { Text = "MODE 1", Left = 124, Top = 146, Width = 100, Height = 28 };
+                var bc = new Button { Text = "Cancel", Left = 356, Top = 146, Width = 100, Height = 28, DialogResult = DialogResult.Cancel };
+                b0.Click += delegate { result = 0; f.DialogResult = DialogResult.OK; };
+                b1.Click += delegate { result = 1; f.DialogResult = DialogResult.OK; };
+                f.Controls.AddRange(new Control[] { lbl, b0, b1, bc });
+                f.CancelButton = bc;
+                f.ShowDialog(this);
+            }
+            return result;
+        }
+
         void BasicToWav(string path)
         {
             string src = Encoding.GetEncoding(28591).GetString(File.ReadAllBytes(path));
@@ -1731,10 +1763,8 @@ namespace UartSlTest
             int mode = 1;
             if (curModel == 1)
             {
-                var r = MessageBox.Show(this, "PC-1600 tape format:\r\n\r\nYes = MODE 0 (CE-1600P / CE-152, ASCII BASIC file, LOAD \"CAS:NAME\")\r\nNo = MODE 1 (CE-150, PC-1500 format, CLOAD)",
-                    "WAV: " + Path.GetFileName(path), MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
-                if (r == DialogResult.Cancel) return;
-                mode = r == DialogResult.Yes ? 0 : 1;
+                mode = AskTapeMode(Path.GetFileName(path));
+                if (mode < 0) return;
             }
             byte[] wav;
             if (mode == 0) wav = TapeWav.Encode0(src, tape.Substring(0, Math.Min(8, tape.Length)));
@@ -2481,7 +2511,7 @@ int removed, kept, cut; List<string> moved;
         public static Bitmap Terminal() { return Make((g, p, b) => { g.DrawRectangle(p, 2, 3, 16, 13); g.DrawLine(p, 5, 7, 8, 10); g.DrawLine(p, 5, 13, 8, 10); g.DrawLine(p, 10, 13, 14, 13); }); }
         public static Bitmap Flush() { return Make((g, p, b) => { g.FillPolygon(b, new[] { new Point(3, 3), new Point(17, 3), new Point(11, 10), new Point(11, 14), new Point(9, 14), new Point(9, 10) }); g.FillEllipse(b, 8, 15, 4, 4); }); }   // funnel + drop
         public static Bitmap Plane() { return Make((g, p, b) => { g.FillPolygon(b, new[] { new Point(2, 10), new Point(18, 3), new Point(13, 17), new Point(10, 12) }); }); }
-        public static Bitmap Note() { return Make((g, p, b) => { g.FillEllipse(b, 4, 12, 8, 6); g.DrawLine(p, 11, 14, 11, 3); g.DrawLine(p, 11, 3, 16, 6); }); }
+        public static Bitmap Note() { return Make((g, p, b) => { g.TranslateTransform(10, 10); g.ScaleTransform(0.8f, 0.8f); g.TranslateTransform(-10, -10); g.FillEllipse(b, 4, 12, 8, 6); g.DrawLine(p, 11, 14, 11, 3); g.DrawLine(p, 11, 3, 16, 6); }); }   // 20 % smaller
         public static Bitmap File() { return Make((g, p, b) => { g.DrawRectangle(p, 5, 2, 10, 16); g.DrawLine(p, 8, 8, 12, 8); g.DrawLine(p, 8, 12, 12, 12); }); }
         // shooting star (yellow star head, curved light-blue forked tail) on a navy sky, drawn at any size
         public static Bitmap Comet(int size)
