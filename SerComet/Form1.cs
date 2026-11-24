@@ -95,6 +95,24 @@ namespace UartSlTest
             };
         }
 
+        // the Buy me a coffee picture: img\\buymeacoffee.jpg (or buymeacoffe.jpg) next to the program or in one of the folders above it
+        static Image LoadBmcImage()
+        {
+            try
+            {
+                string dir = AppDomain.CurrentDomain.BaseDirectory;
+                for (int up = 0; up < 5 && dir != null; up++, dir = Path.GetDirectoryName(dir.TrimEnd(Path.DirectorySeparatorChar)))
+                    foreach (string sub in new[] { "img", "" })
+                        foreach (string nm in new[] { "buymeacoffee.jpg", "buymeacoffe.jpg" })
+                        {
+                            string f = Path.Combine(dir, sub, nm);
+                            if (File.Exists(f)) using (var src = Image.FromFile(f)) return new Bitmap(src);      // a copy: the file is not locked
+                        }
+            }
+            catch { }
+            return null;
+        }
+
         void BuildUi()
         {
             const AnchorStyles TL = AnchorStyles.Top | AnchorStyles.Left;
@@ -355,12 +373,13 @@ namespace UartSlTest
                 // "by Alex F4VTS" to the right of the title, a round "?" button (About) on the left
                 var byFont = new Font("Segoe UI", 9F, FontStyle.Bold | FontStyle.Italic);
                 Size byS = TextRenderer.MeasureText("by Alex F4VTS", byFont);
-                // the Buy me a coffee button (colours and text of the web button: blue 5F7FFF, white text, black outline); it opens the page of the author
-                string cookie = null;
-                foreach (FontFamily ff in FontFamily.Families) if (ff.Name == "Cookie") cookie = "Cookie";
-                var bmcFont = new Font(cookie ?? "Segoe Script", 8.5F, cookie != null ? FontStyle.Regular : FontStyle.Bold);
-                int bmcW = TextRenderer.MeasureText("Buy me a coffee", bmcFont).Width + 12;
-                // the group icon + title + "by Alex F4VTS" + the button is centred
+                // Buy me a coffee: the picture img\buymeacoffee.jpg (looked for next to the program and in the folders above it); without the file a text link
+                Image bmcImg = LoadBmcImage();
+                int bmcH = 30;
+                int bmcW;
+                if (bmcImg != null) bmcW = Math.Max(20, (int)Math.Round(bmcImg.Width * (double)bmcH / bmcImg.Height));
+                else bmcW = TextRenderer.MeasureText("Buy me a coffee", new Font("Segoe UI", 9F, FontStyle.Underline)).Width + 4;
+                // the group icon + title + "by Alex F4VTS" + the picture is centred
                 x0 = (ClientSize.Width - (32 + 8 + ts.Width + 10 + byS.Width + 12 + bmcW)) / 2 - 22;
                 foreach (Control c0 in Controls)
                 {
@@ -369,15 +388,11 @@ namespace UartSlTest
                 }
                 var by = new Label { Text = "by Alex F4VTS", AutoSize = true, Font = byFont, ForeColor = Color.FromArgb(90, 110, 140), Left = x0 + 40 + ts.Width + 10, Top = 10 + (32 - ts.Height) / 2 + 3, Anchor = AnchorStyles.Top };
                 Controls.Add(by);
-                var bmc = new Button
-                {
-                    Text = "Buy me a coffee", Font = bmcFont, ForeColor = Color.White, BackColor = Color.FromArgb(0x5F, 0x7F, 0xFF), FlatStyle = FlatStyle.Flat,
-                    UseVisualStyleBackColor = false, Left = by.Left + byS.Width + 12, Top = 7, Width = bmcW, Height = 36, Anchor = AnchorStyles.Top, Cursor = Cursors.Hand,
-                    TabStop = false, Image = Icons.Cup(), ImageAlign = ContentAlignment.TopCenter, TextAlign = ContentAlignment.BottomCenter,
-                    TextImageRelation = TextImageRelation.ImageAboveText, Padding = new Padding(0, 1, 0, 1)
-                };
-                bmc.FlatAppearance.BorderColor = Color.Black;
-                bmc.FlatAppearance.BorderSize = 1;
+                Control bmc;
+                if (bmcImg != null)
+                    bmc = new PictureBox { Image = bmcImg, SizeMode = PictureBoxSizeMode.Zoom, Left = by.Left + byS.Width + 12, Top = 10, Width = bmcW, Height = bmcH, Anchor = AnchorStyles.Top, Cursor = Cursors.Hand };
+                else
+                    bmc = new Label { Text = "Buy me a coffee", AutoSize = false, Font = new Font("Segoe UI", 9F, FontStyle.Underline), ForeColor = Color.FromArgb(0x5F, 0x7F, 0xFF), TextAlign = ContentAlignment.MiddleLeft, Left = by.Left + byS.Width + 12, Top = 10, Width = bmcW, Height = bmcH, Anchor = AnchorStyles.Top, Cursor = Cursors.Hand };
                 bmc.Click += delegate { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://www.buymeacoffee.com/Alex_F4VTS") { UseShellExecute = true }); } catch (Exception ex) { Log("Cannot open the page: " + ex.Message); } };
                 tips.SetToolTip(bmc, "Support the author: Buy me a coffee (opens the page buymeacoffee.com/Alex_F4VTS in the browser).");
                 Controls.Add(bmc);
@@ -2676,23 +2691,6 @@ int removed, kept, cut; List<string> moved;
         public static Bitmap Flush() { return Make((g, p, b) => { g.FillPolygon(b, new[] { new Point(3, 3), new Point(17, 3), new Point(11, 10), new Point(11, 14), new Point(9, 14), new Point(9, 10) }); g.FillEllipse(b, 8, 15, 4, 4); }); }   // funnel + drop
         public static Bitmap Plane() { return Make((g, p, b) => { g.FillPolygon(b, new[] { new Point(2, 10), new Point(18, 3), new Point(13, 17), new Point(10, 12) }); }); }
         public static Bitmap Note() { return Make((g, p, b) => { g.TranslateTransform(10, 8.5f); g.ScaleTransform(0.8f, 0.8f); g.TranslateTransform(-10, -10); g.FillEllipse(b, 4, 12, 8, 6); g.DrawLine(p, 11, 14, 11, 3); g.DrawLine(p, 11, 3, 16, 6); }); }   // 20 % smaller
-        // a small coffee cup (yellow with a black outline) for the Buy me a coffee button
-        public static Bitmap Cup()
-        {
-            var b = new Bitmap(14, 13);
-            using (var g = Graphics.FromImage(b))
-            using (var pen = new Pen(Color.Black, 1.2f))
-            using (var yel = new SolidBrush(Color.FromArgb(0xFF, 0xDD, 0x00)))
-            {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                var cup = new[] { new PointF(1.5f, 2.5f), new PointF(10.5f, 2.5f), new PointF(9.5f, 10.5f), new PointF(2.5f, 10.5f) };
-                g.FillPolygon(yel, cup);
-                g.DrawPolygon(pen, cup);
-                g.DrawArc(pen, 8.5f, 3.5f, 4f, 4.5f, -90, 180);       // the handle
-                g.DrawLine(pen, 0.5f, 12f, 11.5f, 12f);               // the saucer
-            }
-            return b;
-        }
         public static Bitmap File() { return Make((g, p, b) => { g.DrawRectangle(p, 5, 2, 10, 16); g.DrawLine(p, 8, 8, 12, 8); g.DrawLine(p, 8, 12, 12, 12); }); }
         // shooting star (yellow star head, curved light-blue forked tail) on a navy sky, drawn at any size
         public static Bitmap Comet(int size)
