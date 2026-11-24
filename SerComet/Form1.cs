@@ -353,8 +353,33 @@ namespace UartSlTest
                     Left = x0 + 40, Top = 10 + (32 - ts.Height) / 2, Anchor = AnchorStyles.Top
                 });
                 // "by Alex F4VTS" to the right of the title, a round "?" button (About) on the left
-                var by = new Label { Text = "by Alex F4VTS", AutoSize = true, Font = new Font("Segoe UI", 9F, FontStyle.Bold | FontStyle.Italic), ForeColor = Color.FromArgb(90, 110, 140), Left = x0 + 40 + ts.Width + 10, Top = 10 + (32 - ts.Height) / 2 + 3, Anchor = AnchorStyles.Top };
+                var byFont = new Font("Segoe UI", 9F, FontStyle.Bold | FontStyle.Italic);
+                Size byS = TextRenderer.MeasureText("by Alex F4VTS", byFont);
+                // the Buy me a coffee button (colours and text of the web button: blue 5F7FFF, white text, black outline); it opens the page of the author
+                string cookie = null;
+                foreach (FontFamily ff in FontFamily.Families) if (ff.Name == "Cookie") cookie = "Cookie";
+                var bmcFont = new Font(cookie ?? "Segoe Script", 11F, cookie != null ? FontStyle.Regular : FontStyle.Bold);
+                int bmcW = TextRenderer.MeasureText("Buy me a coffee", bmcFont).Width + 26;
+                // the group icon + title + "by Alex F4VTS" + the button is centred
+                x0 = (ClientSize.Width - (32 + 8 + ts.Width + 10 + byS.Width + 12 + bmcW)) / 2 - 22;
+                foreach (Control c0 in Controls)
+                {
+                    if (c0 is PictureBox) c0.Left = x0;
+                    else if (c0 is Label && ((Label)c0).Text == titleText) c0.Left = x0 + 40;
+                }
+                var by = new Label { Text = "by Alex F4VTS", AutoSize = true, Font = byFont, ForeColor = Color.FromArgb(90, 110, 140), Left = x0 + 40 + ts.Width + 10, Top = 10 + (32 - ts.Height) / 2 + 3, Anchor = AnchorStyles.Top };
                 Controls.Add(by);
+                var bmc = new Button
+                {
+                    Text = "Buy me a coffee", Font = bmcFont, ForeColor = Color.White, BackColor = Color.FromArgb(0x5F, 0x7F, 0xFF), FlatStyle = FlatStyle.Flat,
+                    UseVisualStyleBackColor = false, Left = by.Left + byS.Width + 12, Top = 8, Width = bmcW, Height = 34, Anchor = AnchorStyles.Top, Cursor = Cursors.Hand,
+                    TabStop = false
+                };
+                bmc.FlatAppearance.BorderColor = Color.Black;
+                bmc.FlatAppearance.BorderSize = 1;
+                bmc.Click += delegate { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://www.buymeacoffee.com/Alex_F4VTS") { UseShellExecute = true }); } catch (Exception ex) { Log("Cannot open the page: " + ex.Message); } };
+                tips.SetToolTip(bmc, "Support the author: Buy me a coffee (opens the page buymeacoffee.com/Alex_F4VTS in the browser).");
+                Controls.Add(bmc);
                 var about = new RoundHelpButton { Left = 10, Top = 15, Width = 21, Height = 21, Anchor = AnchorStyles.Top | AnchorStyles.Left };
                 about.Click += delegate { using (var d = new AboutForm()) d.ShowDialog(this); };
                 tips.SetToolTip(about, "About SerComet: author, license and project page.");
@@ -508,10 +533,10 @@ namespace UartSlTest
             if (curModel == 3)
                 return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
                        "OPEN \"COM0:6,N,8,1,N,N,N,N,N\" AS #1 (6 = 4800, 5 = 2400, 4 = 1200, 3 = 600, 2 = 300); PRINT #1,..; INPUT #1,A$; LINE INPUT #1,A$; CLOSE.\r\n" +
-                       "Program (text): SAVE \"COM0:6,N,8,1,N,N,N,N,N\" = Receive, LOAD \"COM0:6,N,8,1,N,N,N,N,N\" = Send.";
+                       "Program (text): LOAD \"COM0:6,N,8,1,N,N,N,N,N\" = Send.";
             if (curModel == 4)
                 return "TRS-80 Model 100 / NEC PC-8201: DB-25 RS-232C, null-modem cable. OPEN \"COM:88N1E\" FOR OUTPUT AS 1 / FOR INPUT AS 2 (8 = 9600, 3 = 300, 9 = 19200).\r\n" +
-                       "PRINT #1,..; LINE INPUT #2,A$; A$=INPUT$(n,2); CLOSE 1,2. Program (ASCII): SAVE \"COM:88N1E\" = Receive, LOAD \"COM:48N1E\" = Send.\r\n" +
+                       "PRINT #1,..; LINE INPUT #2,A$; A$=INPUT$(n,2); CLOSE 1,2. Program (ASCII): LOAD \"COM:48N1E\" = Send.\r\n" +
                        "LOAD tokenizes while receiving: use 600 to 1200 bps; SAVE is stable up to 19200.";
             if (curModel == 5 && radioSio.Checked)
                 return "UART Other, TTL: logic levels 0 / +5 V; 3.3 V CMOS devices work too, and so do Arduino and similar boards. Connect through a USB-TTL adapter and match its voltage (3.3 V or 5 V) to the device.\r\n" +
@@ -523,15 +548,15 @@ namespace UartSlTest
                        "Text transfer (.bas) with the baud rate (up to 115200), flow control, line end and line delay set here (8N1). Use the Terminal for tests.";
             if (curModel == 2 && curProf == 2)
                 return "Sharp PC-1350 (15-pin connector, TTL-UART SIO via a USB/COM adapter, 1200 bps).\r\n" +
-                       "OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send) or SAVE (SerComet: Receive). Text transfer (.bas); the file is saved after EOF (1Ah) or 3 s of silence.\r\n" +
+                       "OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send). Text transfer (.bas).\r\n" +
                        "WAV: the tokenized program as a tape recording (CLOAD / CSAVE, ID 70H); a BASIC text file is converted to a recording and back.";
             if (curModel == 2 && curProf == 3)
                 return "Sharp PC-1360 (15-pin connector, TTL-UART SIO via a USB/COM adapter, 1200 bps).\r\n" +
-                       "OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send) or SAVE (SerComet: Receive). After MERGE of several programs the transmission by SAVE / LOAD may not work correctly (see the manual).\r\n" +
+                       "OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send). After MERGE of several programs the transmission by SAVE / LOAD may not work correctly (see the manual).\r\n" +
                        "WAV: the tokenized program as a tape recording (CLOAD / CSAVE, ID 72H, two byte tokens); a BASIC text file is converted to a recording and back.";
             if (curModel == 2 && (curProf == 4 || curProf == 5))
                 return "Sharp " + (curProf == 4 ? "PC-E500" : "PC-E500S (structured BASIC: SWITCH, WHILE, REPEAT ...)") + " (15-pin connector, TTL-UART SIO, up to 9600 bps).\r\n" +
-                       "OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then LOAD / SAVE (COM is the default device); SAVE [\"name\"[,A]]: on COM the program is always sent as ASCII text. Text transfer (.bas); the file is saved after EOF (1Ah) or 3 s of silence.\r\n" +
+                       "OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then LOAD / SAVE (COM is the default device); SAVE [\"name\"[,A]]: on COM the program is always sent as ASCII text. Text transfer (.bas).\r\n" +
                        "WAV: BASIC text is written as an ASCII tape file (SAVE \"CAS:\"); recordings of SAVE \"CAS:\" and CSAVE are read back as BASIC text.";
             if (curModel == 2 && curProf == 6)
                 return "Sharp PC-1450 to PC-1490 (15-pin connector, TTL-UART SIO via a USB/COM adapter).\r\n" +
@@ -541,21 +566,21 @@ namespace UartSlTest
                        "Tokenization and tape format is not supported. You can use the usual UART transfer of Basic programs.";
             if (radioSio.Checked)
                 return "Compatible: PC-1350, PC-1360, PC-1450..90, PC-E500..650, PC-U6000, PC-2500 (15-pin, TTL-UART SIO via a USB/COM adapter).\r\n" +
-                       "PC-1350 / PC-1360: OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send) or SAVE (SerComet: Receive).\r\n" +
+                       "PC-1350 / PC-1360: OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send).\r\n" +
                        "PC-E500(S): OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then LOAD / SAVE (COM is the default device).\r\n" +
                        "SAVE [\"name\"[,A]]: the name (up to 8 characters) is optional; on COM the program is always sent as ASCII text.\r\n" +
-                       "Text transfer (.bas); the file is saved after EOF (1Ah) or 3 s of silence.";
+                       "Text transfer (.bas).";
             if (radio1500.Checked && radioRs.Checked)
                 return "PC-1500 with CE-158(X): SETCOM 2400,8,N,1 (the same baud rate as in SerComet).\r\n" +
-                       "Into the PC-1500 (SerComet: Send): SETDEV CI, then CLOADa.   From the PC-1500 (SerComet: Receive): SETDEV CO, then CSAVEa.\r\n" +
-                       "Text transfer (.bas); the file is saved after EOF (1Ah) or 3 s of silence.";
+                       "Into the PC-1500 (SerComet: Send): SETDEV CI, then CLOADa.\r\n" +
+                       "Text transfer (.bas).";
             if (radio1500.Checked)
-                return "Software UART: 8N1 at 4800 baud (fixed), binary transfer (.img files). TX = PC7 (pin 10), RX = PB2 (pin 27) of the PC-1500. RECEIVE: on the PC-1500 type CALL &4200 (SAVE). The file is saved automatically, named after the first REM.\r\nSEND: type NEW, then CALL &4100 (LOAD) on the PC-1500 first, then press Send (30 s to start). Addresses for a RAM starting at &4000 (the SL installer shows the others).";
+                return "Software UART: 8N1 at 4800 baud (fixed), binary transfer (.img files). TX = PC7 (pin 10), RX = PB2 (pin 27) of the PC-1500.\r\nSEND: type NEW, then CALL &4100 (LOAD) on the PC-1500 first, then press Send (30 s to start). Addresses for a RAM starting at &4000 (the SL installer shows the others).";
             if (radioRs.Checked)
                 return "Into the PC-1600 (Send): INIT\"COM1:\",512 / SETCOM\"COM1:\"," + savedBaud + " / LOAD\"COM1:\" (same baud rate as in SerComet).\r\n" +
-                       "From the PC-1600 (Receive): SAVE\"COM1:\",A. Text transfer (.bas); the file is saved after EOF (1Ah) or 3 s of silence.\r\n" +
+                       "Text transfer (.bas).\r\n" +
                        "SETCOM\"COM1:\"," + savedBaud + ",8,N,1,X,N switches XON/XOFF on in the Sharp (the default Flow of SerComet).";
-            return "Software UART: 8N1 at the speed chosen here and in the SL installer (9600 recommended), binary transfer (.img files). RECEIVE: on the PC-1600 type CALL &C200 (SAVE). The file is saved automatically, named after the first REM.\r\nSEND: type CALL &C100 (LOAD) on the PC-1600 first, then press Send (30 s to start).";
+            return "Software UART: 8N1 at the speed chosen here and in the SL installer (9600 recommended), binary transfer (.img files).\r\nSEND: type CALL &C100 (LOAD) on the PC-1600 first, then press Send (30 s to start).";
         }
 
         static string DefaultLocation(int i)

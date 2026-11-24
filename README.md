@@ -8,6 +8,8 @@ Saver/Loader programs for the Sharp PC-1500 and PC-1600, a built-in BASIC tokeni
 
 Free for personal, non-commercial and educational use ([PolyForm Noncommercial License 1.0.0](LICENSE.md)).
 
+If SerComet saves you time, you can [buy the author a coffee](https://www.buymeacoffee.com/Alex_F4VTS) (the button is also in the title bar of the program).
+
 ## What it does
 
 - Send and receive BASIC programs, with a built-in tokenizer / detokenizer for the PC-1500 and PC-1600, **Auto token** and **Skip REM** (comment lines are left out when a program is sent).
