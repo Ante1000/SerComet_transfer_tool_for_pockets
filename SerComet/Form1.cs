@@ -424,8 +424,8 @@ namespace UartSlTest
             btnRefreshFiles.Click += delegate { RefreshFiles(); };
             btnTerminal.Click += delegate { OpenTerminal(); };
             btnAbort.Click += delegate { Abort(); };
-            btnConvert.Click += delegate { ConvertSelected(); };
-            btnView.Click += delegate { WavSelected(); };
+            btnConvert.Click += delegate { ConvertSelected(); ConvPause(); };
+            btnView.Click += delegate { WavSelected(); ConvPause(); };
             lstFiles.MouseDoubleClick += delegate (object sn, MouseEventArgs me)      // double click on a file name = View
             {
                 int i = lstFiles.IndexFromPoint(me.Location);
@@ -2079,17 +2079,28 @@ namespace UartSlTest
             SelectionChanged();
         }
 
+        // 1 s pause after a conversion (Convert button, WAV converter): both buttons stay disabled, it all worked too fast
+        bool convPause;
+        async void ConvPause()
+        {
+            convPause = true;
+            SelectionChanged();
+            try { await Task.Delay(1000); } catch { }
+            convPause = false;
+            SelectionChanged();
+        }
+
         void SelectionChanged()
         {
             bool sel = lstFiles.SelectedItem != null;
             string selExt = sel ? Path.GetExtension((string)lstFiles.SelectedItem).ToLowerInvariant() : "";
-            if (btnView != null) btnView.Enabled = sel && (selExt == ".bas" || selExt == ".txt" || selExt == ".wav");       // the WAV converter
+            if (btnView != null) btnView.Enabled = !convPause && sel && (selExt == ".bas" || selExt == ".txt" || selExt == ".wav");       // the WAV converter
             if (btnSend != null) btnSend.Enabled = sel && selExt != ".wav" && !sending && port != null && port.IsOpen;
             if (btnDelete != null) btnDelete.Enabled = sel;
             if (btnConvert != null)
             {
                 string ext = sel ? Path.GetExtension((string)lstFiles.SelectedItem).ToLowerInvariant() : "";
-                btnConvert.Enabled = sel && !rs232 && (ext == ".bas" || ext == ".txt" || ext == ".img" || ext == ".bin");   // Software UART mode only
+                btnConvert.Enabled = !convPause && sel && !rs232 && (ext == ".bas" || ext == ".txt" || ext == ".img" || ext == ".bin");   // Software UART mode only
             }
         }
 
