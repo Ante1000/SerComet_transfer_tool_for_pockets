@@ -371,7 +371,7 @@ namespace UartSlTest
                 int bmcH = 34;
                 int bmcW;
                 if (bmcImg != null) bmcW = Math.Max(20, (int)Math.Round(bmcImg.Width * (double)bmcH / bmcImg.Height));
-                else bmcW = TextRenderer.MeasureText("Buy me a coffee", new Font("Segoe UI", 9F, FontStyle.Underline)).Width + 4;
+                else bmcW = bmcH;          // (the picture is built into the program; this is only a safety net)
                 // the group icon + title + "by Alex F4VTS" + the picture is centred
                 x0 = (ClientSize.Width - (32 + 8 + ts.Width + 10 + byS.Width + 12 + bmcW)) / 2 - 22;
                 foreach (Control c0 in Controls)
@@ -381,11 +381,7 @@ namespace UartSlTest
                 }
                 var by = new Label { Text = "by Alex F4VTS", AutoSize = true, Font = byFont, ForeColor = Color.FromArgb(90, 110, 140), Left = x0 + 40 + ts.Width + 10, Top = 10 + (32 - ts.Height) / 2 + 3, Anchor = AnchorStyles.Top };
                 Controls.Add(by);
-                Control bmc;
-                if (bmcImg != null)
-                    bmc = new PictureBox { Image = bmcImg, SizeMode = PictureBoxSizeMode.Zoom, Left = by.Left + byS.Width + 12, Top = 9, Width = bmcW, Height = bmcH, Anchor = AnchorStyles.Top, Cursor = Cursors.Hand };
-                else
-                    bmc = new Label { Text = "Buy me a coffee", AutoSize = false, Font = new Font("Segoe UI", 9F, FontStyle.Underline), ForeColor = Color.FromArgb(0x5F, 0x7F, 0xFF), TextAlign = ContentAlignment.MiddleLeft, Left = by.Left + byS.Width + 12, Top = 10, Width = bmcW, Height = bmcH, Anchor = AnchorStyles.Top, Cursor = Cursors.Hand };
+                Control bmc = new PictureBox { Image = bmcImg, SizeMode = PictureBoxSizeMode.Zoom, Left = by.Left + byS.Width + 12, Top = 9, Width = bmcW, Height = bmcH, Anchor = AnchorStyles.Top, Cursor = Cursors.Hand };
                 bmc.Click += delegate { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://www.buymeacoffee.com/Alex_F4VTS") { UseShellExecute = true }); } catch (Exception ex) { Log("Cannot open the page: " + ex.Message); } };
                 tips.SetToolTip(bmc, "Support the author: Buy me a coffee (opens the page buymeacoffee.com/Alex_F4VTS in the browser).");
                 Controls.Add(bmc);
