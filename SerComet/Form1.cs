@@ -533,7 +533,7 @@ namespace UartSlTest
             UpdateMode();
         }
 
-        static readonly string[] ModelCaptions = { "Sharp PC-1500", "Sharp PC-1600", "Sharp PC-1350", "Sharp PC-1360", "Sharp PC-E500", "Sharp PC-E500S", "Sharp PC-1450..75", "Sharp with UART connector", "Casio FX-850P / FX-870P", "TRS-80 mod.100 / NEC PC-8201", "Other UART computer" };
+        static readonly string[] ModelCaptions = { "Sharp PC-1500", "Sharp PC-1600", "Sharp PC-1350", "Sharp PC-1360", "Sharp PC-E500", "Sharp PC-E500S", "Sharp PC-1450..75", "Sharp with UART connector", "Casio FX-850P / FX-870P", "TRS-80 mod.100 / NEC PC-8201", "Other computer with UART" };
 
         string HintText()
         {
@@ -546,15 +546,15 @@ namespace UartSlTest
                        "PRINT #1,..; LINE INPUT #2,A$; A$=INPUT$(n,2); CLOSE 1,2. Program (ASCII): LOAD \"COM:48N1E\" = Send.\r\n" +
                        "LOAD tokenizes while receiving: use 600 to 1200 bps; SAVE is stable up to 19200.";
             if (curModel == 5 && radioSio.Checked)
-                return "UART Other, TTL: logic levels 0 / +5 V; 3.3 V CMOS devices work too, and so do Arduino and similar boards. Connect through a USB-TTL adapter and match its voltage (3.3 V or 5 V) to the device.\r\n" +
+                return "Other computer with UART, TTL: logic levels 0 / +5 V; 3.3 V CMOS devices work too, and so do Arduino and similar boards. Connect through a USB-TTL adapter and match its voltage (3.3 V or 5 V) to the device.\r\n" +
                        "TX of one side goes to RX of the other, and the grounds are joined. Never connect RS-232 levels to a TTL input.\r\n" +
                        "Text transfer (.bas) with the baud rate (up to 115200), flow control, line end and line delay set here (8N1). Use the Terminal for tests.";
             if (curModel == 5)
-                return "UART Other, RS-232: the signal swings between a negative and a positive voltage (about -5 to -15 V and +5 to +15 V). A device with 0 / +5 V logic needs a level converter (for example MAX232 / MAX3232) between it and the RS-232 adapter.\r\n" +
+                return "Other computer with UART, RS-232: the signal swings between a negative and a positive voltage (about -5 to -15 V and +5 to +15 V). A device with 0 / +5 V logic needs a level converter (for example MAX232 / MAX3232) between it and the RS-232 adapter.\r\n" +
                        "Connect through a USB-RS232 adapter with a null-modem cable (TX and RX crossed).\r\n" +
                        "Text transfer (.bas) with the baud rate (up to 115200), flow control, line end and line delay set here (8N1). Use the Terminal for tests.";
             if (curModel == 2 && curProf == 2)
-                return "Sharp PC-1350 (15-pin connector, TTL-UART SIO via a USB/COM adapter, 1200 bps).\r\n" +
+                return "Sharp PC-1350 (compatible: the PC-2500, the version with a printer; 15-pin connector, TTL-UART SIO via a USB/COM adapter, 1200 bps).\r\n" +
                        "OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send). Text transfer (.bas).\r\n" +
                        "WAV: the tokenized program as a tape recording (CLOAD / CSAVE, ID 70H); a BASIC text file is converted to a recording and back.";
             if (curModel == 2 && curProf == 3)
