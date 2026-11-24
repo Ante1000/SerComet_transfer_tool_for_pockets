@@ -117,8 +117,8 @@ namespace UartSlTest
             radio1500 = new LockRadio { Text = "Sharp PC-1500", Left = 8, Top = 20, Width = 100 };
             radio1600 = new LockRadio { Text = "Sharp PC-1600", Left = 126, Top = 20, Width = 100, Checked = true };
             radioOther = new LockRadio { Text = "", Left = 238, Top = 20, Width = 20 };
-            comboSharp = new LockCombo { Left = 258, Top = 17, Width = 92, DropDownStyle = ComboBoxStyle.DropDown, Enabled = false };
-            comboSharp.Items.AddRange(new object[] { "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450..90", "other" });
+            comboSharp = new LockCombo { Left = 258, Top = 21, Width = 92, DropDownStyle = ComboBoxStyle.DropDown, Enabled = false };
+            comboSharp.Items.AddRange(new object[] { "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450..90", "Sharp other" });
             comboSharp.Text = "Sharp other";
             // the box only shows the placeholder or a chosen item: typing is not possible
             comboSharp.KeyPress += delegate (object sn, KeyPressEventArgs ke) { ke.Handled = true; };
@@ -435,7 +435,7 @@ namespace UartSlTest
             tips.SetToolTip(radio1500, "Target: Sharp PC-1500 (software serial Saver/Loader at 4800 baud, or RS-232 through the CE-158(X) interface).");
             tips.SetToolTip(radio1600, "Target: Sharp PC-1600 (software serial Saver/Loader or its RS-232 port).");
             tips.SetToolTip(radioOther, "Target: other Sharp pocket computers with the 15-pin connector (TTL-UART SIO). Choose the model in the box beside it.");
-            tips.SetToolTip(comboSharp, "The Sharp model (15-pin connector): PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..90 or other. It sets the folder, the notes in Info and the WAV converter. Active when the Sharp radio button is on.");
+            tips.SetToolTip(comboSharp, "The Sharp model (15-pin connector): PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..90 or Sharp other. It sets the folder, the notes in Info and the WAV converter. Active when the Sharp radio button is on.");
             tips.SetToolTip(radioFx, "Casio FX-850P, FX-870P and similar.");
             tips.SetToolTip(radioTrs, "TRS-80 model 100, NEC-8201.");
             tips.SetToolTip(radioUart, "Other computers with UART interface TTL or RS-232.");
