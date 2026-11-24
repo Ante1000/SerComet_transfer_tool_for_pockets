@@ -37,8 +37,12 @@ namespace UartSlTest
         readonly WrapToolTip tips = new WrapToolTip { AutoPopDelay = 9000, InitialDelay = 400, ReshowDelay = 200, ShowAlways = true };
         TerminalForm term;
         Button btnTerminal, btnAbort, btnConvert, btnLocations, btnDelete;
-        // default folders of the target computers: PC-1500, PC-1600, other Sharp (15-pin), FX-850/870, TRS-80 / NEC, other UART
-        const int NModels = 6;
+        // default folders of the profiles (see NProf)
+        // profiles of the target computers: 0 PC-1500, 1 PC-1600, 2 PC-1350, 3 PC-1360, 4 PC-E500, 5 PC-E500S, 6 PC-1450..75, 7 Sharp other,
+        // 8 Casio FX-850/870, 9 TRS-80 / NEC, 10 other UART. The group (the old model number 0..5) joins the profiles 2..7 as "Other Sharp".
+        const int NProf = 11;
+        static int GroupOf(int prof) { return prof < 2 ? prof : prof <= 7 ? 2 : prof - 5; }
+        int curProf = -1;
         string[] locs = LoadLocations();      // overwritten by settings.ini when it exists
         Button btnTest, btnRefresh, btnOpen, btnFlush, btnReset, btnBrowse, btnOpenDir, btnSend, btnSendOther, btnRefreshFiles;
         TextBox txtDir;
@@ -47,6 +51,7 @@ namespace UartSlTest
         TextBox lblHint;                    // the Info text: read-only, can be selected and copied
         LedLabel led;
         RadioButton radio1500, radio1600, radioOther, radioFx, radioTrs, radioUart;
+        ComboBox comboSharp;                // the Sharp (other) models: PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..75, other
         RadioButton radioSoft, radioRs, radioSio;
         NumericUpDown numDelay;
         Timer timer;
@@ -73,7 +78,9 @@ namespace UartSlTest
             if (startPort != null && comboPorts.Items.Contains(startPort)) comboPorts.SelectedItem = startPort;
             else if (startPort != null && comboPorts.SelectedItem != null)
                 Log("The saved port " + startPort + " is not available; the first available port " + comboPorts.SelectedItem + " is selected.");
-            (startModel == 0 ? radio1500 : startModel == 2 ? radioOther : startModel == 3 ? radioFx : startModel == 4 ? radioTrs : startModel == 5 ? radioUart : radio1600).Checked = true;
+            int startGroup = GroupOf(startModel);
+            if (startGroup == 2) comboSharp.SelectedIndex = startModel - 2;
+            (startGroup == 0 ? radio1500 : startGroup == 2 ? radioOther : startGroup == 3 ? radioFx : startGroup == 4 ? radioTrs : startGroup == 5 ? radioUart : radio1600).Checked = true;
             SetTarget();
             if (!File.Exists(SettingsFile())) SaveSettings();       // first start or the file was deleted: build it again
             Log("Ready. Select the port and click 'Open port'.");
@@ -88,8 +95,20 @@ namespace UartSlTest
             };
         }
 
+        // the Buy me a coffee picture (img/buymeacoffe58x58.jpg) is built into the program, so it always appears
+        static Image LoadBmcImage()
+        {
+            try
+            {
+                using (var ms = new MemoryStream(Convert.FromBase64String(BmcData.Jpg)))
+                using (var src = Image.FromStream(ms)) return new Bitmap(src);
+            }
+            catch { return null; }
+        }
+
         void BuildUi()
         {
+            ClientSize = new Size(ClientSize.Width, ClientSize.Height + 8);        // the title row is 60 px high (the Buy me a coffee picture is 60 x 60)
             const AnchorStyles TL = AnchorStyles.Top | AnchorStyles.Left;
             const AnchorStyles TR = AnchorStyles.Top | AnchorStyles.Right;
             const AnchorStyles TLR = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
@@ -109,11 +128,19 @@ namespace UartSlTest
             var gbTarget = new GroupBox { Text = "Target computer", Left = 354, Top = 0, Width = 356, Height = 84, Anchor = TR };
             radio1500 = new LockRadio { Text = "Sharp PC-1500", Left = 8, Top = 20, Width = 100 };
             radio1600 = new LockRadio { Text = "Sharp PC-1600", Left = 126, Top = 20, Width = 100, Checked = true };
-            radioOther = new LockRadio { Text = "Sharp (other)", Left = 238, Top = 20, Width = 112 };
+            radioOther = new LockRadio { Text = "", Left = 238, Top = 20, Width = 20 };
+            comboSharp = new LockCombo { Left = 258, Top = 21, Width = 92, DropDownStyle = ComboBoxStyle.DropDown, Enabled = false };
+            comboSharp.Items.AddRange(new object[] { "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450..75", "Sharp other" });
+            comboSharp.Text = "Sharp other";
+            // the box only shows the placeholder or a chosen item: typing is not possible
+            comboSharp.KeyPress += delegate (object sn, KeyPressEventArgs ke) { ke.Handled = true; };
+            comboSharp.KeyDown += delegate (object sn, KeyEventArgs ke) { if (ke.KeyCode != Keys.Down && ke.KeyCode != Keys.Up && ke.KeyCode != Keys.F4 && ke.KeyCode != Keys.Tab) { ke.Handled = true; ke.SuppressKeyPress = true; } };
+            comboSharp.TextChanged += delegate { if (comboSharp.SelectedIndex < 0 && comboSharp.Text != "Sharp other") comboSharp.Text = "Sharp other"; };
+            comboSharp.SelectedIndexChanged += delegate { if (radioOther.Checked) SetTarget(); };
             radioFx = new LockRadio { Text = "Casio FX-850..870", Left = 8, Top = 50, Width = 112 };
             radioTrs = new LockRadio { Text = "NEC/TRS-80", Left = 126, Top = 50, Width = 100 };
             radioUart = new LockRadio { Text = "UART other", Left = 238, Top = 50, Width = 112 };
-            gbTarget.Controls.AddRange(new Control[] { radio1500, radio1600, radioOther, radioFx, radioTrs, radioUart });
+            gbTarget.Controls.AddRange(new Control[] { radio1500, radio1600, radioOther, comboSharp, radioFx, radioTrs, radioUart });
 
             banner = new BannerPanel { Left = 10, Top = 88, Width = 700, Height = 132, Anchor = TLR };
 
@@ -219,8 +246,12 @@ namespace UartSlTest
             chkSkipRem = new LockCheck { Text = "Skip REM", Left = 402, Top = 562, Width = 82, Checked = false };
             btnAbort = Btn("Abort", Icons.Cross(), 485, 560, 90, 24, TR);
             btnConvert = Btn("Convert", Icons.File(), 104, 560, 90, 24, TL);
-            btnView = Btn("View", Icons.File(), 10, 560, 90, 24, TL);
+            btnView = Btn("WAV", Icons.Note(), 10, 560, 90, 24, TL);
             btnView.Enabled = false;
+            // like the Convert button (note at the left edge, the text at the right), but the caption is centred in the free space beside the note
+            // (the icon takes about 24 px at the left)
+            int capW = TextRenderer.MeasureText("WAV", btnView.Font).Width;
+            btnView.Padding = new Padding(0, 0, Math.Max(6, (btnView.Width - 24 - capW) / 2), 0);
             gbFiles.Controls.Add(lstFiles);
             // hovering over a file name: a tip with the size, dates and type of the file
             lstFiles.MouseMove += delegate (object sn, MouseEventArgs me)
@@ -261,12 +292,17 @@ namespace UartSlTest
             var miRenum = new ToolStripMenuItem("Renumber", null, delegate { RenumberSelected(); });
             var miNoRem = new ToolStripMenuItem("Remove REM", null, delegate { RemoveRemSelected(); });
             var miCompare = new ToolStripMenuItem("Compare", null, delegate { CompareSelected(); });
-            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck, miRenum, miNoRem, miCompare });
+            var miPlay = new ToolStripMenuItem("Play", null, delegate { PlaySelected(); });
+            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck, miRenum, miNoRem, miCompare, miPlay });
             fileMenu.Opening += delegate (object sn, System.ComponentModel.CancelEventArgs ce)
             {
                 if (lstFiles.SelectedItem == null || lstFiles.IndexFromPoint(lstFiles.PointToClient(Cursor.Position)) < 0) { ce.Cancel = true; return; }
                 string ext = Path.GetExtension((string)lstFiles.SelectedItem).ToLowerInvariant();
-                miEdit.Enabled = ext != ".img" && ext != ".bin";          // a program image is edited as BASIC text (Convert first)
+                bool wav = ext == ".wav";                                  // a recording: no View, Edit, Check Basic, Renumber, Remove REM; Compare and Play work
+                miView.Enabled = !wav;
+                miCheck.Enabled = !wav;
+                miPlay.Enabled = wav;
+                miEdit.Enabled = ext != ".img" && ext != ".bin" && !wav;          // a program image is edited as BASIC text (Convert first)
                 miDelete.Enabled = !sending;
                 miRenum.Enabled = miNoRem.Enabled = ext == ".bas" || ext == ".txt";       // BASIC text only
             };
@@ -316,22 +352,41 @@ namespace UartSlTest
                 lblDir, txtDir, btnLocations, btnBrowse, btnOpenDir, gbInfo, gbFiles, btnView, chkEof, chkAuto, chkSkipRem, btnConvert, btnAbort, btnSend, btnSendOther, btnRefreshFiles, btnDelete, btnTerminal, gbLog });
 
             // title row: everything else moves down by one row (40 px)
-            foreach (Control c in Controls) c.Top += 52;
+            foreach (Control c in Controls) c.Top += 60;
             {
                 const string titleText = "FILE TRANSFER TOOL FOR PC AND SHARP POCKET COMPUTERS";
                 var titleFont = new Font("Segoe UI", 11F, FontStyle.Bold);
                 Size ts = TextRenderer.MeasureText(titleText, titleFont);
                 int x0 = (ClientSize.Width - (32 + 8 + ts.Width)) / 2 - 22;
-                Controls.Add(new PictureBox { Image = Icons.Comet(32), SizeMode = PictureBoxSizeMode.AutoSize, Left = x0, Top = 10, Anchor = AnchorStyles.Top });
+                Controls.Add(new PictureBox { Image = Icons.Comet(32), SizeMode = PictureBoxSizeMode.AutoSize, Left = x0, Top = 14, Anchor = AnchorStyles.Top });
                 Controls.Add(new Label
                 {
                     Text = titleText, AutoSize = true, Font = titleFont, ForeColor = Color.FromArgb(30, 70, 120),
-                    Left = x0 + 40, Top = 10 + (32 - ts.Height) / 2, Anchor = AnchorStyles.Top
+                    Left = x0 + 40, Top = 14 + (32 - ts.Height) / 2, Anchor = AnchorStyles.Top
                 });
                 // "by Alex F4VTS" to the right of the title, a round "?" button (About) on the left
-                var by = new Label { Text = "by Alex F4VTS", AutoSize = true, Font = new Font("Segoe UI", 9F, FontStyle.Bold | FontStyle.Italic), ForeColor = Color.FromArgb(90, 110, 140), Left = x0 + 40 + ts.Width + 10, Top = 10 + (32 - ts.Height) / 2 + 3, Anchor = AnchorStyles.Top };
+                var byFont = new Font("Segoe UI", 9F, FontStyle.Bold | FontStyle.Italic);
+                Size byS = TextRenderer.MeasureText("by Alex F4VTS", byFont);
+                // Buy me a coffee: the picture img\buymeacoffee.jpg (looked for next to the program and in the folders above it); without the file a text link
+                Image bmcImg = LoadBmcImage();
+                int bmcH = bmcImg != null ? bmcImg.Height : 58;          // the picture 58 x 58 px, not scaled
+                int bmcW;
+                if (bmcImg != null) bmcW = bmcImg.Width;
+                else bmcW = bmcH;          // (the picture is built into the program; this is only a safety net)
+                // the group icon + title + "by Alex F4VTS" + the picture ends at the right edge of the window (10 px margin)
+                x0 = ClientSize.Width - 10 - (32 + 8 + ts.Width + 10 + byS.Width + 12 + bmcW);
+                foreach (Control c0 in Controls)
+                {
+                    if (c0 is PictureBox) { c0.Left = x0; c0.Anchor = AnchorStyles.Top | AnchorStyles.Right; }
+                    else if (c0 is Label && ((Label)c0).Text == titleText) { c0.Left = x0 + 40; c0.Anchor = AnchorStyles.Top | AnchorStyles.Right; }
+                }
+                var by = new Label { Text = "by Alex F4VTS", AutoSize = true, Font = byFont, ForeColor = Color.FromArgb(90, 110, 140), Left = x0 + 40 + ts.Width + 10, Top = 14 + (32 - ts.Height) / 2 + 3, Anchor = AnchorStyles.Top | AnchorStyles.Right };
                 Controls.Add(by);
-                var about = new RoundHelpButton { Left = 10, Top = 15, Width = 21, Height = 21, Anchor = AnchorStyles.Top | AnchorStyles.Left };
+                Control bmc = new PictureBox { Image = bmcImg, SizeMode = PictureBoxSizeMode.Normal, Left = by.Left + byS.Width + 12, Top = 4, Width = bmcW, Height = bmcH, Anchor = AnchorStyles.Top | AnchorStyles.Right, Cursor = Cursors.Hand };
+                bmc.Click += delegate { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://www.buymeacoffee.com/Alex_F4VTS") { UseShellExecute = true }); } catch (Exception ex) { Log("Cannot open the page: " + ex.Message); } };
+                tips.SetToolTip(bmc, "Support the author: Buy me a coffee (opens the page buymeacoffee.com/Alex_F4VTS in the browser).");
+                Controls.Add(bmc);
+                var about = new RoundHelpButton { Left = 10, Top = 19, Width = 21, Height = 21, Anchor = AnchorStyles.Top | AnchorStyles.Left };
                 about.Click += delegate { using (var d = new AboutForm()) d.ShowDialog(this); };
                 tips.SetToolTip(about, "About SerComet: author, license and project page.");
                 Controls.Add(about);
@@ -370,13 +425,13 @@ namespace UartSlTest
             btnTerminal.Click += delegate { OpenTerminal(); };
             btnAbort.Click += delegate { Abort(); };
             btnConvert.Click += delegate { ConvertSelected(); };
-            btnView.Click += delegate { ViewSelected(); };
+            btnView.Click += delegate { WavSelected(); };
             lstFiles.MouseDoubleClick += delegate (object sn, MouseEventArgs me)      // double click on a file name = View
             {
                 int i = lstFiles.IndexFromPoint(me.Location);
                 if (i < 0 || i >= lstFiles.Items.Count) return;
                 lstFiles.SelectedIndex = i;
-                ViewSelected();
+                if (Path.GetExtension((string)lstFiles.SelectedItem).Equals(".wav", StringComparison.OrdinalIgnoreCase)) PlaySelected(); else ViewSelected();
             };
             lstFiles.SelectedIndexChanged += delegate { SelectionChanged(); };
             btnSend.Enabled = false;
@@ -410,7 +465,8 @@ namespace UartSlTest
             tips.SetToolTip(led, "Port status: green = open, dark = closed.");
             tips.SetToolTip(radio1500, "Target: Sharp PC-1500 (software serial Saver/Loader at 4800 baud, or RS-232 through the CE-158(X) interface).");
             tips.SetToolTip(radio1600, "Target: Sharp PC-1600 (software serial Saver/Loader or its RS-232 port).");
-            tips.SetToolTip(radioOther, "Target: other Sharp pocket computers with the 15-pin connector (TTL-UART SIO).");
+            tips.SetToolTip(radioOther, "Target: other Sharp pocket computers with the 15-pin connector (TTL-UART SIO). Choose the model in the box beside it.");
+            tips.SetToolTip(comboSharp, "The Sharp model (15-pin connector): PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..75 or Sharp other. It sets the folder, the notes in Info and the WAV converter. Active when the Sharp radio button is on.");
             tips.SetToolTip(radioFx, "Casio FX-850P, FX-870P and similar.");
             tips.SetToolTip(radioTrs, "TRS-80 model 100, NEC-8201.");
             tips.SetToolTip(radioUart, "Other computers with UART interface TTL or RS-232.");
@@ -432,7 +488,7 @@ namespace UartSlTest
             tips.SetToolTip(btnRefreshFiles, "Re-read the folder and refresh the file list.");
             tips.SetToolTip(btnTerminal, "Open a terminal window (like TeraTerm): typed characters are sent, received data is shown. Text modes only.");
             tips.SetToolTip(comboEol, "Line end sent after every line of a text file: CR, CR+LF (TeraTerm style) or LF. Red = CR alone or LF alone is probably a wrong choice for the Sharp and Casio computers (they expect CR+LF); TRS-80 / NEC and other UART computers can use any of them.");
-            tips.SetToolTip(btnView, "Show the contents of the selected file (BASIC text; program images are shown as BASIC).");
+            tips.SetToolTip(btnView, "WAV: PC-1500, PC-1600, PC-1350, PC-1360 and PC-E500 (the last three under Sharp (other)). A BASIC text file (.bas / .txt) is converted to a tape recording (.wav; the PC-1600 asks for MODE 0 = CE-1600P or MODE 1 = CE-150), a .wav recording is converted back to BASIC text.");
             tips.SetToolTip(chkEof, "Add the end-of-file marker. Text modes: after the file (and the dummy line) send the end-of-file character 1Ah (Ctrl-Z) so that the Sharp finishes the reception (1Ah is the end-of-file code of an ASCII file). Switch it off if the Sharp reports an error.");
             tips.SetToolTip(btnAbort, "Abort the transmission at once: stops sending the file and discards data waiting to be sent or received.");
             tips.SetToolTip(btnConvert, "Software UART mode only. Convert the selected file: BASIC text (.bas, .txt) to a program image (.img), or a program image (.img, or a .bin that is a BASIC program) to BASIC text (.bas).");
@@ -458,63 +514,85 @@ namespace UartSlTest
         void SetTarget()
         {
             int nm = radio1500.Checked ? 0 : radio1600.Checked ? 1 : radioOther.Checked ? 2 : radioFx.Checked ? 3 : radioTrs.Checked ? 4 : 5;
-            if (curModel >= 0 && nm != curModel) CaptureUi(curModel);     // keep the settings of the computer we leave
+            int prof = nm < 2 ? nm : nm == 2 ? 2 + (comboSharp.SelectedIndex < 0 ? 5 : comboSharp.SelectedIndex) : nm + 5;
+            if (curProf >= 0 && prof != curProf) CaptureUi(curProf);     // keep the settings of the computer we leave
             curModel = nm;
+            curProf = prof;
+            comboSharp.Enabled = nm == 2;
             radioSoft.Enabled = nm == 0;          // Software Serial: PC-1500 only (blocked for the PC-1600 for the time being)
             radioRs.Enabled = nm != 2 && nm != 3;
             radioSio.Enabled = nm == 2 || nm == 3 || nm == 5;
             radioRs.Text = "RS-232 serial";
             comboEol.Invalidate();
-            banner.ModelName = ModelCaptions[nm];
+            banner.ModelName = ModelCaptions[prof];
             banner.Model = nm;
+            banner.Prof = prof;
             banner.Invalidate();
-            ApplyCfg(nm);
-            SetDefaultDir(cfg[nm].Dir ?? locs[nm]);
+            ApplyCfg(prof);
+            SetDefaultDir(cfg[prof].Dir ?? locs[prof]);
             UpdateMode();
         }
 
-        static readonly string[] ModelCaptions = { "Sharp PC-1500", "Sharp PC-1600", "Sharp with 15-pin connector", "Casio FX-850P / FX-870P", "TRS-80 / NEC PC-8201", "Other UART computer" };
+        static readonly string[] ModelCaptions = { "Sharp PC-1500", "Sharp PC-1600", "Sharp PC-1350", "Sharp PC-1360", "Sharp PC-E500", "Sharp PC-E500S", "Sharp PC-1450..75", "Sharp with UART connector", "Casio FX-850P / FX-870P", "TRS-80 mod.100 / NEC PC-8201", "Other computer with UART" };
 
         string HintText()
         {
             if (curModel == 3)
                 return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
                        "OPEN \"COM0:6,N,8,1,N,N,N,N,N\" AS #1 (6 = 4800, 5 = 2400, 4 = 1200, 3 = 600, 2 = 300); PRINT #1,..; INPUT #1,A$; LINE INPUT #1,A$; CLOSE.\r\n" +
-                       "Program (text): SAVE \"COM0:6,N,8,1,N,N,N,N,N\" = Receive, LOAD \"COM0:6,N,8,1,N,N,N,N,N\" = Send.";
+                       "Program (text): LOAD \"COM0:6,N,8,1,N,N,N,N,N\" = Send.";
             if (curModel == 4)
                 return "TRS-80 Model 100 / NEC PC-8201: DB-25 RS-232C, null-modem cable. OPEN \"COM:88N1E\" FOR OUTPUT AS 1 / FOR INPUT AS 2 (8 = 9600, 3 = 300, 9 = 19200).\r\n" +
-                       "PRINT #1,..; LINE INPUT #2,A$; A$=INPUT$(n,2); CLOSE 1,2. Program (ASCII): SAVE \"COM:88N1E\" = Receive, LOAD \"COM:48N1E\" = Send.\r\n" +
+                       "PRINT #1,..; LINE INPUT #2,A$; A$=INPUT$(n,2); CLOSE 1,2. Program (ASCII): LOAD \"COM:48N1E\" = Send.\r\n" +
                        "LOAD tokenizes while receiving: use 600 to 1200 bps; SAVE is stable up to 19200.";
             if (curModel == 5 && radioSio.Checked)
-                return "UART Other, TTL: logic levels 0 / +5 V; 3.3 V CMOS devices work too, and so do Arduino and similar boards. Connect through a USB-TTL adapter and match its voltage (3.3 V or 5 V) to the device.\r\n" +
+                return "Other computer with UART, TTL: logic levels 0 / +5 V; 3.3 V CMOS devices work too, and so do Arduino and similar boards. Connect through a USB-TTL adapter and match its voltage (3.3 V or 5 V) to the device.\r\n" +
                        "TX of one side goes to RX of the other, and the grounds are joined. Never connect RS-232 levels to a TTL input.\r\n" +
                        "Text transfer (.bas) with the baud rate (up to 115200), flow control, line end and line delay set here (8N1). Use the Terminal for tests.";
             if (curModel == 5)
-                return "UART Other, RS-232: the signal swings between a negative and a positive voltage (about -5 to -15 V and +5 to +15 V). A device with 0 / +5 V logic needs a level converter (for example MAX232 / MAX3232) between it and the RS-232 adapter.\r\n" +
+                return "Other computer with UART, RS-232: the signal swings between a negative and a positive voltage (about -5 to -15 V and +5 to +15 V). A device with 0 / +5 V logic needs a level converter (for example MAX232 / MAX3232) between it and the RS-232 adapter.\r\n" +
                        "Connect through a USB-RS232 adapter with a null-modem cable (TX and RX crossed).\r\n" +
                        "Text transfer (.bas) with the baud rate (up to 115200), flow control, line end and line delay set here (8N1). Use the Terminal for tests.";
+            if (curModel == 2 && curProf == 2)
+                return "Sharp PC-1350, PC-2500 (version with printer); 15-pin connector, TTL-UART SIO via a USB/COM adapter, 1200 bps).\r\n" +
+                       "OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send). Text transfer (.bas).\r\n" +
+                       "WAV: the tokenized program as a tape recording (CLOAD / CSAVE, ID 70H); a BASIC text file is converted to a recording and back.";
+            if (curModel == 2 && curProf == 3)
+                return "Sharp PC-1360 (15-pin connector, TTL-UART SIO via a USB/COM adapter, 1200 bps).\r\n" +
+                       "OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send). After MERGE of several programs the transmission by SAVE / LOAD may not work correctly (see the manual).\r\n" +
+                       "WAV: the tokenized program as a tape recording (CLOAD / CSAVE, ID 72H, two byte tokens); a BASIC text file is converted to a recording and back.";
+            if (curModel == 2 && (curProf == 4 || curProf == 5))
+                return "Sharp " + (curProf == 4 ? "PC-E500" : "PC-E500S") + " (15-pin connector, TTL-UART SIO, up to 9600 bps).\r\n" +
+                       "OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then LOAD / SAVE (COM is the default device); SAVE [\"name\"[,A]]: on COM the program is always sent as ASCII text. Text transfer (.bas).\r\n" +
+                       "WAV: BASIC text is written as an ASCII tape file (SAVE \"CAS:\"); recordings of SAVE \"CAS:\" and CSAVE are read back as BASIC text.";
+            if (curModel == 2 && curProf == 6)
+                return "Sharp PC-1450 to PC-1475 (15-pin connector, TTL-UART SIO via a USB/COM adapter).\r\n" +
+                       "Tokenization and tape format is not supported. You can use the usual UART transfer of Basic programs.";
+            if (curModel == 2)
+                return "Other Sharp pocket computer with the 15-pin connector (TTL-UART SIO via a USB/COM adapter).\r\n" +
+                       "Tokenization and tape format is not supported. You can use the usual UART transfer of Basic programs.";
             if (radioSio.Checked)
-                return "Compatible: PC-1350, PC-1360, PC-1450..90, PC-E500..650, PC-U6000, PC-2500 (15-pin, TTL-UART SIO via a USB/COM adapter).\r\n" +
-                       "PC-1350 / PC-1360: OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send) or SAVE (SerComet: Receive).\r\n" +
+                return "Compatible: PC-1350, PC-1360, PC-1450..75, PC-E500..650, PC-U6000, PC-2500 (15-pin, TTL-UART SIO via a USB/COM adapter).\r\n" +
+                       "PC-1350 / PC-1360: OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send).\r\n" +
                        "PC-E500(S): OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then LOAD / SAVE (COM is the default device).\r\n" +
                        "SAVE [\"name\"[,A]]: the name (up to 8 characters) is optional; on COM the program is always sent as ASCII text.\r\n" +
-                       "Text transfer (.bas); the file is saved after EOF (1Ah) or 3 s of silence.";
+                       "Text transfer (.bas).";
             if (radio1500.Checked && radioRs.Checked)
                 return "PC-1500 with CE-158(X): SETCOM 2400,8,N,1 (the same baud rate as in SerComet).\r\n" +
-                       "Into the PC-1500 (SerComet: Send): SETDEV CI, then CLOADa.   From the PC-1500 (SerComet: Receive): SETDEV CO, then CSAVEa.\r\n" +
-                       "Text transfer (.bas); the file is saved after EOF (1Ah) or 3 s of silence.";
+                       "Into the PC-1500 (SerComet: Send): SETDEV CI, then CLOADa.\r\n" +
+                       "Text transfer (.bas).";
             if (radio1500.Checked)
-                return "Software UART: 8N1 at 4800 baud (fixed), binary transfer (.img files). TX = PC7 (pin 10), RX = PB2 (pin 27) of the PC-1500. RECEIVE: on the PC-1500 type CALL &4200 (SAVE). The file is saved automatically, named after the first REM.\r\nSEND: type NEW, then CALL &4100 (LOAD) on the PC-1500 first, then press Send (30 s to start). Addresses for a RAM starting at &4000 (the SL installer shows the others).";
+                return "Software UART: 8N1 at 4800 baud (fixed), binary transfer (.img files). TX = PC7 (pin 10), RX = PB2 (pin 27) of the PC-1500.\r\nSEND: type NEW, then CALL &4100 (LOAD) on the PC-1500 first, then press Send (30 s to start). Addresses for a RAM starting at &4000 (the SL installer shows the others).";
             if (radioRs.Checked)
                 return "Into the PC-1600 (Send): INIT\"COM1:\",512 / SETCOM\"COM1:\"," + savedBaud + " / LOAD\"COM1:\" (same baud rate as in SerComet).\r\n" +
-                       "From the PC-1600 (Receive): SAVE\"COM1:\",A. Text transfer (.bas); the file is saved after EOF (1Ah) or 3 s of silence.\r\n" +
+                       "Text transfer (.bas).\r\n" +
                        "SETCOM\"COM1:\"," + savedBaud + ",8,N,1,X,N switches XON/XOFF on in the Sharp (the default Flow of SerComet).";
-            return "Software UART: 8N1 at the speed chosen here and in the SL installer (9600 recommended), binary transfer (.img files). RECEIVE: on the PC-1600 type CALL &C200 (SAVE). The file is saved automatically, named after the first REM.\r\nSEND: type CALL &C100 (LOAD) on the PC-1600 first, then press Send (30 s to start).";
+            return "Software UART: 8N1 at the speed chosen here and in the SL installer (9600 recommended), binary transfer (.img files).\r\nSEND: type CALL &C100 (LOAD) on the PC-1600 first, then press Send (30 s to start).";
         }
 
         static string DefaultLocation(int i)
         {
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), new[] { "PC1500", "PC1600", "PC_15-pin", "Casio", "TRS-80", "UART" }[i]);
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), new[] { "PC1500", "PC1600", "PC1350", "PC1360", "PCE500", "PCE500S", "PC1450", "SHARP_other", "Casio", "TRS-80", "UART" }[i]);
         }
 
         // ------------------------------------------------------------------ settings.ini
@@ -546,12 +624,22 @@ namespace UartSlTest
             return ms;
         }
 
-        readonly ModelCfg[] cfg = { new ModelCfg { Delay = DefaultDelay(9600, 0) }, new ModelCfg { Mode = 1, Baud = "4800", Delay = DefaultDelay(4800, 1) },
-            new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) }, new ModelCfg { Mode = 2, Baud = "4800", Delay = DefaultDelay(4800, 3) },
-            new ModelCfg { Mode = 1, Baud = "1200", Delay = DefaultDelay(1200, 4), Eol = 0 }, new ModelCfg { Mode = 1, Delay = DefaultDelay(9600, 5) } };
+        readonly ModelCfg[] cfg = {
+            new ModelCfg { Delay = DefaultDelay(9600, 0) },                                                  // PC-1500
+            new ModelCfg { Mode = 1, Baud = "4800", Delay = DefaultDelay(4800, 1) },                         // PC-1600
+            new ModelCfg { Mode = 2, Baud = "1200", Delay = DefaultDelay(1200, 2) },                         // PC-1350
+            new ModelCfg { Mode = 2, Baud = "1200", Delay = DefaultDelay(1200, 2) },                         // PC-1360
+            new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) },                                        // PC-E500
+            new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) },                                        // PC-E500S
+            new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) },                                        // PC-1450..75
+            new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) },                                        // Sharp other
+            new ModelCfg { Mode = 2, Baud = "4800", Delay = DefaultDelay(4800, 3) },                         // Casio
+            new ModelCfg { Mode = 1, Baud = "1200", Delay = DefaultDelay(1200, 4), Eol = 0 },                // TRS-80 / NEC
+            new ModelCfg { Mode = 1, Delay = DefaultDelay(9600, 5) } };                                      // other UART
         int curModel = -1, startModel = 1;
         string startPort;
-        static readonly string[] ModelNames = { "PC-1500", "PC-1600", "Other Sharp", "FX-850/870", "TRS-80", "UART Other" };
+        static readonly string[] ModelNames = { "PC-1500", "PC-1600", "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450", "Sharp other", "FX-850/870", "TRS-80", "UART Other" };
+        static readonly string[] GroupNames = { "PC-1500", "PC-1600", "Other Sharp" };
         static readonly string[] ModeNames = { "Software UART", "RS-232", "TTL-UART" };
         static readonly string[] EolNames = { "CR", "CR+LF", "LF" };
         static readonly string[] FlowNames = { "None", "XON/XOFF", "RTS/CTS", "DSR/DTR" };
@@ -571,7 +659,7 @@ namespace UartSlTest
 
         void CaptureUi(int m)
         {
-            if (m < 0 || m >= NModels) return;
+            if (m < 0 || m >= NProf) return;
             var c = cfg[m];
             c.Mode = radioSio.Checked ? 2 : radioRs.Checked ? 1 : 0;
             c.Baud = savedBaud;
@@ -585,9 +673,10 @@ namespace UartSlTest
             c.Dir = txtDir.Text;
         }
 
-        void ApplyCfg(int m)
+        void ApplyCfg(int prof)
         {
-            var c = cfg[m];
+            int m = GroupOf(prof);
+            var c = cfg[prof];
             if (m == 1 && c.Mode == 0) { c.Mode = 1; c.Baud = "4800"; }      // PC-1600: the Software Serial is blocked; RS-232 at 4800 bps is the default
             if (m == 2 || m == 3 || (m == 5 && c.Mode == 2)) radioSio.Checked = true;
             else if (m == 4 || m == 5 || c.Mode == 1) radioRs.Checked = true;
@@ -629,8 +718,9 @@ namespace UartSlTest
                     return sec.TryGetValue(s1, out d) && d.TryGetValue(k, out v) && v.Length > 0 ? v : null;
                 };
                 startPort = get("General", "Port");
-                startModel = IndexOf(ModelNames, get("General", "Target"), 1);
-                for (int m = 0; m < NModels; m++)
+                string tg = get("General", "Target");
+                startModel = string.Equals(tg, "Other Sharp", StringComparison.OrdinalIgnoreCase) ? 7 : IndexOf(ModelNames, tg, 1);
+                for (int m = 0; m < NProf; m++)
                 {
                     string d = get("Folders", ModelNames[m]);
                     if (d != null) locs[m] = d;
@@ -656,17 +746,17 @@ namespace UartSlTest
         {
             try
             {
-                CaptureUi(curModel);
+                CaptureUi(curProf);
                 var sb = new StringBuilder();
                 sb.AppendLine("; SerComet settings (written when the program is closed)");
                 sb.AppendLine("[General]");
                 sb.AppendLine("Port=" + (comboPorts.SelectedItem as string ?? ""));
-                sb.AppendLine("Target=" + ModelNames[curModel < 0 ? 1 : curModel]);
+                sb.AppendLine("Target=" + ModelNames[curProf < 0 ? 1 : curProf]);
                 sb.AppendLine();
                 sb.AppendLine("; default folders of the programs (Folders window)");
                 sb.AppendLine("[Folders]");
-                for (int m = 0; m < NModels; m++) sb.AppendLine(ModelNames[m] + "=" + locs[m]);
-                for (int m = 0; m < NModels; m++)
+                for (int m = 0; m < NProf; m++) sb.AppendLine(ModelNames[m] + "=" + locs[m]);
+                for (int m = 0; m < NProf; m++)
                 {
                     var c = cfg[m];
                     sb.AppendLine();
@@ -696,14 +786,14 @@ namespace UartSlTest
 
         static string[] LoadLocations()
         {
-            var l = new string[NModels];
-            for (int i = 0; i < NModels; i++) l[i] = DefaultLocation(i);
+            var l = new string[NProf];
+            for (int i = 0; i < NProf; i++) l[i] = DefaultLocation(i);
             try
             {
                 if (File.Exists(LocationsFile()))
                 {
                     string[] lines = File.ReadAllLines(LocationsFile());
-                    for (int i = 0; i < NModels && i < lines.Length; i++) if (lines[i].Trim().Length > 0) l[i] = lines[i].Trim();
+                    for (int i = 0; i < NProf && i < lines.Length; i++) if (lines[i].Trim().Length > 0) l[i] = lines[i].Trim();
                 }
             }
             catch { }
@@ -713,13 +803,13 @@ namespace UartSlTest
         // second window: the folders of the programs for each target computer
         void EditLocations()
         {
-            using (var d = new LocationsForm(locs, Enumerable.Range(0, NModels).Select(DefaultLocation).ToArray()))
+            using (var d = new LocationsForm(locs, Enumerable.Range(0, NProf).Select(DefaultLocation).ToArray()))
             {
                 if (d.ShowDialog(this) != DialogResult.OK) return;
                 locs = d.Result;
-                for (int m = 0; m < NModels; m++) cfg[m].Dir = locs[m];      // the new default folders are used from now on
+                for (int m = 0; m < NProf; m++) cfg[m].Dir = locs[m];      // the new default folders are used from now on
                 SaveSettings();
-                SetDefaultDir(locs[curModel < 0 ? 1 : curModel]);
+                SetDefaultDir(locs[curProf < 0 ? 1 : curProf]);
             }
         }
 
@@ -943,12 +1033,20 @@ namespace UartSlTest
                 var fi = new FileInfo(Path.Combine(txtDir.Text, name));
                 if (!fi.Exists) return name;
                 string ext = fi.Extension.ToLowerInvariant();
-                string kind = ext == ".img" ? "Program image" : ext == ".bas" || ext == ".txt" ? "BASIC text" : ext == ".bin" ? "Binary file" : "File";
+                string kind = ext == ".img" ? "Program image" : ext == ".bas" || ext == ".txt" ? "BASIC text" : ext == ".bin" ? "Binary file" : ext == ".wav" ? "WAV recording" : "File";
                 string extra = "";
                 if (ext == ".img")
                 {
                     string err; byte[] d = File.ReadAllBytes(fi.FullName);
                     if (ProgImage.CheckImage(d, out err)) extra = "\r\nLines: " + ProgImage.CountLines(d);
+                }
+                else if (ext == ".wav")
+                {
+                    TapeWav.WavInfo wi; int wo, wl;
+                    byte[] head = new byte[Math.Min(fi.Length, 4096)];
+                    using (var fs = File.OpenRead(fi.FullName)) fs.Read(head, 0, head.Length);
+                    // the header is in the first bytes; the length of the data is taken from the file size
+                    if (TapeWav.Parse(head, fi.Length, out wi, out wo, out wl)) extra = "\r\n" + TapeWav.Describe(wi);
                 }
                 else if (ext == ".bas" || ext == ".txt")
                 {
@@ -972,7 +1070,7 @@ namespace UartSlTest
                 {
                     if (!File.Exists(f)) continue;
                     string ext = Path.GetExtension(f).ToLowerInvariant();
-                    if (ext != ".bas" && ext != ".txt" && ext != ".img") { Log("Drop: skipped " + Path.GetFileName(f) + " (only .bas, .txt, .img)"); continue; }
+                    if (ext != ".bas" && ext != ".txt" && ext != ".img" && ext != ".wav") { Log("Drop: skipped " + Path.GetFileName(f) + " (only .bas, .txt, .img, .wav)"); continue; }
                     if (string.Equals(Path.GetDirectoryName(Path.GetFullPath(f)), Path.GetFullPath(txtDir.Text), StringComparison.OrdinalIgnoreCase)) continue;   // already there
                     string dest = Path.Combine(txtDir.Text, Path.GetFileName(f));
                     if (File.Exists(dest))
@@ -1004,7 +1102,7 @@ namespace UartSlTest
                 if (Directory.Exists(txtDir.Text))
                 {
                     var found = new List<string>();
-                    foreach (string pat in rs232 ? new[] { "*.bas", "*.txt" } : chkAuto.Checked ? new[] { "*.img", "*.bas", "*.txt" } : new[] { "*.img" })
+                    foreach (string pat in rs232 ? new[] { "*.bas", "*.txt", "*.wav" } : chkAuto.Checked ? new[] { "*.img", "*.bas", "*.txt", "*.wav" } : new[] { "*.img", "*.wav" })
                         foreach (string f in Directory.GetFiles(txtDir.Text, pat)) found.Add(Path.GetFileName(f));
                     found.Sort(StringComparer.OrdinalIgnoreCase);
                     lstFiles.Items.AddRange(found.ToArray());
@@ -1210,10 +1308,50 @@ namespace UartSlTest
             if (data != null) Received(data);
         }
 
+        // text mode: the Sharp sent the program in its internal (intermediate / tokenized) format, e.g. SAVE "COM1:" without ,A.
+        // PC-1600 and PC-1500: converted to BASIC text. All other computers: rejected with a red warning (send a BASIC listing instead).
+        bool ReceivedInternalFormat(byte[] data)
+        {
+            byte[] img;
+            if (!ProgImage.FindLines(data, out img)) return false;
+            Directory.CreateDirectory(txtDir.Text);
+            string name = SharpBase(ProgImage.NameFromRem(img));
+            if (curModel <= 1)
+            {
+                LogBold("Detected a file in the internal (intermediate / tokenized) format: after the reception it is converted (detokenized) to a BASIC text file! " +
+                        (curModel == 1 ? "To send BASIC text at once use SAVE \"COM1:\",A (PC-1600)." : "To send BASIC text at once check the SAVE command of the PC-1500 (CE-158) in the manual."));
+                string problem;
+                string bas = Pc1600Basic.Detokenize(img, curModel == 0, out problem);
+                if (problem == null)
+                {
+                    string path = UniqueSharp(name, ".bas");
+                    File.WriteAllBytes(path, Encoding.GetEncoding(28591).GetBytes(bas));
+                    Log("RECEIVED " + data.Length + " B, " + ProgImage.CountLines(img) + " lines -> " + Path.GetFileName(path) + " (converted from the internal format).");
+                    RefreshFiles();
+                    return true;
+                }
+                Log("Conversion problem: " + problem + "; the program is kept as an image (.img).");
+            }
+            else
+            {
+                // the tokens of these computers are not known: the file is rejected (nothing is saved)
+                LogBold("Detected a file in the internal (tokenized) format: it is REJECTED and not saved! Send the program as a BASIC LISTING (text): " +
+                        "PC-1350 / PC-1360: OPEN \"1200,N,8,1,A,C,&1A\" and then SAVE; PC-E500(S): OPEN \"9600,N,8,1,A,C,&H1A,N,N\" and then SAVE \"COM:PROGRAM\",A " +
+                        "(over COM the listing is ASCII); other computers: check the manual.");
+                return true;
+            }
+            string ipath = UniqueSharp(name, ".img");
+            File.WriteAllBytes(ipath, img);
+            Log("RECEIVED " + data.Length + " B, " + ProgImage.CountLines(img) + " lines -> " + Path.GetFileName(ipath));
+            RefreshFiles();
+            return true;
+        }
+
         void Received(byte[] data)
         {
             try
             {
+                if (rs232 && ReceivedInternalFormat(data)) return;
                 if (rs232 && !LooksLikeProgramText(data))
                 {
                     string guess = GuessBaudProblem(data);
@@ -1315,7 +1453,7 @@ namespace UartSlTest
         }
 
         // ------------------------------------------------------------------ names for the Sharp
-        int NameModel { get { return curModel < 0 ? 1 : curModel > 2 ? 2 : curModel; } }      // the other computers use the rules of the 15-pin models
+        int NameModel { get { if (curProf == 4 || curProf == 5) return 1; return curModel < 0 ? 1 : curModel > 2 ? 2 : curModel; } }      // the PC-E500 uses the rules of the PC-1600 (8 characters), the other computers those of the 15-pin models
 
         // the name of a program for the selected computer (length and characters); no name: PRG + time
         string SharpBase(string raw)
@@ -1345,7 +1483,7 @@ namespace UartSlTest
             string raw = Path.GetFileNameWithoutExtension(path);
             bool changed;
             string n = SharpName.Fix(raw, NameModel, out changed);
-            if (changed) Log("Name for the " + ModelNames[NameModel] + ": \"" + n + "\" (shortened or changed from \"" + raw + "\": " + SharpName.Rules(NameModel) + ").");
+            if (changed) Log("Name for the " + GroupNames[NameModel] + ": \"" + n + "\" (shortened or changed from \"" + raw + "\": " + SharpName.Rules(NameModel) + ").");
         }
 
         string UniquePath(string name, string ext)
@@ -1465,12 +1603,30 @@ namespace UartSlTest
             return o.ToString();
         }
 
+        static bool SameFile(string a, string b)
+        {
+            try { return string.Equals(Path.GetFullPath(a), Path.GetFullPath(b), StringComparison.OrdinalIgnoreCase); }
+            catch { return false; }
+        }
+
         void CompareSelected()
         {
             if (lstFiles.SelectedItem == null) return;
             string nameA = (string)lstFiles.SelectedItem;
             string pathA = Path.Combine(txtDir.Text, nameA);
             string pathB;
+            if (Path.GetExtension(nameA).Equals(".wav", StringComparison.OrdinalIgnoreCase))
+            {
+                using (var dw = new OpenFileDialog { Title = "Compare " + nameA + " with ...", InitialDirectory = txtDir.Text, Filter = "WAV recordings (*.wav)|*.wav" })
+                {
+                    if (dw.ShowDialog(this) != DialogResult.OK) return;
+                    pathB = dw.FileName;
+                }
+                if (SameFile(pathA, pathB)) { LogBold("Compare: choose another file (it is the same file)."); return; }
+                try { new PreviewForm("Compare: " + nameA + " / " + Path.GetFileName(pathB), CompareWavs(nameA, pathA, Path.GetFileName(pathB), pathB)).Show(this); }
+                catch (Exception ex) { Log("Compare error: " + ex.Message); }
+                return;
+            }
             // only files of the same kind: program images (.img) with .img, BASIC text (.bas = .txt) with .bas / .txt
             bool img = Path.GetExtension(nameA).Equals(".img", StringComparison.OrdinalIgnoreCase);
             using (var d = new OpenFileDialog { Title = "Compare " + nameA + " with ...", InitialDirectory = txtDir.Text,
@@ -1479,6 +1635,7 @@ namespace UartSlTest
                 if (d.ShowDialog(this) != DialogResult.OK) return;
                 pathB = d.FileName;
             }
+            if (SameFile(pathA, pathB)) { LogBold("Compare: choose another file (it is the same file)."); return; }
             if (Path.GetExtension(pathB).Equals(".img", StringComparison.OrdinalIgnoreCase) != img)
             { Log("Compare: choose a file of the same kind (" + (img ? ".img" : ".bas / .txt") + ")."); return; }
             string nameB = Path.GetFileName(pathB);
@@ -1636,10 +1793,239 @@ namespace UartSlTest
             return sb.ToString().Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
         }
 
+        // ---- WAV: BASIC text <-> tape recording (PC-1500 and PC-1600), Play, Compare of recordings
+        string UniquePath2(string path)
+        {
+            string dir = Path.GetDirectoryName(path), b = Path.GetFileNameWithoutExtension(path), e = Path.GetExtension(path);
+            for (int i = 2; File.Exists(path); i++) path = Path.Combine(dir, b + "_" + i + e);
+            return path;
+        }
+
+        void WavSelected()
+        {
+            if (lstFiles.SelectedItem == null) return;
+            string name = (string)lstFiles.SelectedItem;
+            string path = Path.Combine(txtDir.Text, name);
+            string ext = Path.GetExtension(name).ToLowerInvariant();
+            if (curModel > 2) { Log("WAV: the converters are for the Sharp PC-1500, PC-1600, PC-1350, PC-1360, PC-E500 and PC-E500S (choose the computer in the Target computer box)."); return; }
+            if (curProf == 6 || curProf == 7) { Log("WAV: tokenization and tape format is not supported for this computer (PC-1450..75 / other)."); return; }
+            try
+            {
+                if (ext == ".wav") WavToBasic(path);
+                else if (ext == ".bas" || ext == ".txt") BasicToWav(path);
+                else Log("WAV: select a BASIC text file (.bas / .txt) or a .wav recording.");
+            }
+            catch (Exception ex) { Log("WAV error: " + ex.Message); }
+        }
+
+        // PC-1600: MODE 0 / MODE 1 / Cancel (returns 0, 1 or -1)
+        int AskTapeMode(string file)
+        {
+            int result = -1;
+            using (var f = new Form())
+            {
+                f.Text = "WAV: " + file;
+                f.FormBorderStyle = FormBorderStyle.FixedDialog; f.MaximizeBox = false; f.MinimizeBox = false; f.ShowInTaskbar = false;
+                f.StartPosition = FormStartPosition.CenterParent;
+                f.ClientSize = new Size(470, 190);
+                var lbl = new Label
+                {
+                    Left = 14, Top = 12, Width = 442, Height = 120, AutoSize = false,
+                    Text = "Choose the tape format for the PC-1600:\r\n\r\n" +
+                           "MODE 0 - the PC-1600 mode (CE-1600P / CE-152): the program is an ASCII BASIC file; load it in MODE 0 with LOAD \"CAS:NAME\".\r\n\r\n" +
+                           "MODE 1 - the PC-1500 compatible mode (CE-150): the program is recorded tokenized; switch the PC-1600 to MODE 1 and load it with CLOAD."
+                };
+                var b0 = new Button { Text = "MODE 0", Left = 14, Top = 146, Width = 100, Height = 28 };
+                var b1 = new Button { Text = "MODE 1", Left = 124, Top = 146, Width = 100, Height = 28 };
+                var bc = new Button { Text = "Cancel", Left = 356, Top = 146, Width = 100, Height = 28, DialogResult = DialogResult.Cancel };
+                b0.Click += delegate { result = 0; f.DialogResult = DialogResult.OK; };
+                b1.Click += delegate { result = 1; f.DialogResult = DialogResult.OK; };
+                f.Controls.AddRange(new Control[] { lbl, b0, b1, bc });
+                f.CancelButton = bc;
+                f.ShowDialog(this);
+            }
+            return result;
+        }
+
+        void BasicToWav(string path)
+        {
+            string src = Encoding.GetEncoding(28591).GetString(File.ReadAllBytes(path));
+            string baseName = Path.GetFileNameWithoutExtension(path);
+            string tape = new string(baseName.ToUpperInvariant().Where(c => (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')).ToArray());
+            if (tape.Length == 0) tape = "PROGRAM";
+            if (curModel == 2)
+            {
+                int pc = curProf == 2 ? 1350 : curProf == 3 ? 1360 : 500;         // the model is chosen in the Target computer box
+                byte[] w2;
+                string suffix2;
+                if (pc == 500)
+                {
+                    w2 = TapeWav.EncodeAscii(src, tape.Substring(0, Math.Min(8, tape.Length)), true);
+                    suffix2 = "_E500_CAS";
+                }
+                else
+                {
+                    string problem2;
+                    byte[] img2 = SharpTok.Tokenize(src, pc, out problem2);
+                    if (img2 == null) { Log("WAV: tokenizer error: " + problem2); return; }
+                    w2 = TapeWav.Encode1350(tape.Substring(0, Math.Min(7, tape.Length)), img2, pc == 1350 ? 0x70 : 0x72);
+                    suffix2 = "_PC" + pc;
+                }
+                string out2 = UniquePath2(Path.Combine(txtDir.Text, baseName + suffix2 + ".wav"));
+                File.WriteAllBytes(out2, w2);
+                TapeWav.WavInfo wi2; int wo2, wl2; TapeWav.Parse(w2, out wi2, out wo2, out wl2);
+                Log("WAV written: " + Path.GetFileName(out2) + " (PC-" + (pc == 500 ? "E500(S)" : pc.ToString()) + ", tape name " + tape.Substring(0, Math.Min(pc == 500 ? 8 : 7, tape.Length)) + ", " + wi2.Seconds.ToString("0") + " s).");
+                RefreshFiles();
+                int ix2 = lstFiles.Items.IndexOf(Path.GetFileName(out2));
+                if (ix2 >= 0) lstFiles.SelectedIndex = ix2;
+                return;
+            }
+            int mode = 1;
+            if (curModel == 1)
+            {
+                mode = AskTapeMode(Path.GetFileName(path));
+                if (mode < 0) return;
+            }
+            byte[] wav;
+            if (mode == 0) wav = TapeWav.Encode0(src, tape.Substring(0, Math.Min(8, tape.Length)));
+            else
+            {
+                string problem;
+                byte[] img = Pc1600Basic.Tokenize(src, curModel == 0, out problem);
+                if (img == null) { Log("WAV: tokenizer error: " + problem); return; }
+                if (img.Length == 0 || img[img.Length - 1] != 0xFF) { Array.Resize(ref img, img.Length + 1); img[img.Length - 1] = 0xFF; }
+                wav = TapeWav.Encode1(tape.Substring(0, Math.Min(7, tape.Length)), img);
+            }
+            string suffix = mode == 0 ? "_mode0_CE-1600P" : curModel == 1 ? "_mode1_CE-150" : "_CE-150";
+            string outPath = UniquePath2(Path.Combine(txtDir.Text, baseName + suffix + ".wav"));
+            File.WriteAllBytes(outPath, wav);
+            TapeWav.WavInfo wi; int wo, wl; TapeWav.Parse(wav, out wi, out wo, out wl);
+            Log("WAV written: " + Path.GetFileName(outPath) + " (" + (mode == 0 ? "MODE 0, CE-1600P, tape name " + tape.Substring(0, Math.Min(8, tape.Length)) : "CE-150 format, tape name " + tape.Substring(0, Math.Min(7, tape.Length))) + ", " + wi.Seconds.ToString("0") + " s).");
+            RefreshFiles();
+            int ix = lstFiles.Items.IndexOf(Path.GetFileName(outPath));
+            if (ix >= 0) lstFiles.SelectedIndex = ix;
+        }
+
+        void WavToBasic(string path)
+        {
+            byte[] wav = File.ReadAllBytes(path);
+            string name = null, text = null, why0 = null, why1 = null;
+            string how = null;
+            if (curModel == 2)
+            {
+                string warn2;
+                if (curProf <= 3) try          // PC-1350 / PC-1360: the model in the Target computer box decides which tape format is read
+                {
+                    int idb;
+                    byte[] prog = TapeWav.Decode1350(wav, out name, out idb, out warn2);
+                    string pr2;
+                    text = SharpTok.Detokenize(prog, idb == 0x70 ? 1350 : 1360, out pr2);
+                    how = "PC-" + (idb == 0x70 ? "1350" : "1360");
+                    if ((curProf == 2 && idb != 0x70) || (curProf == 3 && idb != 0x72)) Log("WAV: the recording is of the PC-" + (idb == 0x70 ? "1350" : "1360") + ", its tokens were used (the selected computer is the PC-" + (curProf == 2 ? "1350" : "1360") + ").");
+                    if (warn2 != null) Log("WAV: " + warn2 + ".");
+                    if (pr2 != null) Log("WAV: conversion problem: " + pr2);
+                }
+                catch (Exception ex) { why0 = ex.Message; }
+                if (text == null && curProf >= 4)
+                {
+                    try
+                    {
+                        byte[] hdr, data;
+                        TapeWav.DecodeTape0(wav, true, out hdr, out data);
+                        name = Encoding.GetEncoding(28591).GetString(hdr, 1, 13).Trim();
+                        if (hdr[0] == 0x04)
+                        {
+                            int e = Array.IndexOf(data, (byte)0x1A);
+                            text = Encoding.GetEncoding(28591).GetString(data, 0, e < 0 ? data.Length : e);
+                            how = "PC-E500(S), ASCII file";
+                        }
+                        else
+                        {
+                            byte[] img;
+                            if (!ProgImage.FindLines(data, out img)) throw new Exception("no BASIC program in the recording (header type " + hdr[0].ToString("X2") + ")");
+                            string pr3;
+                            text = SharpTok.DetokenizeE500(img, out pr3);
+                            how = "PC-E500(S), CSAVE";
+                            if (pr3 != null) Log("WAV: conversion problem: " + pr3);
+                        }
+                    }
+                    catch (Exception ex) { why1 = ex.Message; }
+                }
+                if (text == null) { Log("WAV: the recording cannot be decoded (PC-1350/1360: " + why0 + ") (PC-E500: " + why1 + ")."); return; }
+                string base2 = SharpBase(Path.GetFileNameWithoutExtension(path));
+                string out3 = UniqueSharp(base2, ".bas");
+                File.WriteAllBytes(out3, Encoding.GetEncoding(28591).GetBytes(text));
+                Log("WAV decoded (" + how + (string.IsNullOrEmpty(name) ? "" : ", tape name " + name) + ") -> " + Path.GetFileName(out3) + ".");
+                RefreshFiles();
+                int ix3 = lstFiles.Items.IndexOf(Path.GetFileName(out3));
+                if (ix3 >= 0) lstFiles.SelectedIndex = ix3;
+                return;
+            }
+            if (curModel == 1)
+            {
+                try { text = TapeWav.Decode0(wav, out name); how = "MODE 0 (CE-1600P)"; } catch (Exception ex) { why0 = ex.Message; }
+            }
+            if (text == null)
+            {
+                try
+                {
+                    byte[] prog = TapeWav.Decode1(wav, out name);
+                    string problem;
+                    text = Pc1600Basic.Detokenize(prog, curModel == 0, out problem);
+                    if (problem != null) { Log("WAV: conversion problem: " + problem); }
+                    how = "CE-150 format";
+                }
+                catch (Exception ex) { why1 = ex.Message; }
+            }
+            if (text == null) { Log("WAV: the recording cannot be decoded" + (why0 != null ? " (MODE 0: " + why0 + ")" : "") + (why1 != null ? " (CE-150 format: " + why1 + ")" : "") + "."); return; }
+            string baseName = SharpBase(Path.GetFileNameWithoutExtension(path));
+            string outPath = UniqueSharp(baseName, ".bas");
+            File.WriteAllBytes(outPath, Encoding.GetEncoding(28591).GetBytes(text));
+            Log("WAV decoded (" + how + (string.IsNullOrEmpty(name) ? "" : ", tape name " + name) + ") -> " + Path.GetFileName(outPath) + ".");
+            RefreshFiles();
+            int ix = lstFiles.Items.IndexOf(Path.GetFileName(outPath));
+            if (ix >= 0) lstFiles.SelectedIndex = ix;
+        }
+
+        void PlaySelected()
+        {
+            if (lstFiles.SelectedItem == null) return;
+            string path = Path.Combine(txtDir.Text, (string)lstFiles.SelectedItem);
+            if (!Path.GetExtension(path).Equals(".wav", StringComparison.OrdinalIgnoreCase)) return;
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true }); }
+            catch (Exception ex) { Log("Play error: " + ex.Message); }
+        }
+
+        // two recordings: only the audio data are compared, they are not decoded
+        string CompareWavs(string nameA, string pathA, string nameB, string pathB)
+        {
+            byte[] fa = File.ReadAllBytes(pathA), fb = File.ReadAllBytes(pathB);
+            TapeWav.WavInfo ia, ib; int oa, la, ob, lb;
+            if (!TapeWav.Parse(fa, out ia, out oa, out la)) throw new Exception(nameA + " is not a PCM WAV file");
+            if (!TapeWav.Parse(fb, out ib, out ob, out lb)) throw new Exception(nameB + " is not a PCM WAV file");
+            var sb = new StringBuilder();
+            sb.AppendLine("A: " + nameA + "   B: " + nameB);
+            sb.AppendLine("The recordings are compared as audio data (dates are not compared, the tape is not decoded).");
+            sb.AppendLine();
+            bool sameFmt = ia.Rate == ib.Rate && ia.Bits == ib.Bits && ia.Channels == ib.Channels;
+            int firstDiff = -1;
+            if (la == lb) for (int i = 0; i < la; i++) if (fa[oa + i] != fb[ob + i]) { firstDiff = i; break; }
+            if (sameFmt && la == lb && firstDiff < 0) { sb.AppendLine("The recordings are IDENTICAL (" + TapeWav.Describe(ia).Replace("\r\n", ", ") + ")."); return sb.ToString().Replace("\n", "\r\n").Replace("\r\r\n", "\r\n"); }
+            sb.AppendLine("The recordings are DIFFERENT:");
+            sb.AppendLine("  sampling:   A " + ia.Rate + " Hz, B " + ib.Rate + " Hz" + (ia.Rate == ib.Rate ? " (the same)" : " (different)"));
+            sb.AppendLine("  resolution: A " + ia.Bits + " bit, " + ia.Channels + " ch; B " + ib.Bits + " bit, " + ib.Channels + " ch" + (ia.Bits == ib.Bits && ia.Channels == ib.Channels ? " (the same)" : " (different)"));
+            sb.AppendLine("  duration:   A " + ia.Seconds.ToString("0.00") + " s, B " + ib.Seconds.ToString("0.00") + " s" + (Math.Abs(ia.Seconds - ib.Seconds) < 0.0005 ? " (the same)" : " (different)"));
+            sb.AppendLine("  audio data: A " + la.ToString("N0") + " B, B " + lb.ToString("N0") + " B" + (la == lb ? " (the same size)" : " (different size)"));
+            if (firstDiff >= 0 && sameFmt) sb.AppendLine("  the first different sample at " + (firstDiff / (double)(ia.Channels * (ia.Bits / 8)) / ia.Rate).ToString("0.000") + " s");
+            else if (la == lb && !sameFmt) sb.AppendLine("  the audio data have the same size but another format");
+            return sb.ToString().Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
+        }
+
         void ViewSelected()
         {
             if (lstFiles.SelectedItem == null) return;
             string name = (string)lstFiles.SelectedItem;
+            if (Path.GetExtension(name).Equals(".wav", StringComparison.OrdinalIgnoreCase)) return;
             try
             {
                 string path = Path.Combine(txtDir.Text, name);
@@ -1696,8 +2082,9 @@ namespace UartSlTest
         void SelectionChanged()
         {
             bool sel = lstFiles.SelectedItem != null;
-            if (btnView != null) btnView.Enabled = sel;
-            if (btnSend != null) btnSend.Enabled = sel && !sending && port != null && port.IsOpen;
+            string selExt = sel ? Path.GetExtension((string)lstFiles.SelectedItem).ToLowerInvariant() : "";
+            if (btnView != null) btnView.Enabled = sel && (selExt == ".bas" || selExt == ".txt" || selExt == ".wav");       // the WAV converter
+            if (btnSend != null) btnSend.Enabled = sel && selExt != ".wav" && !sending && port != null && port.IsOpen;
             if (btnDelete != null) btnDelete.Enabled = sel;
             if (btnConvert != null)
             {
@@ -1942,6 +2329,7 @@ int removed, kept, cut; List<string> moved;
             if (port == null || !port.IsOpen) { Log("Open the port first."); return; }
             if (sending) return;
             if (term != null) { Log("Close the terminal first."); return; }
+            if (Path.GetExtension(path).Equals(".wav", StringComparison.OrdinalIgnoreCase)) { Log("A WAV recording cannot be sent through the port (convert it to BASIC text with the WAV button first)."); return; }
             // before any sending: empty the receive buffers, so that they are ready for the answers of the Sharp
             lock (rxLock) { rx.Clear(); rxStartLogged = false; }
             try { port.DiscardInBuffer(); } catch { }
@@ -2169,6 +2557,31 @@ int removed, kept, cut; List<string> moved;
             return true;
         }
 
+        // a stream of program lines [number 2 B][length 1 B][content, ends with 0D] found anywhere in the first 64 bytes (a text mode SAVE
+        // without ,A sends the program as it is in the memory); at least 3 lines that fit exactly, up to the end marker FFh or the end of the data
+        public static bool FindLines(byte[] s, out byte[] img)
+        {
+            img = null;
+            for (int start = 0; start <= Math.Min(64, s.Length - 8); start++)
+            {
+                int p = start, lines = 0;
+                while (p + 3 <= s.Length && s[p] != 0xFF)
+                {
+                    int len = s[p + 2];
+                    if (len < 2 || p + 3 + len > s.Length || s[p + 2 + len] != 0x0D) break;
+                    p += 3 + len; lines++;
+                }
+                bool ended = p >= s.Length || s[p] == 0xFF || s[p] == 0x1A || s[p] == 0x00;
+                if (lines >= 3 && ended)
+                {
+                    img = new byte[p - start];
+                    Array.Copy(s, start, img, 0, img.Length);
+                    return true;
+                }
+            }
+            return false;
+        }
+
         public static byte[] ImageFromStream(byte[] s)
         {
             var img = new byte[s.Length - 1];
@@ -2268,6 +2681,7 @@ int removed, kept, cut; List<string> moved;
         public static Bitmap Terminal() { return Make((g, p, b) => { g.DrawRectangle(p, 2, 3, 16, 13); g.DrawLine(p, 5, 7, 8, 10); g.DrawLine(p, 5, 13, 8, 10); g.DrawLine(p, 10, 13, 14, 13); }); }
         public static Bitmap Flush() { return Make((g, p, b) => { g.FillPolygon(b, new[] { new Point(3, 3), new Point(17, 3), new Point(11, 10), new Point(11, 14), new Point(9, 14), new Point(9, 10) }); g.FillEllipse(b, 8, 15, 4, 4); }); }   // funnel + drop
         public static Bitmap Plane() { return Make((g, p, b) => { g.FillPolygon(b, new[] { new Point(2, 10), new Point(18, 3), new Point(13, 17), new Point(10, 12) }); }); }
+        public static Bitmap Note() { return Make((g, p, b) => { g.TranslateTransform(10, 8.5f); g.ScaleTransform(0.8f, 0.8f); g.TranslateTransform(-10, -10); g.FillEllipse(b, 4, 12, 8, 6); g.DrawLine(p, 11, 14, 11, 3); g.DrawLine(p, 11, 3, 16, 6); }); }   // 20 % smaller
         public static Bitmap File() { return Make((g, p, b) => { g.DrawRectangle(p, 5, 2, 10, 16); g.DrawLine(p, 8, 8, 12, 8); g.DrawLine(p, 8, 12, 12, 12); }); }
         // shooting star (yellow star head, curved light-blue forked tail) on a navy sky, drawn at any size
         public static Bitmap Comet(int size)
@@ -2338,6 +2752,7 @@ int removed, kept, cut; List<string> moved;
         public bool PortOpen, Sending, Receiving, Blink, FlashWhite;   // Blink toggles ~5x per second while data flows
         Bitmap cometImg;
         public string ModelName = "Sharp PC-1600";
+        public int Prof = 1;                  // the profile (see NProf in Form1): the Sharp (other) models have their own pictures
         public int Model = 1;                 // 0 PC-1500, 1 PC-1600, 2 other Sharp (15-pin, drawing of a PC-E500), 3 Casio FX-850/870, 4 TRS-80 / NEC, 5 other UART computer
 
         public BannerPanel() { DoubleBuffered = true; ResizeRedraw = true; }
@@ -2417,24 +2832,46 @@ int removed, kept, cut; List<string> moved;
 
         // Sharp pocket computers with the 15-pin connector (drawing of a PC-E500): dark grey body, a large display,
         // function keys under it, the QWERTY keys and a numeric pad with light keys
-        // TRS-80 Model 100 / NEC PC-8201: a wide LCD above a keyboard
+        // TRS-80 Model 100 / NEC PC-8201 (as on the photo of the Model 100): cream body, a wide LCD in a dark frame with a label plate and a red LED
+        // on the right, a strip of flat function keys, then the black keyboard tray with dark keys and a long space bar
         static void DrawTrs80(Graphics g, int kx, int top)
         {
-            FillRound(g, Color.FromArgb(25, 25, 28), kx - 86, top + 10, 172, 82, 6);
-            FillRound(g, Color.FromArgb(150, 152, 150), kx - 85, top + 8, 170, 82, 6);
-            FillRound(g, Color.FromArgb(50, 50, 54), kx - 78, top + 13, 156, 38, 3);                          // display frame
-            using (var b = new SolidBrush(Color.FromArgb(160, 176, 150))) g.FillRectangle(b, kx - 74, top + 17, 148, 30);   // LCD 40 x 8
-            using (var b = new SolidBrush(Color.FromArgb(60, 78, 56)))
-                for (int row = 0; row < 4; row++) for (int c = 0; c < 36; c++) g.FillRectangle(b, kx - 70 + c * 4, top + 20 + row * 6, 3, 3);
-            using (var f = new Font("Arial", 6F, FontStyle.Bold)) Text(g, "TRS-80", f, Color.FromArgb(40, 40, 44), kx, top + 53);
-            using (var bk = new SolidBrush(Color.FromArgb(40, 40, 44)))
-            using (var bf = new SolidBrush(Color.FromArgb(215, 215, 210)))
+            var state = g.Save();
+            g.TranslateTransform(kx, top + 60);
+            g.ScaleTransform(0.8F, 0.8F);          // 20 % smaller than before
+            g.TranslateTransform(-kx, -(top + 60));
+            float bx = kx - 85, by = top + 8, bw = 170, bh = 82;
+            Action<float, float, float, float, Color> R = (fx, fy, fw, fh, c) =>
             {
-                for (int i = 0; i < 8; i++) g.FillRectangle(bf, kx - 76 + i * 19, top + 62, 15, 5);               // function keys
-                for (int row = 0; row < 3; row++)
-                    for (int col = 0; col < 13; col++) g.FillRectangle(bk, kx - 76 + col * 11 + row * 3, top + 70 + row * 6, 9, 4);
-                g.FillRectangle(bk, kx - 40, top + 87, 70, 3);
-            }
+                using (var b = new SolidBrush(c)) g.FillRectangle(b, bx + fx * bw, by + fy * bh, fw * bw, fh * bh);
+            };
+            Action<float, float, float> K = (cx, cy, w) => R(cx - w / 2, cy - .037F, w, .074F, Color.FromArgb(54, 56, 62));   // one key: centre x, centre y, width
+            FillRound(g, Color.FromArgb(25, 25, 28), kx - 86, top + 10, 172, 82, 6);
+            FillRound(g, Color.FromArgb(226, 222, 206), bx, by, bw, bh, 6);                                          // cream body
+            FillRound(g, Color.FromArgb(46, 48, 50), bx + .08F * bw, by + .06F * bh, .75F * bw, .31F * bh, 2);       // display frame
+            R(.095F, .085F, .72F, .26F, Color.FromArgb(170, 178, 160));                                              // the LCD
+            for (int row = 0; row < 4; row++)
+                for (int c = 0; c < 36; c++) R(.105F + c * .0195F, .105F + row * .052F, .013F, .028F, Color.FromArgb(96, 104, 88));   // text
+            R(.105F, .105F + 1 * .052F, .12F, .028F, Color.FromArgb(70, 76, 66));                                    // the highlighted BASIC
+            R(.85F, .09F, .11F, .20F, Color.FromArgb(40, 42, 46));                                                   // the label plate
+            R(.86F, .105F, .09F, .06F, Color.FromArgb(225, 225, 222));
+            R(.86F, .205F, .09F, .06F, Color.FromArgb(225, 225, 222));
+            using (var b = new SolidBrush(Color.FromArgb(190, 40, 40))) g.FillEllipse(b, bx + .865F * bw, by + .31F * bh, 3, 3);   // the LED
+            float[] gx = { .047F, .28F, .516F, .75F };                                                               // function key groups of four
+            for (int gi = 0; gi < 4; gi++)
+                for (int i = 0; i < 4; i++) R(gx[gi] + i * .052F, .43F, .05F, .03F, Color.FromArgb(50, 52, 56));
+            R(.047F, .49F, .91F, .47F, Color.FromArgb(30, 30, 34));                                                  // the keyboard tray
+            float[] r1 = { .078F, .142F, .208F, .271F, .338F, .403F, .466F, .533F, .599F, .665F, .730F, .796F, .862F, .92F };
+            foreach (float x in r1) K(x, .54F, .054F);                                                               // ESC 1 ... 0 - = DEL
+            K(.10F, .64F, .07F); for (int i = 0; i < 11; i++) K(.174F + i * .0655F, .64F, .054F);                    // TAB Q ... P ]
+            K(.118F, .73F, .07F); for (int i = 0; i < 11; i++) K(.192F + i * .0655F, .73F, .054F);                   // CTRL A ... ; '
+            R(.885F, .60F, .07F, .17F, Color.FromArgb(54, 56, 62));                                                  // the tall ENTER
+            K(.076F, .82F, .054F); K(.149F, .82F, .07F);                                                             // CAPS LOCK, SHIFT
+            for (int i = 0; i < 11; i++) K(.223F + i * .0655F, .82F, .054F);                                         // Z ... / ?
+            K(.886F, .82F, .07F);                                                                                    // right SHIFT
+            K(.223F, .91F, .054F); K(.745F, .91F, .054F); K(.813F, .91F, .054F);                                     // GRPH, CODE, NUM
+            R(.275F, .875F, .42F, .07F, Color.FromArgb(70, 72, 78));                                                 // the long space bar
+            g.Restore(state);
         }
 
         // Casio FX-850P / FX-870P: a wide display on the left, coloured function keys and a numeric block with red BS / BRK on the right
@@ -2493,6 +2930,82 @@ int removed, kept, cut; List<string> moved;
                         g.FillRectangle(row == 3 && col == 11 ? bo : bk, kx - 76 + col * 13, top + 48 + row * 10, 10, 6);
             }
             using (var p = new Pen(Color.FromArgb(230, 200, 70), 2.5F)) g.DrawLine(p, kx - 85, top + 52, kx - 100, top + 52);   // the cable (TX / RX)
+            g.Restore(state);
+        }
+
+        // Sharp PC-1350 / PC-1360 (as on the photo of the PC-1360): silver body, a dark panel with a wide display on the left, a small dark
+        // key block on the right, dark QWERTY keys under the display and a numeric block with grey keys
+        static void DrawPc1360(Graphics g, int kx, int top)
+        {
+            var state = g.Save();
+            g.TranslateTransform(kx, top + 60);
+            g.ScaleTransform(0.7F, 0.7F);          // the same size as the PC-E500 picture
+            g.TranslateTransform(-kx, -(top + 60));
+            FillRound(g, Color.FromArgb(25, 25, 28), kx - 86, top + 10, 172, 82, 6);
+            FillRound(g, Color.FromArgb(190, 192, 194), kx - 85, top + 8, 170, 82, 6);                               // silver body
+            FillRound(g, Color.FromArgb(30, 30, 33), kx - 82, top + 10, 110, 31, 3);                                 // dark panel with the display
+            using (var b = new SolidBrush(Color.FromArgb(150, 168, 148))) g.FillRectangle(b, kx - 79, top + 19, 104, 17);   // wide display
+            using (var b = new SolidBrush(Color.FromArgb(72, 88, 68)))
+                for (int c = 0; c < 24; c++) g.FillRectangle(b, kx - 76 + c * 4, top + 24, 3, 5);
+            using (var f = new Font("Arial", 5F, FontStyle.Bold)) Text(g, "SHARP", f, Color.White, kx - 62, top + 11);
+            FillRound(g, Color.FromArgb(30, 30, 33), kx + 31, top + 10, 52, 31, 3);                                  // key block, top right
+            using (var bk = new SolidBrush(Color.FromArgb(40, 40, 44)))
+            using (var bg = new SolidBrush(Color.FromArgb(150, 152, 150)))
+            using (var bw = new SolidBrush(Color.FromArgb(215, 215, 210)))
+            using (var br = new SolidBrush(Color.FromArgb(205, 50, 50)))
+            using (var bo = new SolidBrush(Color.FromArgb(225, 150, 40)))
+            {
+                for (int row = 0; row < 2; row++)
+                    for (int col = 0; col < 4; col++) g.FillRectangle(col == 3 && row == 1 ? br : bg, kx + 35 + col * 11, top + 14 + row * 9, 9, 6);
+                g.FillRectangle(bw, kx + 35, top + 32, 44, 5);
+                int[] cnt = { 10, 9, 7 };
+                for (int row = 0; row < 3; row++)
+                    for (int col = 0; col < cnt[row]; col++)
+                        g.FillRectangle(row == 0 && col == 0 ? bo : bk, kx - 80 + col * 9 + row * 3, top + 49 + row * 8, 7, 5);   // QWERTY keys
+                g.FillRectangle(bk, kx - 52, top + 74, 34, 4);                                                       // the space bar
+                for (int row = 0; row < 4; row++)
+                    for (int col = 0; col < 5; col++)
+                        g.FillRectangle(bg, kx + 31 + col * 10, top + 47 + row * 9, 8, 6);                           // numeric block
+            }
+            g.Restore(state);
+        }
+
+        // Sharp PC-1450 ... PC-1475 (as on the photo of the PC-1450): silver body, a brown frame with a small display on the left, dark scientific keys
+        // at the top right, a row of cursor keys, silver QWERTY keys and a block of dark numeric keys with a light blue column
+        static void DrawPc1450(Graphics g, int kx, int top)
+        {
+            var state = g.Save();
+            g.TranslateTransform(kx, top + 60);
+            g.ScaleTransform(0.7F, 0.7F);          // the same size as the PC-E500 picture
+            g.TranslateTransform(-kx, -(top + 60));
+            float bx = kx - 85, by = top + 8, bw = 170, bh = 82;
+            Action<float, float, float, float, Color> R = (fx, fy, fw, fh, c) =>
+            {
+                using (var b = new SolidBrush(c)) g.FillRectangle(b, bx + fx * bw, by + fy * bh, fw * bw, fh * bh);
+            };
+            FillRound(g, Color.FromArgb(25, 25, 28), kx - 86, top + 10, 172, 82, 6);
+            FillRound(g, Color.FromArgb(190, 188, 176), bx, by, bw, bh, 6);                                          // silver body
+            FillRound(g, Color.FromArgb(78, 54, 42), bx + .09F * bw, by + .03F * bh, .53F * bw, .44F * bh, 3);       // brown frame
+            R(.19F, .14F, .30F, .17F, Color.FromArgb(168, 178, 160));                                                // the small display
+            for (int c = 0; c < 10; c++) R(.20F + c * .028F, .18F, .022F, .10F, Color.FromArgb(52, 62, 48));
+            using (var f = new Font("Arial", 5F, FontStyle.Bold)) Text(g, "SHARP", f, Color.FromArgb(235, 235, 235), bx + .21F * bw, by + .035F * bh);
+            Color dk = Color.FromArgb(62, 62, 64), ora = Color.FromArgb(225, 150, 40), kc = Color.FromArgb(214, 212, 204);
+            R(.03F, .22F, .05F, .15F, Color.FromArgb(30, 30, 34));                                                   // the power switch, left
+            for (int row = 0; row < 3; row++)                                                                        // scientific keys, top right
+                for (int col = 0; col < 5; col++)
+                    R(.66F + col * .065F, .06F + row * .115F, .052F, .09F, row == 0 && col == 4 ? Color.FromArgb(205, 50, 50) : dk);
+            for (int col = 0; col < 4; col++) R(.38F + col * .065F, .50F, .05F, .065F, dk);                         // the cursor keys
+            R(.58F, .50F, .05F, .065F, ora);                                                                          // SHIFT
+            for (int col = 0; col < 3; col++) R(.03F + col * .055F, .50F, .05F, .065F, Color.FromArgb(40, 70, 60));  // CAL, BASIC, BRK (level with the cursor keys)
+            int[] cnt = { 10, 9, 7 };
+            for (int row = 0; row < 3; row++)
+                for (int col = 0; col < cnt[row]; col++)
+                    R(.09F + col * .053F + row * .01F, .62F + row * .12F, .043F, .075F, kc);                       // QWERTY keys
+            R(.03F, .62F, .05F, .075F, ora); R(.03F, .74F, .05F, .075F, kc); R(.03F, .86F, .05F, .075F, kc);
+            R(.18F, .86F, .11F, .075F, kc); R(.41F, .86F, .15F, .075F, kc);
+            for (int row = 0; row < 4; row++)
+                for (int col = 0; col < 5; col++)
+                    R(.66F + col * .065F, .43F + row * .145F, .052F, .11F, col < 4 ? Color.FromArgb(60, 60, 64) : Color.FromArgb(150, 160, 170));   // numeric block
             g.Restore(state);
         }
 
@@ -2604,6 +3117,8 @@ int removed, kept, cut; List<string> moved;
                 for (int i = 0; i < 10; i++) { g.FillRectangle(b, pcx - 50 + i * 10, top + 84, 7, 3); g.FillRectangle(b, pcx - 48 + i * 10, top + 89, 7, 3); }
 
             if (Model == 0) DrawPc1500(g, kx, top);
+            else if (Model == 2 && (Prof == 2 || Prof == 3)) DrawPc1360(g, kx, top);
+            else if (Model == 2 && Prof == 6) DrawPc1450(g, kx, top);
             else if (Model == 2) DrawPc15pin(g, kx, top, "SHARP");
             else if (Model == 3) DrawCasio(g, kx, top);
             else if (Model == 4) DrawTrs80(g, kx, top);
@@ -3534,7 +4049,7 @@ int removed, kept, cut; List<string> moved;
     // Window for the folders of the programs (one per target computer)
     public class LocationsForm : Form
     {
-        readonly TextBox[] boxes = new TextBox[6];
+        readonly TextBox[] boxes = new TextBox[11];
         public string[] Result;
 
         public LocationsForm(string[] current, string[] defaults)
@@ -3544,16 +4059,16 @@ int removed, kept, cut; List<string> moved;
             MaximizeBox = MinimizeBox = false;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(560, 278);
+            ClientSize = new Size(560, 12 + 11 * 32 + 52);
             try { Icon = Icons.AppIcon(); } catch { }
             var tt = new WrapToolTip { AutoPopDelay = 9000, InitialDelay = 400, ShowAlways = true };
-            string[] names = { "PC-1500", "PC-1600", "Other Sharp", "FX-850/870", "TRS-80", "UART Other" };
-            for (int i = 0; i < 6; i++)
+            string[] names = { "PC-1500", "PC-1600", "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450..75", "Sharp other", "FX-850/870", "TRS-80", "UART Other" };
+            for (int i = 0; i < 11; i++)
             {
                 int row = i;
-                Controls.Add(new Label { Text = names[i] + ":", Left = 12, Top = 19 + i * 36, Width = 85 });
-                boxes[i] = new TextBox { Left = 100, Top = 15 + i * 36, Width = 365, Text = current[i] };
-                var browse = new Button { Text = "Browse...", Left = 472, Top = 14 + i * 36, Width = 78, Height = 24 };
+                Controls.Add(new Label { Text = names[i] + ":", Left = 12, Top = 17 + i * 32, Width = 85 });
+                boxes[i] = new TextBox { Left = 100, Top = 13 + i * 32, Width = 365, Text = current[i] };
+                var browse = new Button { Text = "Browse...", Left = 472, Top = 12 + i * 32, Width = 78, Height = 24 };
                 browse.Click += delegate
                 {
                     using (var f = new FolderBrowserDialog())
@@ -3566,19 +4081,19 @@ int removed, kept, cut; List<string> moved;
                 tt.SetToolTip(browse, "Choose the folder.");
                 Controls.AddRange(new Control[] { boxes[i], browse });
             }
-            var defs = new Button { Text = "Defaults", Left = 12, Top = 236, Width = 90, Height = 26 };
-            defs.Click += delegate { for (int i = 0; i < 6; i++) boxes[i].Text = defaults[i]; };
+            var defs = new Button { Text = "Defaults", Left = 12, Top = 12 + 11 * 32 + 14, Width = 90, Height = 26 };
+            defs.Click += delegate { for (int i = 0; i < 11; i++) boxes[i].Text = defaults[i]; };
             tt.SetToolTip(defs, "Restore the standard folders (in Documents).");
-            var ok = new Button { Text = "OK", Left = 370, Top = 236, Width = 85, Height = 26, DialogResult = DialogResult.OK };
-            var cancel = new Button { Text = "Cancel", Left = 465, Top = 236, Width = 85, Height = 26, DialogResult = DialogResult.Cancel };
+            var ok = new Button { Text = "OK", Left = 370, Top = 12 + 11 * 32 + 14, Width = 85, Height = 26, DialogResult = DialogResult.OK };
+            var cancel = new Button { Text = "Cancel", Left = 465, Top = 12 + 11 * 32 + 14, Width = 85, Height = 26, DialogResult = DialogResult.Cancel };
             Controls.AddRange(new Control[] { defs, ok, cancel });
             AcceptButton = ok;
             CancelButton = cancel;
             FormClosing += delegate
             {
                 if (DialogResult != DialogResult.OK) return;
-                Result = new string[6];
-                for (int i = 0; i < 6; i++) Result[i] = boxes[i].Text.Trim().Length > 0 ? boxes[i].Text.Trim() : defaults[i];
+                Result = new string[11];
+                for (int i = 0; i < 11; i++) Result[i] = boxes[i].Text.Trim().Length > 0 ? boxes[i].Text.Trim() : defaults[i];
             };
         }
     }
@@ -4138,9 +4653,928 @@ int removed, kept, cut; List<string> moved;
         protected override void OnMouseWheel(MouseEventArgs e) { if (InputLock.Active) { var h = e as HandledMouseEventArgs; if (h != null) h.Handled = true; return; } base.OnMouseWheel(e); }
     }
 
+    // BASIC tokens (intermediate codes) of the Sharp PC-1350, PC-1360 and PC-E500(S): the table word = code is a fact about the ROM of these computers,
+    // the tokenizer, the detokenizer and the tape routines are written from the formats (checked against recordings made by the computers).
+    //   PC-1350: one byte tokens (ID 70H on the tape); PC-1360: two byte tokens FExx and line numbers after GOTO ... as 1F hi lo (ID 72H);
+    //   PC-E500: two byte tokens FExx, numbers as 1D + 7 BCD bytes, line numbers 1F hi lo, 1E = a jump length (REM, IF).
+    public static class SharpTok
+    {
+        const string S1350 = "ABS=99;ACS=9E;AHC=8E;AHS=8D;AHT=8F;AND=A1;AREAD=E1;ASC=A4;ASN=9D;ATN=9F;BASIC=EC;BEEP=C4;CALL=CC;CHAIN=E5;CHR$=A8;CLEAR=C9;CLOAD=B7;CLOSE=BC;CLS=CE;CONSOLE=BF;CONT=B2;COS=96;CSAVE=B6;CUR=89;CURSOR=CF;DATA=DC;DECI=84;DEG=9B;DEGREE=C1;DIM=CB;DMS=9C;END=D8;EQU#=B9;EXP=93;FACT=90;FOR=D5;GCURSOR=E6;GOSUB=E0;GOTO=C6;GPRINT=E7;GRAD=C3;HCS=8B;HEX=85;HSN=8A;HTN=8C;IF=D4;INKEY$=AD;INPUT=DF;INT=98;LEFT$=AB;LEN=A6;LET=D6;LINE=E8;LIST=B4;LLIST=B5;LN=91;LOAD=BE;LOG=92;LPRINT=E2;MDF=80;MEM=AF;MEM#=BA;MERGE=B8;MID$=AA;NEW=B1;NEXT=D9;NOT=A3;ON=D3;OPEN=BB;OPEN$=EE;OR=A2;PASS=B3;PAUSE=DD;PEEK=A7;PI=AE;POINT=E9;POKE=CD;POL=82;PRESET=EB;PRINT=DE;PSET=EA;RADIAN=C2;RANDOM=C0;RCP=87;READ=DB;REC=81;REM=D7;RESTORE=E4;RETURN=E3;RIGHT$=AC;RND=A0;ROT=83;RUN=B0;SAVE=BD;SGN=9A;SIN=95;SQR=94;SQU=88;STEP=D1;STOP=DA;STR$=A9;TAN=97;TEN=86;TEXT=ED;THEN=D2;TO=D0;TROFF=C8;TRON=C7;USING=CA;VAL=A5;WAIT=C5";
+        const string S1360 = "ABS=FE99;ACS=FE9E;AHC=FE8E;AHS=FE8D;AHT=FE8F;AKCNV$=FEE0;AND=FEA1;APPEND=FE72;AREAD=FE63;ARUN=FE74;AS=FE73;ASC=FED0;ASN=FE9D;ATN=FE9F;AUTO=FE1A;AUTOGOTO=FE75;BASIC=FE36;BEEP=FE29;CALL=FE31;CHAIN=FE67;CHR$=FEF0;CIRCLE=FE6F;CLEAR=FE2E;CLOAD=FE16;CLOSE=FE22;CLS=FE50;COLOR=FE44;CONSOLE=FE24;CONT=FE12;CONVERT=FE1E;COPY=FE3D;COS=FE96;CROTATE=FE6E;CSAVE=FE20;CSIZE=FE43;CUB=FEBF;CUR=FE89;CURSOR=FE51;DATA=FE5E;DECI=FE84;DEFDBL=FE46;DEFSNG=FE47;DEG=FE9B;DEGREE=FE26;DELETE=FE1B;DIM=FE30;DMS=FE9C;DSKF=FEB1;END=FE5A;EOF=FEB0;ERASE=FE3A;ERL=FEC1;ERN=FEC0;ERROR=FE78;EXP=FE93;FACT=FE90;FIELD=FE48;FILES=FE1C;FOR=FE57;GCURSOR=FE68;GET=FE4A;GLCURSOR=FE6C;GOSUB=FE62;GOTO=FE2B;GPRINT=FE33;GRAD=FE28;GRAPH=FE41;HCS=FE8B;HEX=FE85;HEX$=FEF2;HSN=FE8A;HTN=FE8C;IF=FE56;INIT=FE1D;INKEY$=FEE9;INPUT=FE61;INT=FE98;JIS$=FEE2;KACNV$=FEE1;KILL=FE3C;KLEFT$=FEEE;KLEN=FED3;KMID$=FEED;KRIGHT$=FEEF;LEFT$=FEEB;LEN=FED2;LET=FE58;LF=FE42;LFILES=FE3B;LINE=FE69;LIST=FE14;LLINE=FE6A;LLIST=FE15;LN=FE91;LOAD=FE18;LOC=FEB3;LOCATE=FE51;LOF=FEB2;LOG=FE92;LPRINT=FE64;LSET=FE4B;LTEXT=FE40;MDF=FE80;MEM=FEAF;MERGE=FE17;MID$=FEEA;NAME=FE3E;NCR=FEB6;NEW=FE11;NEXT=FE5B;NOT=FEA3;NPR=FEB7;ON=FE55;OPEN=FE21;OPEN$=FEE8;OR=FEA2;OUTPUT=FE71;PAINT=FE70;PASS=FE13;PAUSE=FE5F;PEEK=FEA4;PI=FEAE;POINT=FEAD;POKE=FE32;POL=FE82;PRESET=FE35;PRINT=FE60;PSET=FE34;PUT=FE49;RADIAN=FE27;RANDOM=FE25;RANDOMIZE=FE25;RCP=FE87;READ=FE5D;REC=FE81;REM=FE59;RENUM=FE19;RESTORE=FE66;RETURN=FE65;RIGHT$=FEEC;RLINE=FE6B;RND=FEA0;ROT=FE83;RSET=FE4C;RUN=FE10;SAVE=FE23;SET=FE3F;SGN=FE9A;SIN=FE95;SORGN=FE6D;SQR=FE94;SQU=FE88;STEP=FE53;STOP=FE5C;STR$=FEF1;TAN=FE97;TEN=FE86;TEXT=FE37;THEN=FE54;TO=FE52;TROFF=FE2D;TRON=FE2C;USING=FE2F;VAL=FED1;WAIT=FE2A;WIDTH=FE38;XOR=FEA5";
+        const string SE500 = "ABS=FE99;ACS=FE9E;AER=FEBE;AHC=FE8E;AHS=FE8D;AHT=FE8F;AKCNV$=FEE0;AND=FEA1;APPEND=FE72;ARUN=FE74;AS=FE73;ASC=FED0;ASN=FE9D;ATN=FE9F;AUTO=FE1A;AUTOGOTO=FE75;BASIC=FE36;BDATA$=FE0C;BEEP=FE29;BTEXT$=FE0B;CALL=FE31;CASE=FE7D;CHAIN=FE67;CHR$=FEF0;CIRCLE=FE6F;CLEAR=FE2E;CLOAD=FE16;CLOSE=FE22;CLS=FE50;COLOR=FE44;CONSOLE=FE24;CONT=FE12;CONVERT=FE1E;COPY=FE3D;COS=FE96;CROTATE=FE6E;CSAVE=FE20;CSIZE=FE43;CUB=FEBF;CUR=FE89;CURSOR=FE51;DATA=FE5E;DECI=FE84;DEFAULT=FE7E;DEFDBL=FE46;DEFSNG=FE47;DEG=FE9B;DEGREE=FE26;DELETE=FE1B;DIM=FE30;DMS=FE9C;DSKF=FEB1;ELSE=FE76;END=FE5A;ENDIF=FE4D;ENDSWITCH=FE7F;EOF=FEB0;ERASE=FE3A;ERL=FEC1;ERN=FEC0;ERROR=FE78;EVAL=FEA7;EXP=FE93;FACT=FE90;FIELD=FE48;FILES=FE1C;FOR=FE57;FRE=FEAF;GCURSOR=FE68;GET=FE4A;GLCURSOR=FE6C;GOSUB=FE62;GOTO=FE2B;GPRINT=FE33;GRAD=FE28;GRAPH=FE41;HCS=FE8B;HEX=FE85;HEX$=FEF2;HSN=FE8A;HTN=FE8C;IF=FE56;INIT=FE1D;INKEY$=FEE9;INPUT=FE61;INT=FE98;JIS$=FEE2;KACNV$=FEE1;KEY=FE79;KILL=FE3C;KLEFT$=FEEE;KLEN=FED3;KMID$=FEED;KRIGHT$=FEEF;LEFT$=FEEB;LEN=FED2;LET=FE58;LF=FE42;LFILES=FE3B;LINE=FE69;LIST=FE14;LLINE=FE6A;LLIST=FE15;LN=FE91;LOAD=FE18;LOC=FEB3;LOCATE=FE51;LOF=FEB2;LOG=FE92;LPRINT=FE64;LSET=FE4B;LTEXT=FE40;MDF=FE80;MEM$=FE0D;MERGE=FE17;MID$=FEEA;NAME=FE3E;NCR=FEB6;NEW=FE11;NEXT=FE5B;NOT=FEA3;NPR=FEB7;ON=FE55;OPEN=FE21;OPEN$=FEE8;OR=FEA2;OUTPUT=FE71;PAINT=FE70;PASS=FE13;PAUSE=FE5F;PEEK=FEA4;PI=FEAE;POINT=FEAD;POKE=FE32;POL=FE82;PRESET=FE35;PRINT=FE60;PSET=FE34;PUT=FE49;RADIAN=FE27;RANDOM=FE25;RANDOMIZE=FE25;RCP=FE87;READ=FE5D;REC=FE81;REM=FE59;RENUM=FE19;REPEAT=FE4E;RESERVED=FE00;RESTORE=FE66;RESUME=FE77;RETURN=FE65;RIGHT$=FEEC;RLINE=FE6B;RND=FEA0;ROT=FE83;RSET=FE4C;RUN=FE10;SAVE=FE23;SET=FE3F;SGN=FE9A;SIN=FE95;SORGN=FE6D;SQR=FE94;SQU=FE88;STEP=FE53;STOP=FE5C;STR$=FEF1;SWITCH=FE7C;TAN=FE97;TEN=FE86;TEXT=FE37;THEN=FE54;TO=FE52;TROFF=FE2D;TRON=FE2C;UNTIL=FE4F;USING=FE2F;VAL=FED1;WAIT=FE2A;WEND=FE7B;WHILE=FE7A;WIDTH=FE38;XOR=FEA5";
+
+        sealed class Table
+        {
+            public readonly Dictionary<string, int> Code = new Dictionary<string, int>();
+            public readonly Dictionary<int, string> Name = new Dictionary<int, string>();
+            public readonly List<string> Words = new List<string>();
+            public Table(string spec, params string[] prefer)
+            {
+                var all = new List<string>(spec.Split(';'));
+                all.Sort(StringComparer.Ordinal);
+                foreach (string item in all)
+                {
+                    int k = item.LastIndexOf('=');
+                    string w = item.Substring(0, k);
+                    int v = Convert.ToInt32(item.Substring(k + 1), 16);
+                    Code[w] = v;
+                    if (!Name.ContainsKey(v)) Name[v] = w;          // for a code with several words the first one (alphabetically) is listed
+                }
+                foreach (string pw in prefer) { int pv; if (Code.TryGetValue(pw, out pv)) Name[pv] = pw; }
+                Words.AddRange(Code.Keys);
+                Words.Sort((a, b) => b.Length != a.Length ? b.Length - a.Length : string.CompareOrdinal(a, b));
+            }
+        }
+
+        static Table t1350, t1360, tE500;
+        static Table Get(int pc)
+        {
+            if (pc == 1350) return t1350 ?? (t1350 = new Table(S1350));
+            if (pc == 1360) return t1360 ?? (t1360 = new Table(S1360));
+            return tE500 ?? (tE500 = new Table(SE500, "LOCATE"));
+        }
+
+        // codes after which a line number may follow (PC-1360 / PC-E500): GOSUB GOTO LIST RESTORE RESUME RUN THEN ARUN AUTO AUTOGOTO ELSE
+        static readonly int[] Lbl = { 0xFE62, 0xFE2B, 0xFE14, 0xFE66, 0xFE77, 0xFE10, 0xFE54, 0xFE74, 0xFE1A, 0xFE75, 0xFE76 };
+        // ... and lists of numbers: DELETE LLIST RENUM CHAIN
+        static readonly int[] LbLst = { 0xFE1B, 0xFE15, 0xFE19, 0xFE67 };
+        const int OnCode = 0xFE55;
+
+        static void AddCode(List<byte> o, int v) { if (v > 255) o.Add((byte)(v >> 8)); o.Add((byte)v); }
+
+        static List<byte> Line(string body, Table t, bool two)
+        {
+            var o = new List<byte>();
+            int i = 0, n = body.Length;
+            bool on = false;
+            while (i < n)
+            {
+                char c = body[i];
+                if (c == ' ') { i++; continue; }
+                if (c == '"')
+                {
+                    int j = body.IndexOf('"', i + 1);
+                    if (j < 0) j = n - 1;
+                    for (int k = i; k <= j; k++) o.Add((byte)body[k]);
+                    i = j + 1;
+                    continue;
+                }
+                string u = body.Substring(i).ToUpperInvariant();
+                string hit = null;
+                foreach (string w in t.Words) if (u.StartsWith(w, StringComparison.Ordinal)) { hit = w; break; }
+                if (hit != null)
+                {
+                    int v = t.Code[hit];
+                    AddCode(o, v);
+                    i += hit.Length;
+                    if (two && v == OnCode) on = true;
+                    if (two && (Array.IndexOf(Lbl, v) >= 0 || Array.IndexOf(LbLst, v) >= 0))
+                    {
+                        bool lst = Array.IndexOf(LbLst, v) >= 0 || on;
+                        while (true)
+                        {
+                            while (i < n && body[i] == ' ') i++;
+                            int k = i;
+                            while (k < n && char.IsDigit(body[k])) k++;
+                            if (k == i) break;
+                            int num;
+                            if (!int.TryParse(body.Substring(i, k - i), out num) || num > 65279) break;
+                            o.Add(0x1F); o.Add((byte)(num >> 8)); o.Add((byte)num);
+                            i = k;
+                            int m = i;
+                            while (m < n && body[m] == ' ') m++;
+                            if (lst && m < n && body[m] == ',') { o.Add((byte)','); i = m + 1; continue; }
+                            break;
+                        }
+                    }
+                    if (hit == "REM")
+                    {
+                        string rest = body.Substring(i).TrimStart(' ');
+                        foreach (char ch in rest) o.Add((byte)ch);
+                        i = n;
+                    }
+                    else if (hit == "DATA")
+                    {
+                        string rest = body.Substring(i).TrimStart(' ');
+                        bool q = false; int k = 0;
+                        while (k < rest.Length)
+                        {
+                            if (rest[k] == '"') q = !q;
+                            if (rest[k] == ':' && !q) break;
+                            k++;
+                        }
+                        for (int m = 0; m < k; m++) o.Add((byte)rest[m]);
+                        i = n - (rest.Length - k);
+                    }
+                    continue;
+                }
+                o.Add((byte)(c >= 'a' && c <= 'z' ? c - 32 : c));
+                i++;
+            }
+            return o;
+        }
+
+        // pc = 1350 or 1360: the BASIC text -> the program image (lines [number 2 B][length][tokens ... 0D]) without the end marker
+        public static byte[] Tokenize(string text, int pc, out string problem)
+        {
+            problem = null;
+            Table t = Get(pc);
+            bool two = pc != 1350;
+            var lines = new SortedDictionary<int, byte[]>();
+            foreach (string raw in text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+            {
+                string s = raw.Trim().TrimEnd('\u001A');
+                if (s.Length == 0) continue;
+                int i = 0;
+                while (i < s.Length && char.IsDigit(s[i])) i++;
+                int no;
+                if (i == 0 || !int.TryParse(s.Substring(0, i), out no)) { problem = "no line number: " + (s.Length > 30 ? s.Substring(0, 30) : s); return null; }
+                if (no < 1 || no > 65279) { problem = "line number out of range: " + no; return null; }
+                List<byte> b = Line(s.Substring(i).TrimStart(), t, two);
+                b.Add(0x0D);
+                if (b.Count > 255) { problem = "line " + no + " is too long (" + b.Count + " bytes)"; return null; }
+                var l = new List<byte> { (byte)(no >> 8), (byte)no, (byte)b.Count };
+                l.AddRange(b);
+                lines[no] = l.ToArray();
+            }
+            var o = new List<byte>();
+            foreach (var kv in lines) o.AddRange(kv.Value);
+            return o.ToArray();
+        }
+
+        // pc = 1350 or 1360: the program image -> BASIC text
+        public static string Detokenize(byte[] img, int pc, out string problem)
+        {
+            problem = null;
+            Table t = Get(pc);
+            bool two = pc != 1350;
+            var sb = new StringBuilder();
+            int p = 0;
+            while (p + 3 <= img.Length && img[p] != 0xFF)
+            {
+                int no = img[p] * 256 + img[p + 1], ln = img[p + 2];
+                if (p + 3 + ln > img.Length) { problem = "the last line is cut"; break; }
+                int end = p + 3 + ln;
+                if (end > p + 3 && img[end - 1] == 0x0D) end--;
+                var s = new StringBuilder();
+                bool q = false;
+                int i = p + 3;
+                while (i < end)
+                {
+                    int b = img[i];
+                    if (q) { s.Append((char)b); i++; if (b == 34) q = false; continue; }
+                    if (b == 34) { q = true; s.Append('"'); i++; continue; }
+                    if (two && b == 0x1F && i + 2 < end) { s.Append(img[i + 1] * 256 + img[i + 2]); i += 3; continue; }
+                    int v = -1;
+                    if (two) { if (i + 1 < end && b >= 0xE0) { int c2 = (b << 8) | img[i + 1]; if (t.Name.ContainsKey(c2)) { v = c2; i += 2; } } }
+                    else if (t.Name.ContainsKey(b)) { v = b; i++; }
+                    if (v >= 0)
+                    {
+                        string w = t.Name[v];
+                        if (s.Length > 0 && char.IsLetterOrDigit(s[s.Length - 1])) s.Append(' ');
+                        s.Append(w).Append(' ');
+                        if (w == "REM" || w == "DATA") { while (i < end) s.Append((char)img[i++]); }
+                        continue;
+                    }
+                    s.Append((char)b); i++;
+                }
+                sb.Append(no).Append(' ').Append(s.ToString().TrimEnd()).Append("\r\n");
+                p += 3 + ln;
+            }
+            return sb.ToString();
+        }
+
+        // PC-E500: the number 1D + exponent (2 BCD bytes) + mantissa (5 BCD bytes) -> text; null if the bytes are no BCD
+        static string E500Number(byte[] b, int i)
+        {
+            var d = new StringBuilder();
+            for (int k = 0; k < 7; k++) { int hi = b[i + k] >> 4, lo = b[i + k] & 15; if (hi > 9 || lo > 9) return null; d.Append(hi).Append(lo); }
+            string all = d.ToString();
+            int ex = int.Parse(all.Substring(0, 4));
+            if (ex >= 5000) ex -= 10000;
+            string ds = all.Substring(4).TrimEnd('0');
+            if (ds.Length == 0) return "0";
+            if (ex >= 0)
+            {
+                int ip = ex + 1;
+                if (ds.Length <= ip) return ds.PadRight(ip, '0');
+                return ds.Substring(0, ip) + "." + ds.Substring(ip);
+            }
+            return "." + new string('0', -ex - 1) + ds;
+        }
+
+        // PC-E500(S): the program image (CSAVE) -> BASIC text; the lines are "number: statements"
+        public static string DetokenizeE500(byte[] img, out string problem)
+        {
+            problem = null;
+            Table t = Get(500);
+            var sb = new StringBuilder();
+            int p = 0;
+            while (p + 3 <= img.Length && img[p] != 0xFF)
+            {
+                int no = img[p] * 256 + img[p + 1], ln = img[p + 2];
+                if (p + 3 + ln > img.Length) { problem = "the last line is cut"; break; }
+                int end = p + 3 + ln;
+                if (end > p + 3 && img[end - 1] == 0x0D) end--;
+                var s = new StringBuilder();
+                bool q = false;
+                int i = p + 3;
+                while (i < end)
+                {
+                    int b = img[i];
+                    if (q) { s.Append((char)b); i++; if (b == 34) q = false; continue; }
+                    if (b == 34) { q = true; s.Append('"'); i++; continue; }
+                    if (b == 0xFE && i + 1 < end)
+                    {
+                        int v = 0xFE00 | img[i + 1];
+                        string w;
+                        if (t.Name.TryGetValue(v, out w))
+                        {
+                            i += 2;
+                            if (s.Length > 0 && char.IsLetterOrDigit(s[s.Length - 1])) s.Append(' ');
+                            s.Append(w);
+                            if (w == "REM")
+                            {
+                                s.Append(' ');
+                                while (i < end && img[i] != 0x1E) s.Append((char)img[i++]);          // spaces before the jump length
+                                if (i + 1 < end) i += 2;                                              // 1E, the length of the comment
+                                while (i < end) s.Append((char)img[i++]);
+                            }
+                            else s.Append(' ');
+                            continue;
+                        }
+                    }
+                    if (b == 0x1F && i + 2 < end) { s.Append(img[i + 1] * 256 + img[i + 2]); i += 3; continue; }
+                    if (b == 0x1E && i + 1 < end) { i += 2; continue; }
+                    if (b == 0x1D && i + 7 < end)
+                    {
+                        string num = E500Number(img, i + 1);
+                        if (num != null) { s.Append(num); i += 8; continue; }
+                    }
+                    s.Append((char)b); i++;
+                }
+                sb.Append(no).Append(": ").Append(s.ToString().Trim()).Append("\r\n");
+                p += 3 + ln;
+            }
+            return sb.ToString();
+        }
+    }
+
+    // Tape recordings (WAV) of BASIC programs, ported from the converters of the repositories
+    // Sharp_PC-1600_Software_UART / Sharp_PC-1600_I2C_interface (tools/pc1600_bas2wav.py, pc1600_cas_bas2wav.py) and Sharp_PC-1500_I2C_interface:
+    //   MODE 1: the PC-1500 / CE-150 tape format (PC-1500 and the PC-1600 in MODE 1), the program is the tokenized image,
+    //   MODE 0: the PC-1600 format for the CE-1600P (LOAD "CAS:NAME"), the program is an ASCII BASIC file.
+    // 44100 Hz, 8 bit, mono. Decoding reads back what the encoders write (and the recordings of the same tools).
+    public static class TapeWav
+    {
+        public struct WavInfo { public int Channels, Rate, Bits; public long DataBytes; public double Seconds; }
+
+        // ---- the WAV container
+        public static bool Parse(byte[] f, out WavInfo info, out int dataOffset, out int dataLength) { return Parse(f, f == null ? 0 : f.Length, out info, out dataOffset, out dataLength); }
+
+        // fileLength = the real length of the file when only its first bytes are in f (the tip reads only the header)
+        public static bool Parse(byte[] f, long fileLength, out WavInfo info, out int dataOffset, out int dataLength)
+        {
+            info = new WavInfo(); dataOffset = 0; dataLength = 0;
+            if (f == null || f.Length < 44 || f[0] != 'R' || f[1] != 'I' || f[2] != 'F' || f[3] != 'F' || f[8] != 'W' || f[9] != 'A' || f[10] != 'V' || f[11] != 'E') return false;
+            int p = 12; bool fmt = false;
+            while (p + 8 <= f.Length)
+            {
+                string id = Encoding.ASCII.GetString(f, p, 4);
+                int len = BitConverter.ToInt32(f, p + 4);
+                if (id == "fmt " && p + 24 <= f.Length)
+                {
+                    int tag = BitConverter.ToUInt16(f, p + 8);
+                    info.Channels = BitConverter.ToUInt16(f, p + 10);
+                    info.Rate = BitConverter.ToInt32(f, p + 12);
+                    info.Bits = BitConverter.ToUInt16(f, p + 22);
+                    fmt = (tag == 1 || tag == 0xFFFE) && info.Channels > 0 && info.Rate > 0 && info.Bits > 0;
+                }
+                else if (id == "data")
+                {
+                    dataOffset = p + 8;
+                    dataLength = (int)(len < 0 ? fileLength - dataOffset : Math.Min((long)len, fileLength - dataOffset));
+                    break;
+                }
+                if (len < 0) return false;
+                p += 8 + len + (len & 1);
+            }
+            if (!fmt || dataOffset == 0) return false;
+            info.DataBytes = dataLength;
+            int frame = info.Channels * ((info.Bits + 7) / 8);
+            info.Seconds = frame > 0 ? dataLength / (double)frame / info.Rate : 0;
+            return true;
+        }
+
+        public static string Describe(WavInfo i)
+        {
+            int m = (int)(i.Seconds / 60);
+            return "Duration: " + m + ":" + (i.Seconds - m * 60).ToString("00.0", System.Globalization.CultureInfo.InvariantCulture) + " (" + i.Seconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " s)" +
+                   "\r\nSampling: " + i.Rate + " Hz\r\nResolution: " + i.Bits + " bit, " + (i.Channels == 1 ? "mono" : i.Channels == 2 ? "stereo" : i.Channels + " channels");
+        }
+
+        // the first channel as 8 bit unsigned samples
+        static byte[] Samples(byte[] f, out int rate)
+        {
+            WavInfo info; int off, len;
+            if (!Parse(f, out info, out off, out len)) throw new Exception("not a PCM WAV file");
+            rate = info.Rate;
+            int step = info.Channels * (info.Bits / 8);
+            if (info.Bits != 8 && info.Bits != 16) throw new Exception("only 8 and 16 bit recordings are supported");
+            int n = len / step;
+            var d = new byte[n];
+            for (int i = 0; i < n; i++)
+                d[i] = info.Bits == 8 ? f[off + i * step] : (byte)((BitConverter.ToInt16(f, off + i * step) >> 8) + 128);
+            return d;
+        }
+
+        static byte[] WavFile(byte[] data, int rate)
+        {
+            var o = new MemoryStream();
+            var w = new BinaryWriter(o);
+            w.Write(Encoding.ASCII.GetBytes("RIFF")); w.Write(36 + data.Length); w.Write(Encoding.ASCII.GetBytes("WAVEfmt "));
+            w.Write(16); w.Write((short)1); w.Write((short)1); w.Write(rate); w.Write(rate); w.Write((short)1); w.Write((short)8);
+            w.Write(Encoding.ASCII.GetBytes("data")); w.Write(data.Length); w.Write(data);
+            w.Flush();
+            return o.ToArray();
+        }
+
+        static long Round(double v) { return (long)Math.Round(v, MidpointRounding.ToEven); }
+
+        // ================================================================ MODE 1 (CE-150 format)
+        const double Fs = 44100.0;
+
+        static byte[] Header1(string name, byte[] prog)
+        {
+            byte[] nm = Encoding.GetEncoding(28591).GetBytes(name.ToUpperInvariant());
+            var h = new List<byte> { 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x01 };
+            for (int i = 0; i < 26; i++) h.Add(i < nm.Length && i < 7 ? nm[i] : (byte)0);
+            int n = prog.Length - 1;
+            h.AddRange(new byte[] { 0xC5, (byte)(n >> 8), (byte)n, 0, 0 });
+            int s = 0; foreach (byte b in h) s += b;
+            h.Add((byte)(s >> 8)); h.Add((byte)s);
+            return h.ToArray();
+        }
+
+        static byte[] Chunks1(byte[] prog)
+        {
+            var o = new List<byte>();
+            for (int p = 0; p < prog.Length; p += 80)
+            {
+                int n = Math.Min(80, prog.Length - p), s = 0;
+                for (int i = 0; i < n; i++) { o.Add(prog[p + i]); s += prog[p + i]; }
+                o.Add((byte)(s >> 8)); o.Add((byte)s);
+            }
+            return o.ToArray();
+        }
+
+        static List<int> Nibbles(byte[] bs) { var r = new List<int>(); foreach (byte b in bs) { r.Add(b & 15); r.Add(b >> 4); } return r; }
+
+        // the program = the tokenized image ending with FFh
+        public static byte[] Encode1(string name, byte[] prog)
+        {
+            var bits = new List<int>();
+            Action<IEnumerable<int>> frames = nibs => { foreach (int x in nibs) { bits.Add(0); for (int k = 0; k < 4; k++) bits.Add((x >> k) & 1); for (int k = 0; k < 6; k++) bits.Add(1); } };
+            var first = new List<int> { 0xA }; first.AddRange(Nibbles(Header1(name, prog)));
+            frames(first);
+            for (int i = 0; i < 76; i++) bits.Add(1);
+            frames(Nibbles(Chunks1(prog)));
+            for (int i = 0; i < 73; i++) bits.Add(1);
+            frames(new[] { 5, 5 });
+            for (int i = 0; i < 71; i++) bits.Add(1);
+            var edges = new List<double>();
+            double t = 0;
+            Action<double, int> tone = (f, cycles) => { double half = Fs / f / 2; for (int c = 0; c < cycles; c++) { t += half; edges.Add(t); t += half; edges.Add(t); } };
+            tone(2500, (int)Round(8.0 * 2500));
+            foreach (int b in bits) { if (b != 0) tone(2500, 8); else tone(1250, 4); }
+            int total = (int)t + 1;
+            var buf = new byte[total];
+            for (int i = 0; i < total; i++) buf[i] = 128;
+            const byte lo = 30, hi = 226;
+            double pos = 0; bool high = true;
+            foreach (double e in edges)
+            {
+                long a = Round(pos), z = Round(e);
+                byte v = high ? hi : lo;
+                for (long i = a; i < z && i < total; i++) buf[i] = v;
+                pos = e; high = !high;
+            }
+            return WavFile(buf, (int)Fs);
+        }
+
+        // returns the tape name and the program bytes (the tokenized image, FFh at the end)
+        public static byte[] Decode1(byte[] wav, out string name)
+        {
+            int rate;
+            byte[] d = Samples(wav, out rate);
+            double scale = Fs / rate;
+            var cr = new List<int>();
+            bool prev = d.Length > 0 && d[0] >= 128;
+            for (int i = 0; i < d.Length; i++) { bool s = d[i] >= 128; if (s && !prev) cr.Add(i); prev = s; }
+            var runs = new List<KeyValuePair<char, double>>();
+            for (int i = 1; i < cr.Count; i++)
+            {
+                double p = (cr[i] - cr[i - 1]) * scale;
+                char c = p >= 30 ? 'S' : (p < 22 ? 'F' : 'T');
+                if (c == 'T') continue;
+                if (runs.Count > 0 && runs[runs.Count - 1].Key == c) runs[runs.Count - 1] = new KeyValuePair<char, double>(c, runs[runs.Count - 1].Value + p);
+                else runs.Add(new KeyValuePair<char, double>(c, p));
+            }
+            var r = new List<int>();
+            foreach (var run in runs)
+            {
+                long n = Round((run.Value + (run.Key == 'S' ? 35 : 17.6)) / 140.0);
+                for (long k = 0; k < n; k++) r.Add(run.Key == 'S' ? 0 : 1);
+            }
+            int i2 = 0;
+            while (i2 < r.Count && r[i2] == 1) i2++;
+            var segs = new List<List<int>>(); var cur = new List<int>();
+            while (i2 + 11 <= r.Count)
+            {
+                bool ok = r[i2] == 0;
+                for (int k = 5; ok && k < 11; k++) if (r[i2 + k] != 1) ok = false;
+                if (ok)
+                {
+                    int v = 0; for (int k = 0; k < 4; k++) v |= r[i2 + 1 + k] << k;
+                    cur.Add(v); i2 += 11;
+                }
+                else { if (cur.Count > 0) { segs.Add(cur); cur = new List<int>(); } i2++; }
+            }
+            if (cur.Count > 0) segs.Add(cur);
+            if (segs.Count < 2 || segs[0].Count < 3) throw new Exception("no PC-1500 / CE-150 tape recording found");
+            var hdr = new List<byte>();
+            for (int k = 1; k < segs[0].Count - 1; k += 2) hdr.Add((byte)((segs[0][k + 1] << 4) | segs[0][k]));
+            var raw = new List<byte>();
+            for (int k = 0; k + 1 < segs[1].Count; k += 2) raw.Add((byte)((segs[1][k + 1] << 4) | segs[1][k]));
+            var prog = new List<byte>();
+            int q = 0;
+            while (q < raw.Count)
+            {
+                int end = Math.Min(q + 80, raw.Count - 2);
+                if (end <= q) break;
+                int s = 0; for (int k = q; k < end; k++) s += raw[k];
+                if ((s & 0xFFFF) != raw[end] * 256 + raw[end + 1]) throw new Exception("checksum error in the data at byte " + q);
+                for (int k = q; k < end; k++) prog.Add(raw[k]);
+                q = end + 2;
+            }
+            name = hdr.Count >= 35 ? Encoding.GetEncoding(28591).GetString(hdr.ToArray(), 9, 26).TrimEnd('\0', ' ') : "";
+            if (prog.Count == 0) throw new Exception("no program in the recording");
+            return prog.ToArray();
+        }
+
+        // ================================================================ MODE 0 (CE-1600P, ASCII BASIC file)
+        const double SHORT_HI = 163.0, SHORT_LO = 164.0, LONG_HI = 409.0, LONG_LO = 409.0;
+        const int HDR_S1 = 10000, HDR_L = 40, HDR_S2 = 40, DAT_S1 = 11000, DAT_L = 20, DAT_S2 = 20, BLOCK = 256;
+        const byte EOFC = 0x1A;
+
+        sealed class Synth0
+        {
+            readonly int rate;
+            public readonly List<byte> Buf = new List<byte>();
+            double pos;
+            const byte Hi = 226, Lo = 30;
+            readonly double sh = SHORT_HI, sl = SHORT_LO, lh = LONG_HI, ll = LONG_LO;
+            public Synth0(int r) { rate = r; }
+            public Synth0(int r, double sHi, double sLo, double lHi, double lLo) { rate = r; sh = sHi; sl = sLo; lh = lHi; ll = lLo; }
+            void Seg(double us, byte level)
+            {
+                double end = pos + us * rate / 1e6;
+                long a = Round(pos), b = Round(end);
+                for (long i = a; i < b; i++) Buf.Add(level);
+                pos = end;
+            }
+            public void Silence(double s)
+            {
+                double end = pos + s * rate;
+                long a = Round(pos), b = Round(end);
+                for (long i = a; i < b; i++) Buf.Add(128);
+                pos = end;
+            }
+            public void Bit(int v) { if (v != 0) { Seg(lh, Hi); Seg(ll, Lo); } else { Seg(sh, Hi); Seg(sl, Lo); } }
+            public void Bits(int v, int n) { for (int i = 0; i < n; i++) Bit(v); }
+            public void Byte(int b) { Bit(1); for (int i = 7; i >= 0; i--) Bit((b >> i) & 1); }
+            public void Block(byte[] data, int s1, int l1, int s2)
+            {
+                Bits(0, s1); Bits(1, l1); Bits(0, s2); Bit(1);
+                int total = 0;
+                foreach (byte b in data) { Byte(b); for (int k = 0; k < 8; k++) total += (b >> k) & 1; }
+                total &= 0xFFFF;
+                Byte(total >> 8); Byte(total & 0xFF); Bit(1);
+            }
+        }
+
+        // text = the BASIC listing (every line starts with a line number, at most 80 characters)
+        public static byte[] Encode0(string text, string name) { return EncodeAscii(text, name, false); }
+
+        // e500 = the PC-E500(S) (SAVE "CAS:" ASCII): the same file layout as the PC-1600 MODE 0, the pulses of a recording of the PC-E500
+        // (333 / 833 us), 6405 and 7536 leading pulses; the layout was checked with a CSAVE recording of the PC-E500, an ASCII recording was not available
+        public static byte[] EncodeAscii(string text, string name, bool e500)
+        {
+            var lines = new List<string>();
+            foreach (string l in text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n')) lines.Add(l.TrimEnd());
+            while (lines.Count > 0 && lines[lines.Count - 1].Length == 0) lines.RemoveAt(lines.Count - 1);
+            foreach (string l in lines)
+            {
+                if (l.Length == 0 || !char.IsDigit(l[0])) throw new Exception("every line must start with a line number: " + (l.Length > 30 ? l.Substring(0, 30) : l));
+                if (l.Length > 80) throw new Exception("a line is longer than 80 characters: " + l.Substring(0, 30));
+            }
+            var data = new List<byte>(Encoding.GetEncoding(28591).GetBytes(string.Join("\r\n", lines.ToArray()) + "\r\n"));
+            data.Add(EOFC);
+            while (data.Count % BLOCK != 0) data.Add(0);
+            var hdr = new byte[48];
+            hdr[0] = 0x04;
+            byte[] nm = Encoding.ASCII.GetBytes(name.ToUpperInvariant());
+            for (int i = 0; i < 13; i++) hdr[1 + i] = i < nm.Length && i < 8 ? nm[i] : (byte)' ';
+            hdr[14] = (byte)'B'; hdr[15] = (byte)'A'; hdr[16] = (byte)'S';
+            hdr[17] = 0x0D; hdr[24] = 0x04; hdr[25] = 1; hdr[26] = 1;
+            int hs1 = e500 ? 6405 : HDR_S1, ds1 = e500 ? 7536 : DAT_S1;
+            var s = e500 ? new Synth0(44100, 166.5, 166.5, 416.5, 416.5) : new Synth0(44100);
+            s.Silence(8.0);
+            s.Bits(0, hs1); s.Bits(1, HDR_L); s.Bits(0, HDR_S2); s.Bit(1);
+            int total = 0;
+            foreach (byte b in hdr) { s.Byte(b); for (int k = 0; k < 8; k++) total += (b >> k) & 1; }
+            total &= 0xFFFF;
+            s.Byte(total >> 8); s.Byte(total & 0xFF); s.Bit(1);
+            s.Silence(2.0);
+            for (int p = 0; p < data.Count; p += BLOCK)
+            {
+                s.Block(data.GetRange(p, BLOCK).ToArray(), ds1, DAT_L, DAT_S2);
+                s.Silence(4.0);
+            }
+            return WavFile(s.Buf.ToArray(), 44100);
+        }
+
+        static List<List<int>> Bursts(byte[] d, int rate)
+        {
+            var rising = new List<int>();
+            bool prev = d.Length > 0 && d[0] >= 128;
+            for (int i = 0; i < d.Length; i++) { bool s = d[i] >= 128; if (s && !prev) rising.Add(i); prev = s; }
+            var res = new List<List<int>>(); var cur = new List<int>();
+            for (int i = 1; i < rising.Count; i++)
+            {
+                double us = (rising[i] - rising[i - 1]) * 1e6 / rate;
+                if (us > 5000) { if (cur.Count > 0) res.Add(cur); cur = new List<int>(); }
+                else cur.Add(us > 520 ? 1 : 0);
+            }
+            if (cur.Count > 0) res.Add(cur);
+            return res;
+        }
+
+        static byte[] ParseBurst(List<int> bits, int s1min, int l1min, int s2min, out bool sumOk)
+        {
+            sumOk = false;
+            int i = 0, n = bits.Count, s1 = 0, l1 = 0, s2 = 0;
+            while (i < n && bits[i] == 0) { i++; s1++; }
+            while (i < n && bits[i] == 1) { i++; l1++; }
+            while (i < n && bits[i] == 0) { i++; s2++; }
+            if (s1 < s1min * 0.9 || l1 < l1min * 0.9 || s2 < s2min * 0.9) return null;
+            i++;
+            int count = (n - i - 1) / 9;
+            var o = new List<int>();
+            for (int k = 0; k < count; k++)
+            {
+                if (bits[i] != 1) return null;
+                int v = 0; for (int b = 1; b <= 8; b++) v = (v << 1) | bits[i + b];
+                o.Add(v); i += 9;
+            }
+            if (o.Count < 2) return null;
+            int calc = 0;
+            for (int k = 0; k < o.Count - 2; k++) for (int b = 0; b < 8; b++) calc += (o[k] >> b) & 1;
+            sumOk = (calc & 0xFFFF) == o[o.Count - 2] * 256 + o[o.Count - 1];
+            var res = new byte[o.Count - 2];
+            for (int k = 0; k < res.Length; k++) res[k] = (byte)o[k];
+            return res;
+        }
+
+        // the PC-1600 MODE 0 and PC-E500 tape: the header (48 bytes) and the data of the blocks (the sums are the numbers of 1 bits)
+        public static void DecodeTape0(byte[] wav, bool e500, out byte[] hdr, out byte[] data)
+        {
+            int rate;
+            byte[] d = Samples(wav, out rate);
+            var bs = Bursts(d, rate);
+            if (bs.Count < 2) throw new Exception("no " + (e500 ? "PC-E500" : "PC-1600 (CE-1600P)") + " tape recording found");
+            bool ok;
+            hdr = ParseBurst(bs[0], e500 ? 6000 : HDR_S1, HDR_L, HDR_S2, out ok);
+            if (hdr == null || hdr.Length != 48) throw new Exception("no " + (e500 ? "PC-E500" : "PC-1600 (CE-1600P)") + " tape header found");
+            var all = new List<byte>();
+            for (int k = 1; k < bs.Count; k++)
+            {
+                bool sok;
+                byte[] blk = ParseBurst(bs[k], e500 ? 7000 : DAT_S1, DAT_L, DAT_S2, out sok);
+                if (blk == null) throw new Exception("block " + k + " cannot be read");
+                if (!sok) throw new Exception("checksum error in block " + k);
+                all.AddRange(blk);
+            }
+            data = all.ToArray();
+        }
+
+        // returns the text of the ASCII file (up to the end-of-file code 1AH) and the tape name
+        public static string Decode0(byte[] wav, out string name)
+        {
+            byte[] hdr, data;
+            DecodeTape0(wav, false, out hdr, out data);
+            name = Encoding.GetEncoding(28591).GetString(hdr, 1, 13).Trim();
+            int e = Array.IndexOf(data, EOFC);
+            if (e < 0) e = data.Length;
+            return Encoding.GetEncoding(28591).GetString(data, 0, e);
+        }
+
+        // ================================================================ PC-1350 / PC-1360 tape (2 ms per bit: 0 = four 2 kHz pulses, 1 = eight 4 kHz pulses)
+        // the check sum: an 8 bit register; for a byte its first nibble is added, then the second one with the carry of the first addition
+        static int NibSum(List<int> nibs)
+        {
+            int c = 0, carry = 0;
+            for (int j = 0; j < nibs.Count; j++)
+            {
+                if (j % 2 == 0) { c += nibs[j]; carry = c >> 8; c &= 255; }
+                else { c += nibs[j] + carry; c &= 255; }
+            }
+            return c;
+        }
+
+        static int Cs8(byte[] b, int off, int len)
+        {
+            var n = new List<int>();
+            for (int k = 0; k < len; k++) { n.Add(b[off + k] >> 4); n.Add(b[off + k] & 15); }
+            return NibSum(n);
+        }
+
+        // prog = the program image (lines of the tokenizer), idByte = 70H (PC-1350) or 72H (PC-1360)
+        public static byte[] Encode1350(string name, byte[] prog, int idByte)
+        {
+            if (prog.Length > 0 && prog[prog.Length - 1] == 0xFF) Array.Resize(ref prog, prog.Length - 1);
+            byte[] nm = Encoding.GetEncoding(28591).GetBytes(name.ToUpperInvariant());
+            int len = Math.Min(7, nm.Length);
+            var nb = new List<byte>();                                   // the name: zeros, the characters from the last one, F5H
+            for (int k = 0; k < 7 - len; k++) nb.Add(0);
+            for (int k = len - 1; k >= 0; k--) nb.Add(nm[k]);
+            nb.Add(0xF5);
+            var nibs = new List<int> { idByte >> 4, idByte & 15 };
+            var nn = new List<int>();
+            foreach (byte b in nb) { nn.Add(b & 15); nn.Add(b >> 4); }      // the name: low nibble first
+            nibs.AddRange(nn);
+            int csn = NibSum(nn);
+            nibs.Add(csn >> 4); nibs.Add(csn & 15);
+            int hdrBytes = nibs.Count / 2;
+            int p = 0;
+            while (prog.Length - p >= 120)
+            {
+                int c = Cs8(prog, p, 120);
+                for (int k = 0; k < 120; k++) { nibs.Add(prog[p + k] >> 4); nibs.Add(prog[p + k] & 15); }
+                nibs.Add(c >> 4); nibs.Add(c & 15);
+                p += 120;
+            }
+            int tl = prog.Length - p;
+            var tail = new byte[tl + 1];
+            Array.Copy(prog, p, tail, 0, tl);
+            tail[tl] = 0xFF;
+            int cf = Cs8(tail, 0, tail.Length);                           // the last sum: the rest of the program and one FFH
+            for (int k = 0; k < tl; k++) { nibs.Add(prog[p + k] >> 4); nibs.Add(prog[p + k] & 15); }
+            nibs.AddRange(new[] { 15, 15, 15, 15, cf >> 4, cf & 15 });
+            int lastByte = nibs.Count / 2 - 1;
+            var bits = new List<int>();
+            for (int k = 0; k < 4000; k++) bits.Add(1);                   // 8 s of ones
+            for (int j = 0; j < nibs.Count; j++)
+            {
+                bits.Add(0);
+                for (int k = 0; k < 4; k++) bits.Add((nibs[j] >> k) & 1);
+                if (j % 2 == 0) bits.Add(1);
+                else { int stop = (j / 2 < hdrBytes || j / 2 == lastByte) ? 5 : 3; for (int k = 0; k < stop; k++) bits.Add(1); }
+            }
+            for (int k = 0; k < 100; k++) bits.Add(1);
+            var edges = new List<double>();
+            double t = 0;
+            Action<double, int> tone = (f, cycles) => { double half = Fs / f / 2; for (int c = 0; c < cycles; c++) { t += half; edges.Add(t); t += half; edges.Add(t); } };
+            foreach (int b in bits) { if (b != 0) tone(4000, 8); else tone(2000, 4); }
+            int total = (int)t + 1;
+            var buf = new byte[total];
+            for (int i = 0; i < total; i++) buf[i] = 128;
+            double pos = 0; bool high = true;
+            foreach (double e in edges)
+            {
+                long a = Round(pos), z = Round(e);
+                byte v = high ? (byte)226 : (byte)30;
+                for (long i = a; i < z && i < total; i++) buf[i] = v;
+                pos = e; high = !high;
+            }
+            return WavFile(buf, (int)Fs);
+        }
+
+        // returns the program image (without the end marker); warn = a message when a check sum does not agree
+        public static byte[] Decode1350(byte[] wav, out string name, out int idByte, out string warn)
+        {
+            warn = null;
+            int rate;
+            byte[] d = Samples(wav, out rate);
+            var rise = new List<int>();
+            bool prev = d.Length > 0 && d[0] >= 128;
+            for (int i = 0; i < d.Length; i++) { bool s = d[i] >= 128; if (s && !prev) rise.Add(i); prev = s; }
+            var bits = new List<int>();
+            char cur = ' '; double acc = 0;
+            Action flush = () => { if (cur == 'S' || cur == 'F') { long n = Round(acc / 2000.0); for (long k = 0; k < n; k++) bits.Add(cur == 'F' ? 1 : 0); } };
+            for (int i = 1; i < rise.Count; i++)
+            {
+                double us = (rise[i] - rise[i - 1]) * 1e6 / rate;
+                char c = us > 1500 ? 'G' : (us > 375 ? 'S' : 'F');
+                if (c == cur) acc += us; else { flush(); cur = c; acc = us; }
+            }
+            flush();
+            int ix = 0;
+            while (ix < bits.Count && bits[ix] == 1) ix++;
+            var nibs = new List<int>();
+            while (ix + 5 <= bits.Count)
+            {
+                if (bits[ix] != 0) { ix++; continue; }
+                int v = 0; for (int k = 0; k < 4; k++) v |= bits[ix + 1 + k] << k;
+                nibs.Add(v); ix += 5;
+                while (ix < bits.Count && bits[ix] == 1) ix++;
+            }
+            var by = new List<int>();
+            for (int k = 0; k + 1 < nibs.Count; k += 2) by.Add((nibs[k] << 4) | nibs[k + 1]);
+            idByte = by.Count > 0 ? by[0] : 0;
+            if (by.Count < 14 || (idByte != 0x70 && idByte != 0x72)) throw new Exception("no PC-1350 / PC-1360 tape recording found");
+            var chars = new List<char>();
+            for (int k = 1; k <= 7; k++) { int ch = ((by[k] & 15) << 4) | (by[k] >> 4); if (ch != 0) chars.Insert(0, (char)ch); }
+            name = new string(chars.ToArray());
+            int r = by.Count - 10;
+            if (r < 3) throw new Exception("the recording is too short");
+            int blocks = (r - 3) / 121, tl = (r - 3) % 121;
+            var prog = new List<byte>();
+            int q = 10;
+            for (int bk = 0; bk < blocks; bk++)
+            {
+                var blk = new byte[120];
+                for (int k = 0; k < 120; k++) blk[k] = (byte)by[q + k];
+                if (Cs8(blk, 0, 120) != by[q + 120]) { warn = "check sum error in block " + (bk + 1); }
+                prog.AddRange(blk);
+                q += 121;
+            }
+            var tail = new byte[tl + 1];
+            for (int k = 0; k < tl; k++) { tail[k] = (byte)by[q + k]; prog.Add(tail[k]); }
+            tail[tl] = 0xFF;
+            if (Cs8(tail, 0, tail.Length) != by[q + tl + 2] && warn == null) warn = "check sum error at the end of the recording";
+            return prog.ToArray();
+        }
+    }
+
+    // the picture of the Buy me a coffee button (img/buymeacoffe58x58.jpg, 58 x 58 px) as base64; it is shown at its own size
+    static class BmcData
+    {
+        public const string Jpg =
+            "/9j/4QhPRXhpZgAATU0AKgAAAAgADAEAAAMAAAABAZAAAAEBAAMAAAABAZAAAAECAAMAAAADAAAAngEGAAMAAAABAAIAAAESAAMA" +
+            "AAABAAEAAAEVAAMAAAABAAMAAAEaAAUAAAABAAAApAEbAAUAAAABAAAArAEoAAMAAAABAAIAAAExAAIAAAAeAAAAtAEyAAIAAAAU" +
+            "AAAA0odpAAQAAAABAAAA6AAAASAACAAIAAgACvyAAAAnEAAK/IAAACcQQWRvYmUgUGhvdG9zaG9wIENTNiAoV2luZG93cykAMjAy" +
+            "NjoxMToyNCAxMjozNjo0NAAAAAAEkAAABwAAAAQwMjIxoAEAAwAAAAH//wAAoAIABAAAAAEAAAA6oAMABAAAAAEAAAA6AAAAAAAA" +
+            "AAYBAwADAAAAAQAGAAABGgAFAAAAAQAAAW4BGwAFAAAAAQAAAXYBKAADAAAAAQACAAACAQAEAAAAAQAAAX4CAgAEAAAAAQAABskA" +
+            "AAAAAAAASAAAAAEAAABIAAAAAf/Y/+0ADEFkb2JlX0NNAAL/7gAOQWRvYmUAZIAAAAAB/9sAhAAMCAgICQgMCQkMEQsKCxEVDwwM" +
+            "DxUYExMVExMYEQwMDAwMDBEMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMAQ0LCw0ODRAODhAUDg4OFBQODg4OFBEMDAwMDBER" +
+            "DAwMDAwMEQwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAz/wAARCAA6ADoDASIAAhEBAxEB/90ABAAE/8QBPwAAAQUBAQEBAQEA" +
+            "AAAAAAAAAwABAgQFBgcICQoLAQABBQEBAQEBAQAAAAAAAAABAAIDBAUGBwgJCgsQAAEEAQMCBAIFBwYIBQMMMwEAAhEDBCESMQVB" +
+            "UWETInGBMgYUkaGxQiMkFVLBYjM0coLRQwclklPw4fFjczUWorKDJkSTVGRFwqN0NhfSVeJl8rOEw9N14/NGJ5SkhbSVxNTk9KW1" +
+            "xdXl9VZmdoaWprbG1ub2N0dXZ3eHl6e3x9fn9xEAAgIBAgQEAwQFBgcHBgU1AQACEQMhMRIEQVFhcSITBTKBkRShsUIjwVLR8DMk" +
+            "YuFygpJDUxVjczTxJQYWorKDByY1wtJEk1SjF2RFVTZ0ZeLys4TD03Xj80aUpIW0lcTU5PSltcXV5fVWZnaGlqa2xtbm9ic3R1dn" +
+            "d4eXp7fH/9oADAMBAAIRAxEAPwDtEkkl5w6zifWjI+sNdVFXQH0faHEm9j3V+vs02OxqslzanfnrGn62fnu656ng2vE2T8nbVLq3" +
+            "SLGdZy7szpGP1tvUrd2IXZApva1lY3Y1VVm3d6LW7v0Sq/sHDH/rJZzf5Lcw7f8Az6ug5aODHgxxrFO48fucHLSnPj+aMjl5vFk/" +
+            "Vy/V/wA005mRkTqPC5f966/SOpdcxeqYnT+uXNe3qFNr6G3NrryK7KnQ2m12M70bfWq/SMXSrzrL6VXY+vo2F9WW9Ozs5rnY+ZkZ" +
+            "O9zBVD7L9zfUe11a9EaHBjQ9294aA5/G4gQ5/wDacqPxTFjBxZIcMZZBLihAYoxqMvTljHl8ueEYy/mvn/yLLgkTYN6df/Rl0kkl" +
+            "ms7/AP/Q7RJJJecOs4vX9rOqfVy9w46k2mfK5jq4/wCiu0rwsasyGAnxdr+VcR9cninpOPmEwMPPxL93gG2bd3/SXfLrfgeLDl5O" +
+            "Ep44zninOEZyiJSjr7lRP/VGhzBIyEAkAgPGdXO//GDjVge3G6VZYY7G270h/wBQtJZQeLvr51t/fFxMSj/P3ZK1Vj/H5Xz8h+5C" +
+            "Ef8Am8f/AHbY5Yfq77kqSSSWUzv/0e0VXquW7B6ZlZrAHPx6nWNa6dpcPo79vu27v3VaQc3EozcS3EyJ9G0Q8tcWEAEWbm2D6G1z" +
+            "Ny87xGIyQMxcBKPGP6l+p1JXRrenEZ1zAzsTLw+sMZawe2xlddrW2VE47GWehkbcirfk5LasZ/8AhvS9WlQwumdOyHU42B1nq9Lb" +
+            "KnW047ct7Q2lj/s24BzXenW6z+Y/0itX/Vvol7ftV11ztN1uWckzYGltlNl+RO132V7GPxvoV1LNx+m4fS+s5fUcmp1XT+m0t+xM" +
+            "9Q2uc0Ob6WRXX6jrbq6/Ud6TLf0OM/8Amv8ASLYw5sYjk+65c+CdcXtx4eDJk9OMQhD9+U5f+FtaQNjjEZeLY6J1j6t4uzE6fXkz" +
+            "mWhzr7mOe61zn/ZfteRkvc53pfav1Tf/AKb/AAf562OmdVxeqU2XYof6dVrqSXjbuLY99ert1fuVKvpfQrMZ2JU59Aw7K8IXiz07" +
+            "fUpd9qqqqud9N/q5H7u+xWuldL6f09hGE91rWj0Wuc8P2MYT+rM2BrWbLHOdb/hn2/z6qc2eWkMkx73vGQo5fXxD96cv60WTHxih" +
+            "6eHwb6SSSz2d/9LtFU6thWZ/Tr8Op7a32hsF4JYQ17LHVWhha/0bms9G3Z/g3q2kvPMHH7uP2/5zjjwX+/xeh1JVwm9q1eer+rme" +
+            "Ok2dOtux3MF4urpawtosHqvyb25NbRurbker6Xo1b66K6aVl9b+reViU29Vdfjh1BEuaxzQ+t9lDG4uS5270MDArr9Oqyl3q+h/O" +
+            "LtUzvoO+jwfp/R4/wn8j95bPL/6R940MZ/WH3QDARv0e/r/0/wD1Z7TXl7VfpbafseH6didR62+wk0k0ZFmVZTYH1/pcndssvj1H" +
+            "Nfi+iyyjGq9P18XZZ9prXSfV3pWV0rEdj5D2GTuisl255H6fKte5tfvyHbdtDG7KK2f4W3fYtX8530ee3PA/nf5f/otJM+IHmThn" +
+            "pjjy1xoQPHrf6EuGH+U4/wBFOLg4hvxKSSSWK2X/2f/tEBhQaG90b3Nob3AgMy4wADhCSU0EBAAAAAAADxwBWgADGyVHHAIAAALq" +
+            "nAA4QklNBCUAAAAAABDFXGJ3iQxaE7JA3eJ6NFNSOEJJTQQ6AAAAAAEVAAAAEAAAAAEAAAAAAAtwcmludE91dHB1dAAAAAUAAAAA" +
+            "UHN0U2Jvb2wBAAAAAEludGVlbnVtAAAAAEludGUAAAAASW1nIAAAAA9wcmludFNpeHRlZW5CaXRib29sAAAAAAtwcmludGVyTmFt" +
+            "ZVRFWFQAAAAUAEUAUABTAE8ATgAgAFgAUAAtADYANAAwACAAUwBlAHIAaQBlAHMAAAAAAA9wcmludFByb29mU2V0dXBPYmpjAAAA" +
+            "EQBVAHMAdABhAHcAaQBlAG4AaQBlACAAcAByAPMAYgB5AAAAAAAKcHJvb2ZTZXR1cAAAAAEAAAAAQmx0bmVudW0AAAAMYnVpbHRp" +
+            "blByb29mAAAACXByb29mQ01ZSwA4QklNBDsAAAAAAi0AAAAQAAAAAQAAAAAAEnByaW50T3V0cHV0T3B0aW9ucwAAABcAAAAAQ3B0" +
+            "bmJvb2wAAAAAAENsYnJib29sAAAAAABSZ3NNYm9vbAAAAAAAQ3JuQ2Jvb2wAAAAAAENudENib29sAAAAAABMYmxzYm9vbAAAAAAA" +
+            "Tmd0dmJvb2wAAAAAAEVtbERib29sAAAAAABJbnRyYm9vbAAAAAAAQmNrZ09iamMAAAABAAAAAAAAUkdCQwAAAAMAAAAAUmQgIGRv" +
+            "dWJAb+AAAAAAAAAAAABHcm4gZG91YkBv4AAAAAAAAAAAAEJsICBkb3ViQG/gAAAAAAAAAAAAQnJkVFVudEYjUmx0AAAAAAAAAAAA" +
+            "AAAAQmxkIFVudEYjUmx0AAAAAAAAAAAAAAAAUnNsdFVudEYjUHhsQFIAAAAAAAAAAAAKdmVjdG9yRGF0YWJvb2wBAAAAAFBnUHNl" +
+            "bnVtAAAAAFBnUHMAAAAAUGdQQwAAAABMZWZ0VW50RiNSbHQAAAAAAAAAAAAAAABUb3AgVW50RiNSbHQAAAAAAAAAAAAAAABTY2wg" +
+            "VW50RiNQcmNAWQAAAAAAAAAAABBjcm9wV2hlblByaW50aW5nYm9vbAAAAAAOY3JvcFJlY3RCb3R0b21sb25nAAAAAAAAAAxjcm9w" +
+            "UmVjdExlZnRsb25nAAAAAAAAAA1jcm9wUmVjdFJpZ2h0bG9uZwAAAAAAAAALY3JvcFJlY3RUb3Bsb25nAAAAAAA4QklNA+0AAAAA" +
+            "ABAASAAAAAEAAgBIAAAAAQACOEJJTQQmAAAAAAAOAAAAAAAAAAAAAD+AAAA4QklNBA0AAAAAAAQAAAAeOEJJTQQZAAAAAAAEAAAA" +
+            "HjhCSU0D8wAAAAAACQAAAAAAAAAAAQA4QklNJxAAAAAAAAoAAQAAAAAAAAACOEJJTQP1AAAAAABIAC9mZgABAGxmZgAGAAAAAAAB" +
+            "AC9mZgABAKGZmgAGAAAAAAABADIAAAABAFoAAAAGAAAAAAABADUAAAABAC0AAAAGAAAAAAABOEJJTQP4AAAAAABwAAD/////////" +
+            "////////////////////A+gAAAAA/////////////////////////////wPoAAAAAP////////////////////////////8D6AAA" +
+            "AAD/////////////////////////////A+gAADhCSU0ECAAAAAAAEAAAAAEAAAJAAAACQAAAAAA4QklNBB4AAAAAAAQAAAAAOEJJ" +
+            "TQQaAAAAAANLAAAABgAAAAAAAAAAAAAAOgAAADoAAAALAGIAdQB5AG0AZQBhAGMAbwBmAGYAZQAAAAEAAAAAAAAAAAAAAAAAAAAA" +
+            "AAAAAQAAAAAAAAAAAAAAOgAAADoAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAQAAAAAAAG51bGwAAAAC" +
+            "AAAABmJvdW5kc09iamMAAAABAAAAAAAAUmN0MQAAAAQAAAAAVG9wIGxvbmcAAAAAAAAAAExlZnRsb25nAAAAAAAAAABCdG9tbG9u" +
+            "ZwAAADoAAAAAUmdodGxvbmcAAAA6AAAABnNsaWNlc1ZsTHMAAAABT2JqYwAAAAEAAAAAAAVzbGljZQAAABIAAAAHc2xpY2VJRGxv" +
+            "bmcAAAAAAAAAB2dyb3VwSURsb25nAAAAAAAAAAZvcmlnaW5lbnVtAAAADEVTbGljZU9yaWdpbgAAAA1hdXRvR2VuZXJhdGVkAAAA" +
+            "AFR5cGVlbnVtAAAACkVTbGljZVR5cGUAAAAASW1nIAAAAAZib3VuZHNPYmpjAAAAAQAAAAAAAFJjdDEAAAAEAAAAAFRvcCBsb25n" +
+            "AAAAAAAAAABMZWZ0bG9uZwAAAAAAAAAAQnRvbWxvbmcAAAA6AAAAAFJnaHRsb25nAAAAOgAAAAN1cmxURVhUAAAAAQAAAAAAAG51" +
+            "bGxURVhUAAAAAQAAAAAAAE1zZ2VURVhUAAAAAQAAAAAABmFsdFRhZ1RFWFQAAAABAAAAAAAOY2VsbFRleHRJc0hUTUxib29sAQAA" +
+            "AAhjZWxsVGV4dFRFWFQAAAABAAAAAAAJaG9yekFsaWduZW51bQAAAA9FU2xpY2VIb3J6QWxpZ24AAAAHZGVmYXVsdAAAAAl2ZXJ0" +
+            "QWxpZ25lbnVtAAAAD0VTbGljZVZlcnRBbGlnbgAAAAdkZWZhdWx0AAAAC2JnQ29sb3JUeXBlZW51bQAAABFFU2xpY2VCR0NvbG9y" +
+            "VHlwZQAAAABOb25lAAAACXRvcE91dHNldGxvbmcAAAAAAAAACmxlZnRPdXRzZXRsb25nAAAAAAAAAAxib3R0b21PdXRzZXRsb25n" +
+            "AAAAAAAAAAtyaWdodE91dHNldGxvbmcAAAAAADhCSU0EKAAAAAAADAAAAAI/8AAAAAAAADhCSU0EEQAAAAAAAQEAOEJJTQQUAAAA" +
+            "AAAEAAAAAzhCSU0EDAAAAAAG5QAAAAEAAAA6AAAAOgAAALAAACfgAAAGyQAYAAH/2P/tAAxBZG9iZV9DTQAC/+4ADkFkb2JlAGSA" +
+            "AAAAAf/bAIQADAgICAkIDAkJDBELCgsRFQ8MDA8VGBMTFRMTGBEMDAwMDAwRDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAEN" +
+            "CwsNDg0QDg4QFA4ODhQUDg4ODhQRDAwMDAwREQwMDAwMDBEMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM/8AAEQgAOgA6AwEi" +
+            "AAIRAQMRAf/dAAQABP/EAT8AAAEFAQEBAQEBAAAAAAAAAAMAAQIEBQYHCAkKCwEAAQUBAQEBAQEAAAAAAAAAAQACAwQFBgcICQoL" +
+            "EAABBAEDAgQCBQcGCAUDDDMBAAIRAwQhEjEFQVFhEyJxgTIGFJGhsUIjJBVSwWIzNHKC0UMHJZJT8OHxY3M1FqKygyZEk1RkRcKj" +
+            "dDYX0lXiZfKzhMPTdePzRieUpIW0lcTU5PSltcXV5fVWZnaGlqa2xtbm9jdHV2d3h5ent8fX5/cRAAICAQIEBAMEBQYHBwYFNQEA" +
+            "AhEDITESBEFRYXEiEwUygZEUobFCI8FS0fAzJGLhcoKSQ1MVY3M08SUGFqKygwcmNcLSRJNUoxdkRVU2dGXi8rOEw9N14/NGlKSF" +
+            "tJXE1OT0pbXF1eX1VmZ2hpamtsbW5vYnN0dXZ3eHl6e3x//aAAwDAQACEQMRAD8A7RJJJecOs4n1oyPrDXVRV0B9H2hxJvY91fr7" +
+            "NNjsarJc2p356xp+tn57uuep4NrxNk/J21S6t0ixnWcu7M6Rj9bb1K3diF2QKb2tZWN2NVVZt3ei1u79Eqv7Bwx/6yWc3+S3MO3/" +
+            "AM+roOWjgx4McaxTuPH7nBy0pz4/mjI5ebxZP1cv1f8ANNOZkZE6jwuX/euv0jqXXMXqmJ0/rlzXt6hTa+htza68iuyp0NptdjO9" +
+            "G31qv0jF0q86y+lV2Pr6NhfVlvTs7Oa52PmZGTvcwVQ+y/c31HtdWvRGhwY0PdveGgOfxuIEOf8A2nKj8UxYwcWSHDGWQS4oQGKM" +
+            "ajL05Yx5fLnhGMv5r5/8iy4JE2DenX/0ZdJJJZrO/wD/0O0SSSXnDrOL1/azqn1cvcOOpNpnyuY6uP8AortK8LGrMhgJ8Xa/lXEf" +
+            "XJ4p6Tj5hMDDz8S/d4Btm3d/0l3y634Hiw5eThKeOM54pzhGcoiUo6+5UT/1RocwSMhAJAIDxnVzv/xg41YHtxulWWGOxtu9If8A" +
+            "ULSWUHi76+dbf3xcTEo/z92StVY/x+V8/IfuQhH/AJvH/wB22OWH6u+5KkkkllM7/9HtFV6rluwemZWawBz8ep1jWunaXD6O/b7t" +
+            "u791WkHNxKM3EtxMifRtEPLXFhABFm5tg+htczcvO8RiMkDMXASjxj+pfqdSV0a3pxGdcwM7Ey8PrDGWsHtsZXXa1tlROOxlnoZG" +
+            "3Iq35OS2rGf/AIb0vVpUMLpnTsh1ONgdZ6vS2yp1tOO3Le0NpY/7NuAc13p1us/mP9IrV/1b6Je37Vddc7TdblnJM2BpbZTZfkTt" +
+            "d9lexj8b6FdSzcfpuH0vrOX1HJqdV0/ptLfsTPUNrnNDm+lkV1+o626uv1Heky39DjP/AJr/AEi2MObGI5PuuXPgnXF7ceHgyZPT" +
+            "jEIQ/flOX/hbWkDY4xGXi2OidY+reLsxOn15M5loc6+5jnutc5/2X7XkZL3Od6X2r9U3/wCm/wAH+etjpnVcXqlNl2KH+nVa6kl4" +
+            "27i2PfXq7dX7lSr6X0KzGdiVOfQMOyvCF4s9O31KXfaqqqrnfTf6uR+7vsVrpXS+n9PYRhPda1o9FrnPD9jGE/qzNga1myxznW/4" +
+            "Z9v8+qnNnlpDJMe97xkKOX18Q/enL+tFkx8Yoenh8G+kkks9nf/S7RVOrYVmf06/Dqe2t9obBeCWENeyx1VoYWv9G5rPRt2f4N6t" +
+            "pLzzBx+7j9v+c448F/v8XodSVcJvatXnq/q5njpNnTrbsdzBeLq6WsLaLB6r8m9uTW0bq25Hq+l6NW+uiumlZfW/q3lYlNvVXX44" +
+            "dQRLmsc0PrfZQxuLkudu9DAwK6/Tqspd6vofzi7VM76Dvo8H6f0eP8J/I/eWzy/+kfeNDGf1h90AwEb9Hv6/9P8A9We015e1X6W2" +
+            "n7Hh+nYnUetvsJNJNGRZlWU2B9f6XJ3bLL49RzX4vossoxqvT9fF2Wfaa10n1d6VldKxHY+Q9hk7orJdueR+nyrXubX78h23bQxu" +
+            "yitn+Ft32LV/Od9HntzwP53+X/6LSTPiB5k4Z6Y48tcaEDx63+hLhh/lOP8ARTi4OIb8Skkklitl/9kAOEJJTQQhAAAAAABVAAAA" +
+            "AQEAAAAPAEEAZABvAGIAZQAgAFAAaABvAHQAbwBzAGgAbwBwAAAAEwBBAGQAbwBiAGUAIABQAGgAbwB0AG8AcwBoAG8AcAAgAEMA" +
+            "UwA2AAAAAQA4QklNBAYAAAAAAAcAAQABAAEBAP/hDX1odHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvADw/eHBhY2tldCBiZWdp" +
+            "bj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8i" +
+            "IHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuMy1jMDExIDY2LjE0NTY2MSwgMjAxMi8wMi8wNi0xNDo1NjoyNyAgICAgICAgIj4g" +
+            "PHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNj" +
+            "cmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0" +
+            "RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtbG5zOmRjPSJodHRwOi8vcHVy" +
+            "bC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1sbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAv" +
+            "IiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtcE1NOkRvY3VtZW50SUQ9IkVDNTJBNDZDNjBDNERG" +
+            "NEZBQUY1MzBEN0FEOTYxMTE0IiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOjlCQjk3MzUzRkJFN0YxMTFBMzk2RjExNUI4RTFD" +
+            "MTc5IiB4bXBNTTpPcmlnaW5hbERvY3VtZW50SUQ9IkVDNTJBNDZDNjBDNERGNEZBQUY1MzBEN0FEOTYxMTE0IiBkYzpmb3JtYXQ9" +
+            "ImltYWdlL2pwZWciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTExLTI0VDExOjU0OjU4KzAx" +
+            "OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0xMS0yNFQxMjozNjo0NCswMTowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNi0xMS0y" +
+            "NFQxMjozNjo0NCswMTowMCI+IDx4bXBNTTpIaXN0b3J5PiA8cmRmOlNlcT4gPHJkZjpsaSBzdEV2dDphY3Rpb249InNhdmVkIiBz" +
+            "dEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOjlBQjk3MzUzRkJFN0YxMTFBMzk2RjExNUI4RTFDMTc5IiBzdEV2dDp3aGVuPSIyMDI2" +
+            "LTExLTI0VDEyOjM2OjQ0KzAxOjAwIiBzdEV2dDpzb2Z0d2FyZUFnZW50PSJBZG9iZSBQaG90b3Nob3AgQ1M2IChXaW5kb3dzKSIg" +
+            "c3RFdnQ6Y2hhbmdlZD0iLyIvPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0ic2F2ZWQiIHN0RXZ0Omluc3RhbmNlSUQ9InhtcC5paWQ6" +
+            "OUJCOTczNTNGQkU3RjExMUEzOTZGMTE1QjhFMUMxNzkiIHN0RXZ0OndoZW49IjIwMjYtMTEtMjRUMTI6MzY6NDQrMDE6MDAiIHN0" +
+            "RXZ0OnNvZnR3YXJlQWdlbnQ9IkFkb2JlIFBob3Rvc2hvcCBDUzYgKFdpbmRvd3MpIiBzdEV2dDpjaGFuZ2VkPSIvIi8+IDwvcmRm" +
+            "OlNlcT4gPC94bXBNTTpIaXN0b3J5PiA8L3JkZjpEZXNjcmlwdGlvbj4gPC9yZGY6UkRGPiA8L3g6eG1wbWV0YT4gICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg" +
+            "ICAgICAgICAgICAgICA8P3hwYWNrZXQgZW5kPSJ3Ij8+/+4ADkFkb2JlAGSAAAAAAf/bAIQADAgICAkIDAkJDBELCgsRFQ8MDA8V" +
+            "GBMTFRMTGBEMDAwMDAwRDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAENCwsNDg0QDg4QFA4ODhQUDg4ODhQRDAwMDAwREQwM" +
+            "DAwMDBEMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM/8AAEQgAOgA6AwEiAAIRAQMRAf/dAAQABP/EAJsAAAMBAAMBAAAAAAAA" +
+            "AAAAAAAFBgQBAgcDAQADAQADAAAAAAAAAAAAAAADBAUHAQIGEAACAQQBAQQGBwgDAAAAAAACAwQAARIFExExMhQGISJCIzNDQVFS" +
+            "YqJTJGGBsYKSsrPDFUYHEQACAQMCAgcDDQAAAAAAAAABAgMAERITBCEiMWFCUiMzBTJiQ0FRwaKywtLyg5PTFBX/2gAMAwEAAhED" +
+            "EQA/ALSiiis4qtSTzRI8wrUhWgNHiCve7wMl8+HowKMqSQqL26TdfNntlvOT6hXEw6/uLGu221DA3Mt0zUR92OyblEuUiyXiILtl" +
+            "GUpmOXCI5e6rL/wMO3/Upw/dGZfH/LXoNssEcEa2ie656mG2Z3z9pWMu7ik8NvD8qk3LFieI6rt+Gm+o2W8i7SJr944THYJaaBcK" +
+            "1yFsUXQUtKMXC3mV7wKpa86l6pbDXpoXlkddOnCRR5kiTmQWV0Nj8h5DEl16INisA2MszsNrEfZle1uhH/MVI+qRRgxSJirSBskQ" +
+            "RKtlbllVdvLOiq3le38GiwMTcG/D5fzVzRRRU2j1/9C0ooorOKrUl3+IbTy48rdmyFPX9jgJfT8NWi4UZd+tgte/1l6f41Eecjsn" +
+            "Ux5l79LQ58R+X1WFmOX4qvq9b6HFDLs0Z41d4ndFdlDMvHUsp/UpDcEiQgEgECozb3z/APQYy7W9WNqmMv0+i7XcVv7KZUqsdnef" +
+            "N2f0xYkRH9eUmmtR/X2vv2HcRF+rn9+mNsPDv85NFFFFSqPX/9G0rLtZZQdZKmhaxHHUTBEuuNyt3c8fWxy+zWqvjNiImxGxJHXh" +
+            "bbodxK4Xta17MyFlu5iQZVncRUSIXF0DLmPcvzVUa9jbptSQN5AnRJcPcADQt6rAWtoixV7xwBnBIxkKzkyRVGP53FyprpC1mukE" +
+            "mNA3O3SLFE1McZZjYUgfhsrWIS41kz4H5lan+W9I8fFOc4vRk2XeTfqyw3FiWPkdcS8KYAcbuLVS2PrYer3MvYyVErX61I+CDku0" +
+            "iGxDxSFr5Ca5a+QuIG+5jH8L8yrEM0YWT+rLPA9stNccJJOWMIid9nb9ulmBuMwrddaNJuPLcXCJr1yesxtiJ7gIyaRH4XxciSZE" +
+            "XF4r9Jn+d8v26cazaxdoljotj41NJN7nbHK49PXX6SyX61Yl6vRMjFEURotDYuFZ9mcbeRJeKUpTi758sj7ObK1arV6/Xhe0IyaI" +
+            "24RIjseABe/6YMLCIYMIib842/HpTdnbMJHGtrFhYy8+Q7zt7y0SPMWHLj1VvoooqfR6/9K0rJtoTJ+ufDUYrNth6XO17hewmDCU" +
+            "2wXE+Fwhwtw+Wda6KzyDPVj0/MzXC/fy5KqNbE36Lcanl+XJ9tSzXNdHILPs5aRC4oZblOS8ZKxtksZHLxcKs1oWlNK935blREt2" +
+            "pPj2JF7dSECGxrNiAGLJIsuCBAWvjUxJcvB8SrWuC7hd3sv3+72fM+59qrO3/wBHWNhGfEOqAUC35Nfj9v8Ak0qXbSt2ujh9FQ+u" +
+            "ibHdmy97pvdEhkpiWWNfvZOWDH9OQhOLwgxEZXHzxcGeJXVJ5d1UrVRCjyDC/W+XRd7lkd7e/lNMhX68gscUAOCFh81ubKa+0Xd7" +
+            "fo7ey3xfv/66K6eoHcmF+Ea7a62CHPjfsNinxM+zXMWGQ6cqKKKKi0zX/9k=";
+    }
+
     public static class AppInfo
     {
-        public const string Version = "1.5";      // 1.5: port TEST button, Renumber and Remove REM in the Files menu, no changes of the port / target / mode / options while a file is sent, default line delay for every baud rate; 1.1: Software UART speeds 1200 to 19200 (SL V3.0), settings.ini, .img files; 1.2: names of the programs checked for the Sharp; 1.4: file info tip, Skip REM, Check Basic, Files menu, drag out of the list; 1.3: PC-1500 Software UART (4800 bps), six target computers, Port settings box, Flush and Reset port, wrong baud rate warning
+        public const string Version = "1.6";      // 1.6: the Sharp (other) radio button has a box with the models PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..75, other (folder, Info text and WAV converter per model); 1.5: port TEST button, Renumber and Remove REM in the Files menu, no changes of the port / target / mode / options while a file is sent, default line delay for every baud rate; 1.1: Software UART speeds 1200 to 19200 (SL V3.0), settings.ini, .img files; 1.2: names of the programs checked for the Sharp; 1.4: file info tip, Skip REM, Check Basic, Files menu, drag out of the list; 1.3: PC-1500 Software UART (4800 bps), six target computers, Port settings box, Flush and Reset port, wrong baud rate warning
     }
 
     // Names of programs for the pocket computers: the length and the characters that the Sharp accepts

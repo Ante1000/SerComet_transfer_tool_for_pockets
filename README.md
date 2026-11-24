@@ -2,11 +2,15 @@
 
 # <img src="img/sercomet_icon.png" alt="" width="40" align="top"> SerComet
 
-**File transfer tool for PC and Sharp pocket computers.** A small Windows program (version 1.5) that sends and receives BASIC programs
+**File transfer tool for PC and Sharp pocket computers.** A small Windows program (version 1.6) that sends and receives BASIC programs
 between a PC and a pocket computer through a serial port (a USB-UART / USB-RS232 adapter), with a few helpers around it: the
 Saver/Loader programs for the Sharp PC-1500 and PC-1600, a built-in BASIC tokenizer / detokenizer, a terminal and a log.
 
 Free for personal, non-commercial and educational use ([PolyForm Noncommercial License 1.0.0](LICENSE.md)).
+
+<a href="https://www.buymeacoffee.com/Alex_F4VTS"><img src="SerComet/buymeacoffe.jpg" width="58" alt="Buy me a coffee" title="Buy me a coffee" align="left"></a>
+If SerComet saves you time, click the picture to buy the author a coffee (the same picture is in the title bar of the program).
+<br clear="left">
 
 ## What it does
 
@@ -16,6 +20,7 @@ Free for personal, non-commercial and educational use ([PolyForm Noncommercial L
 - **Renumber**: renumbers a BASIC text file (step and first line number, default 10 and 10) including GOTO, GOSUB, THEN, ELSE, RESTORE, RUN and ON ... GOTO / GOSUB; the log shows the old and the new range; if the last line would be above the limit of the machine, a smaller step (5, 2 or 1) is proposed. The file itself is changed.
 - **Remove REM**: writes `NAME_NOREM.bas` without the REM lines and the comments at the ends of lines. Two options: *Keep first REM* (e.g. the program title; default on) and *Remove also target REM lines and renumber accordingly program skips* (default off: a REM that a GOTO / GOSUB / THEN points to is removed too and the jumps go to the next line that stays; a REM at the very end stays). The log tells how many lines were removed and which jumps were moved. Jumps with a computed line number (`GOTO A*10`) cannot be followed.
 - **Check Basic**: a basic check of a listing for a chosen machine (line numbers, repeated numbers, GOTO / GOSUB targets, characters, line length, quotation marks and parentheses, keywords, FOR / NEXT, the program size against the free memory of the PC-1500A / PC-1600 ...). The keyword lists of the PC-1500 and PC-1600 are exact, those of the other machines are approximate (a warning only).
+- **Sharp (other) with a model box** (1.6): the radio button *Sharp (other)* has a box beside it (active when the button is on): PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..75, other. The model sets the folder (`PC1350`, `PC1360`, `PCE500`, `PCE500S`, `PC1450`, `SHARP_other`; the old `PC_15-pin` folder is gone), the notes in the Info box and the WAV converter: PC-1350 / PC-1360 (tokenized tape recordings), PC-E500 / PC-E500S (ASCII tape file, CSAVE recordings are read back); for PC-1450..75 and *other* tokenization and tape format are not supported (the usual UART transfer of BASIC programs works).
 - **Locked while sending** (1.5): while a file is being sent the port, the target computer, the transmission mode (with Baud, Delay, EOL and Flow) and the check boxes cannot be changed; the controls keep their look, they just ignore the mouse, the keys and the wheel until the transmission is finished or aborted. The log says so once when you try.
 - **Line delay by baud rate** (1.5): when you choose a baud rate in a text mode the **Delay** box is set to a value that fits it: 20 ms at 300 to 2400 bps, 50 ms at 4800, 100 ms at 9600, 125 ms at 19200, 140 ms at 38400 and 57600, 145 ms at 115200 (twice these values for the PC-1500 and the NEC / TRS-80). The Sharp needs about 150 ms to tokenize and store a line and its receive buffer takes up the characters that arrive meanwhile: delay = 150 - 480000 / baud (at least 20 ms). These are starting values, tune them by testing; a delay saved in settings.ini is kept when the program starts.
 - Warnings in the log when the baud rate looks wrong or the listing is too long for the memory; right mouse button in the log: Clear log, Copy log.
