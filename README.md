@@ -8,7 +8,9 @@ Saver/Loader programs for the Sharp PC-1500 and PC-1600, a built-in BASIC tokeni
 
 Free for personal, non-commercial and educational use ([PolyForm Noncommercial License 1.0.0](LICENSE.md)).
 
-If SerComet saves you time, you can [buy the author a coffee](https://www.buymeacoffee.com/Alex_F4VTS) (the button is also in the title bar of the program).
+<a href="https://www.buymeacoffee.com/Alex_F4VTS"><img src="img/buymeacoffe.jpg" alt="Buy me a coffee" title="Buy me a coffee" width="90" align="left"></a>
+If SerComet saves you time, click the picture to buy the author a coffee (the same picture is in the title bar of the program).
+<br clear="left">
 
 ## What it does
 
