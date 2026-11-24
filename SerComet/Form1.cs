@@ -554,7 +554,7 @@ namespace UartSlTest
                        "Connect through a USB-RS232 adapter with a null-modem cable (TX and RX crossed).\r\n" +
                        "Text transfer (.bas) with the baud rate (up to 115200), flow control, line end and line delay set here (8N1). Use the Terminal for tests.";
             if (curModel == 2 && curProf == 2)
-                return "Sharp PC-1350 (compatible: the PC-2500, the version with a printer; 15-pin connector, TTL-UART SIO via a USB/COM adapter, 1200 bps).\r\n" +
+                return "Sharp PC-1350, PC-2500 (version with printer); 15-pin connector, TTL-UART SIO via a USB/COM adapter, 1200 bps).\r\n" +
                        "OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send). Text transfer (.bas).\r\n" +
                        "WAV: the tokenized program as a tape recording (CLOAD / CSAVE, ID 70H); a BASIC text file is converted to a recording and back.";
             if (curModel == 2 && curProf == 3)
