@@ -2915,6 +2915,10 @@ int removed, kept, cut; List<string> moved;
         // key block on the right, dark QWERTY keys under the display and a numeric block with grey keys
         static void DrawPc1360(Graphics g, int kx, int top)
         {
+            var state = g.Save();
+            g.TranslateTransform(kx, top + 60);
+            g.ScaleTransform(0.7F, 0.7F);          // the same size as the PC-E500 picture
+            g.TranslateTransform(-kx, -(top + 60));
             FillRound(g, Color.FromArgb(25, 25, 28), kx - 86, top + 10, 172, 82, 6);
             FillRound(g, Color.FromArgb(190, 192, 194), kx - 85, top + 8, 170, 82, 6);                               // silver body
             FillRound(g, Color.FromArgb(30, 30, 33), kx - 82, top + 10, 110, 31, 3);                                 // dark panel with the display
@@ -2941,19 +2945,24 @@ int removed, kept, cut; List<string> moved;
                     for (int col = 0; col < 5; col++)
                         g.FillRectangle(bg, kx + 31 + col * 10, top + 47 + row * 9, 8, 6);                           // numeric block
             }
+            g.Restore(state);
         }
 
         // Sharp PC-1450 ... PC-1475 (as on the photo of the PC-1450): silver body, a dark panel with a wide display on the left, dark scientific keys
         // at the top right, a row of function keys, dark QWERTY keys and a block of dark numeric keys
         static void DrawPc1450(Graphics g, int kx, int top)
         {
+            var state = g.Save();
+            g.TranslateTransform(kx, top + 60);
+            g.ScaleTransform(0.7F, 0.7F);          // the same size as the PC-E500 picture
+            g.TranslateTransform(-kx, -(top + 60));
             FillRound(g, Color.FromArgb(25, 25, 28), kx - 86, top + 10, 172, 82, 6);
             FillRound(g, Color.FromArgb(196, 192, 178), kx - 85, top + 8, 170, 82, 6);                               // silver-gold body
-            FillRound(g, Color.FromArgb(34, 32, 32), kx - 70, top + 10, 98, 27, 3);                                  // dark panel with the display
-            using (var b = new SolidBrush(Color.FromArgb(168, 178, 160))) g.FillRectangle(b, kx - 66, top + 17, 90, 15);   // display
+            FillRound(g, Color.FromArgb(78, 54, 42), kx - 66, top + 10, 90, 27, 3);                                  // brown frame
+            using (var b = new SolidBrush(Color.FromArgb(168, 178, 160))) g.FillRectangle(b, kx - 44, top + 19, 46, 12);   // the small display
             using (var b = new SolidBrush(Color.FromArgb(52, 62, 48)))
-                for (int c = 0; c < 18; c++) g.FillRectangle(b, kx - 63 + c * 5, top + 21, 4, 7);
-            using (var f = new Font("Arial", 5F, FontStyle.Bold)) Text(g, "SHARP", f, Color.White, kx - 48, top + 10);
+                for (int c = 0; c < 9; c++) g.FillRectangle(b, kx - 42 + c * 5, top + 22, 4, 6);
+            using (var f = new Font("Arial", 5F, FontStyle.Bold)) Text(g, "SHARP", f, Color.FromArgb(235, 235, 235), kx - 21, top + 10);
             using (var bd = new SolidBrush(Color.FromArgb(62, 62, 64)))
             using (var bk = new SolidBrush(Color.FromArgb(46, 46, 50)))
             using (var br = new SolidBrush(Color.FromArgb(205, 50, 50)))
@@ -2975,6 +2984,7 @@ int removed, kept, cut; List<string> moved;
                     for (int col = 0; col < 5; col++)
                         g.FillRectangle(col == 4 && row == 1 ? bo : bk, kx + 31 + col * 10, top + 47 + row * 9, 8, 6);   // numeric block
             }
+            g.Restore(state);
         }
 
         static void DrawPc15pin(Graphics g, int kx, int top, string brand)
