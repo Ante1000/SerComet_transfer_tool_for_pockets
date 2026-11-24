@@ -2487,16 +2487,18 @@ int removed, kept, cut; List<string> moved;
             catch (Exception ex) { Log("Send error: " + ex.Message); }
             finally
             {
-                // PC-1600 over the UART: 1 s pause after the end of the transmission, before the port is reset (the controls stay locked)
+                // PC-1600 over the UART: 0.5 s pause after the end of the transmission (the controls stay locked);
+                // the reset of the port (close / open) after it is switched off for now, see below
                 if (text && curModel == 1 && port != null && !abortRequested)
                 {
-                    try { await Task.Delay(1000); } catch { }
+                    try { await Task.Delay(500); } catch { }
                 }
                 lock (rxLock) { rx.Clear(); }
                 sending = false;
                 MarkSending(null);
                 UpdateSendButtons();
-                if (text && curModel == 1 && port != null) ResetPort();      // PC-1600 over the UART: the port is closed and opened again after the transmission (or Abort)
+                // switched off for now (replaced by the 500 ms pause above): the port was closed and opened again after the transmission (or Abort)
+                // if (text && curModel == 1 && port != null) ResetPort();
             }
         }
     }
