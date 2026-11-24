@@ -38,7 +38,7 @@ namespace UartSlTest
         TerminalForm term;
         Button btnTerminal, btnAbort, btnConvert, btnLocations, btnDelete;
         // default folders of the profiles (see NProf)
-        // profiles of the target computers: 0 PC-1500, 1 PC-1600, 2 PC-1350, 3 PC-1360, 4 PC-E500, 5 PC-E500S, 6 PC-1450..90, 7 Sharp other,
+        // profiles of the target computers: 0 PC-1500, 1 PC-1600, 2 PC-1350, 3 PC-1360, 4 PC-E500, 5 PC-E500S, 6 PC-1450..75, 7 Sharp other,
         // 8 Casio FX-850/870, 9 TRS-80 / NEC, 10 other UART. The group (the old model number 0..5) joins the profiles 2..7 as "Other Sharp".
         const int NProf = 11;
         static int GroupOf(int prof) { return prof < 2 ? prof : prof <= 7 ? 2 : prof - 5; }
@@ -51,7 +51,7 @@ namespace UartSlTest
         TextBox lblHint;                    // the Info text: read-only, can be selected and copied
         LedLabel led;
         RadioButton radio1500, radio1600, radioOther, radioFx, radioTrs, radioUart;
-        ComboBox comboSharp;                // the Sharp (other) models: PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..90, other
+        ComboBox comboSharp;                // the Sharp (other) models: PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..75, other
         RadioButton radioSoft, radioRs, radioSio;
         NumericUpDown numDelay;
         Timer timer;
@@ -130,7 +130,7 @@ namespace UartSlTest
             radio1600 = new LockRadio { Text = "Sharp PC-1600", Left = 126, Top = 20, Width = 100, Checked = true };
             radioOther = new LockRadio { Text = "", Left = 238, Top = 20, Width = 20 };
             comboSharp = new LockCombo { Left = 258, Top = 21, Width = 92, DropDownStyle = ComboBoxStyle.DropDown, Enabled = false };
-            comboSharp.Items.AddRange(new object[] { "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450..90", "Sharp other" });
+            comboSharp.Items.AddRange(new object[] { "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450..75", "Sharp other" });
             comboSharp.Text = "Sharp other";
             // the box only shows the placeholder or a chosen item: typing is not possible
             comboSharp.KeyPress += delegate (object sn, KeyPressEventArgs ke) { ke.Handled = true; };
@@ -466,7 +466,7 @@ namespace UartSlTest
             tips.SetToolTip(radio1500, "Target: Sharp PC-1500 (software serial Saver/Loader at 4800 baud, or RS-232 through the CE-158(X) interface).");
             tips.SetToolTip(radio1600, "Target: Sharp PC-1600 (software serial Saver/Loader or its RS-232 port).");
             tips.SetToolTip(radioOther, "Target: other Sharp pocket computers with the 15-pin connector (TTL-UART SIO). Choose the model in the box beside it.");
-            tips.SetToolTip(comboSharp, "The Sharp model (15-pin connector): PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..90 or Sharp other. It sets the folder, the notes in Info and the WAV converter. Active when the Sharp radio button is on.");
+            tips.SetToolTip(comboSharp, "The Sharp model (15-pin connector): PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..75 or Sharp other. It sets the folder, the notes in Info and the WAV converter. Active when the Sharp radio button is on.");
             tips.SetToolTip(radioFx, "Casio FX-850P, FX-870P and similar.");
             tips.SetToolTip(radioTrs, "TRS-80 model 100, NEC-8201.");
             tips.SetToolTip(radioUart, "Other computers with UART interface TTL or RS-232.");
@@ -526,13 +526,14 @@ namespace UartSlTest
             comboEol.Invalidate();
             banner.ModelName = ModelCaptions[prof];
             banner.Model = nm;
+            banner.Prof = prof;
             banner.Invalidate();
             ApplyCfg(prof);
             SetDefaultDir(cfg[prof].Dir ?? locs[prof]);
             UpdateMode();
         }
 
-        static readonly string[] ModelCaptions = { "Sharp PC-1500", "Sharp PC-1600", "Sharp PC-1350", "Sharp PC-1360", "Sharp PC-E500", "Sharp PC-E500S", "Sharp PC-1450..90", "Sharp with 15-pin connector", "Casio FX-850P / FX-870P", "TRS-80 / NEC PC-8201", "Other UART computer" };
+        static readonly string[] ModelCaptions = { "Sharp PC-1500", "Sharp PC-1600", "Sharp PC-1350", "Sharp PC-1360", "Sharp PC-E500", "Sharp PC-E500S", "Sharp PC-1450..75", "Sharp with 15-pin connector", "Casio FX-850P / FX-870P", "TRS-80 / NEC PC-8201", "Other UART computer" };
 
         string HintText()
         {
@@ -565,13 +566,13 @@ namespace UartSlTest
                        "OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then LOAD / SAVE (COM is the default device); SAVE [\"name\"[,A]]: on COM the program is always sent as ASCII text. Text transfer (.bas).\r\n" +
                        "WAV: BASIC text is written as an ASCII tape file (SAVE \"CAS:\"); recordings of SAVE \"CAS:\" and CSAVE are read back as BASIC text.";
             if (curModel == 2 && curProf == 6)
-                return "Sharp PC-1450 to PC-1490 (15-pin connector, TTL-UART SIO via a USB/COM adapter).\r\n" +
+                return "Sharp PC-1450 to PC-1475 (15-pin connector, TTL-UART SIO via a USB/COM adapter).\r\n" +
                        "Tokenization and tape format is not supported. You can use the usual UART transfer of Basic programs.";
             if (curModel == 2)
                 return "Other Sharp pocket computer with the 15-pin connector (TTL-UART SIO via a USB/COM adapter).\r\n" +
                        "Tokenization and tape format is not supported. You can use the usual UART transfer of Basic programs.";
             if (radioSio.Checked)
-                return "Compatible: PC-1350, PC-1360, PC-1450..90, PC-E500..650, PC-U6000, PC-2500 (15-pin, TTL-UART SIO via a USB/COM adapter).\r\n" +
+                return "Compatible: PC-1350, PC-1360, PC-1450..75, PC-E500..650, PC-U6000, PC-2500 (15-pin, TTL-UART SIO via a USB/COM adapter).\r\n" +
                        "PC-1350 / PC-1360: OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send).\r\n" +
                        "PC-E500(S): OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then LOAD / SAVE (COM is the default device).\r\n" +
                        "SAVE [\"name\"[,A]]: the name (up to 8 characters) is optional; on COM the program is always sent as ASCII text.\r\n" +
@@ -630,7 +631,7 @@ namespace UartSlTest
             new ModelCfg { Mode = 2, Baud = "1200", Delay = DefaultDelay(1200, 2) },                         // PC-1360
             new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) },                                        // PC-E500
             new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) },                                        // PC-E500S
-            new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) },                                        // PC-1450..90
+            new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) },                                        // PC-1450..75
             new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) },                                        // Sharp other
             new ModelCfg { Mode = 2, Baud = "4800", Delay = DefaultDelay(4800, 3) },                         // Casio
             new ModelCfg { Mode = 1, Baud = "1200", Delay = DefaultDelay(1200, 4), Eol = 0 },                // TRS-80 / NEC
@@ -1807,7 +1808,7 @@ namespace UartSlTest
             string path = Path.Combine(txtDir.Text, name);
             string ext = Path.GetExtension(name).ToLowerInvariant();
             if (curModel > 2) { Log("WAV: the converters are for the Sharp PC-1500, PC-1600, PC-1350, PC-1360, PC-E500 and PC-E500S (choose the computer in the Target computer box)."); return; }
-            if (curProf == 6 || curProf == 7) { Log("WAV: tokenization and tape format is not supported for this computer (PC-1450..90 / other)."); return; }
+            if (curProf == 6 || curProf == 7) { Log("WAV: tokenization and tape format is not supported for this computer (PC-1450..75 / other)."); return; }
             try
             {
                 if (ext == ".wav") WavToBasic(path);
@@ -2751,6 +2752,7 @@ int removed, kept, cut; List<string> moved;
         public bool PortOpen, Sending, Receiving, Blink, FlashWhite;   // Blink toggles ~5x per second while data flows
         Bitmap cometImg;
         public string ModelName = "Sharp PC-1600";
+        public int Prof = 1;                  // the profile (see NProf in Form1): the Sharp (other) models have their own pictures
         public int Model = 1;                 // 0 PC-1500, 1 PC-1600, 2 other Sharp (15-pin, drawing of a PC-E500), 3 Casio FX-850/870, 4 TRS-80 / NEC, 5 other UART computer
 
         public BannerPanel() { DoubleBuffered = true; ResizeRedraw = true; }
@@ -2909,6 +2911,72 @@ int removed, kept, cut; List<string> moved;
             g.Restore(state);
         }
 
+        // Sharp PC-1350 / PC-1360 (as on the photo of the PC-1360): silver body, a dark panel with a wide display on the left, a small dark
+        // key block on the right, dark QWERTY keys under the display and a numeric block with grey keys
+        static void DrawPc1360(Graphics g, int kx, int top)
+        {
+            FillRound(g, Color.FromArgb(25, 25, 28), kx - 86, top + 10, 172, 82, 6);
+            FillRound(g, Color.FromArgb(190, 192, 194), kx - 85, top + 8, 170, 82, 6);                               // silver body
+            FillRound(g, Color.FromArgb(30, 30, 33), kx - 82, top + 10, 110, 31, 3);                                 // dark panel with the display
+            using (var b = new SolidBrush(Color.FromArgb(150, 168, 148))) g.FillRectangle(b, kx - 79, top + 19, 104, 17);   // wide display
+            using (var b = new SolidBrush(Color.FromArgb(72, 88, 68)))
+                for (int c = 0; c < 24; c++) g.FillRectangle(b, kx - 76 + c * 4, top + 24, 3, 5);
+            using (var f = new Font("Arial", 5F, FontStyle.Bold)) Text(g, "SHARP", f, Color.White, kx - 62, top + 11);
+            FillRound(g, Color.FromArgb(30, 30, 33), kx + 31, top + 10, 52, 31, 3);                                  // key block, top right
+            using (var bk = new SolidBrush(Color.FromArgb(40, 40, 44)))
+            using (var bg = new SolidBrush(Color.FromArgb(150, 152, 150)))
+            using (var bw = new SolidBrush(Color.FromArgb(215, 215, 210)))
+            using (var br = new SolidBrush(Color.FromArgb(205, 50, 50)))
+            using (var bo = new SolidBrush(Color.FromArgb(225, 150, 40)))
+            {
+                for (int row = 0; row < 2; row++)
+                    for (int col = 0; col < 4; col++) g.FillRectangle(col == 3 && row == 1 ? br : bg, kx + 35 + col * 11, top + 14 + row * 9, 9, 6);
+                g.FillRectangle(bw, kx + 35, top + 32, 44, 5);
+                int[] cnt = { 10, 9, 7 };
+                for (int row = 0; row < 3; row++)
+                    for (int col = 0; col < cnt[row]; col++)
+                        g.FillRectangle(row == 0 && col == 0 ? bo : bk, kx - 80 + col * 9 + row * 3, top + 49 + row * 8, 7, 5);   // QWERTY keys
+                g.FillRectangle(bk, kx - 52, top + 74, 34, 4);                                                       // the space bar
+                for (int row = 0; row < 4; row++)
+                    for (int col = 0; col < 5; col++)
+                        g.FillRectangle(bg, kx + 31 + col * 10, top + 47 + row * 9, 8, 6);                           // numeric block
+            }
+        }
+
+        // Sharp PC-1450 ... PC-1475 (as on the photo of the PC-1450): silver body, a dark panel with a wide display on the left, dark scientific keys
+        // at the top right, a row of function keys, dark QWERTY keys and a block of dark numeric keys
+        static void DrawPc1450(Graphics g, int kx, int top)
+        {
+            FillRound(g, Color.FromArgb(25, 25, 28), kx - 86, top + 10, 172, 82, 6);
+            FillRound(g, Color.FromArgb(196, 192, 178), kx - 85, top + 8, 170, 82, 6);                               // silver-gold body
+            FillRound(g, Color.FromArgb(34, 32, 32), kx - 70, top + 10, 98, 27, 3);                                  // dark panel with the display
+            using (var b = new SolidBrush(Color.FromArgb(168, 178, 160))) g.FillRectangle(b, kx - 66, top + 17, 90, 15);   // display
+            using (var b = new SolidBrush(Color.FromArgb(52, 62, 48)))
+                for (int c = 0; c < 18; c++) g.FillRectangle(b, kx - 63 + c * 5, top + 21, 4, 7);
+            using (var f = new Font("Arial", 5F, FontStyle.Bold)) Text(g, "SHARP", f, Color.White, kx - 48, top + 10);
+            using (var bd = new SolidBrush(Color.FromArgb(62, 62, 64)))
+            using (var bk = new SolidBrush(Color.FromArgb(46, 46, 50)))
+            using (var br = new SolidBrush(Color.FromArgb(205, 50, 50)))
+            using (var bo = new SolidBrush(Color.FromArgb(225, 150, 40)))
+            using (var bg = new SolidBrush(Color.FromArgb(40, 70, 60)))
+            {
+                g.FillRectangle(bg, kx - 83, top + 17, 8, 6);                                                         // the power switch, left
+                for (int row = 0; row < 3; row++)                                                                    // scientific keys, top right
+                    for (int col = 0; col < 5; col++)
+                        g.FillRectangle(row == 0 && col == 4 ? br : bd, kx + 33 + col * 10, top + 11 + row * 8, 8, 6);
+                for (int col = 0; col < 3; col++) g.FillRectangle(bd, kx - 28 + col * 12, top + 41, 9, 4);          // the cursor keys
+                g.FillRectangle(bo, kx + 14, top + 41, 11, 4);
+                int[] cnt = { 10, 9, 7 };
+                for (int row = 0; row < 3; row++)
+                    for (int col = 0; col < cnt[row]; col++)
+                        g.FillRectangle(bk, kx - 80 + col * 9 + row * 3, top + 49 + row * 8, 7, 5);                 // QWERTY keys
+                g.FillRectangle(bk, kx - 52, top + 74, 34, 4);
+                for (int row = 0; row < 4; row++)
+                    for (int col = 0; col < 5; col++)
+                        g.FillRectangle(col == 4 && row == 1 ? bo : bk, kx + 31 + col * 10, top + 47 + row * 9, 8, 6);   // numeric block
+            }
+        }
+
         static void DrawPc15pin(Graphics g, int kx, int top, string brand)
         {
             var state = g.Save();
@@ -3017,6 +3085,8 @@ int removed, kept, cut; List<string> moved;
                 for (int i = 0; i < 10; i++) { g.FillRectangle(b, pcx - 50 + i * 10, top + 84, 7, 3); g.FillRectangle(b, pcx - 48 + i * 10, top + 89, 7, 3); }
 
             if (Model == 0) DrawPc1500(g, kx, top);
+            else if (Model == 2 && (Prof == 2 || Prof == 3)) DrawPc1360(g, kx, top);
+            else if (Model == 2 && Prof == 6) DrawPc1450(g, kx, top);
             else if (Model == 2) DrawPc15pin(g, kx, top, "SHARP");
             else if (Model == 3) DrawCasio(g, kx, top);
             else if (Model == 4) DrawTrs80(g, kx, top);
@@ -3960,7 +4030,7 @@ int removed, kept, cut; List<string> moved;
             ClientSize = new Size(560, 12 + 11 * 32 + 52);
             try { Icon = Icons.AppIcon(); } catch { }
             var tt = new WrapToolTip { AutoPopDelay = 9000, InitialDelay = 400, ShowAlways = true };
-            string[] names = { "PC-1500", "PC-1600", "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450..90", "Sharp other", "FX-850/870", "TRS-80", "UART Other" };
+            string[] names = { "PC-1500", "PC-1600", "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450..75", "Sharp other", "FX-850/870", "TRS-80", "UART Other" };
             for (int i = 0; i < 11; i++)
             {
                 int row = i;
@@ -5472,7 +5542,7 @@ int removed, kept, cut; List<string> moved;
 
     public static class AppInfo
     {
-        public const string Version = "1.6";      // 1.6: the Sharp (other) radio button has a box with the models PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..90, other (folder, Info text and WAV converter per model); 1.5: port TEST button, Renumber and Remove REM in the Files menu, no changes of the port / target / mode / options while a file is sent, default line delay for every baud rate; 1.1: Software UART speeds 1200 to 19200 (SL V3.0), settings.ini, .img files; 1.2: names of the programs checked for the Sharp; 1.4: file info tip, Skip REM, Check Basic, Files menu, drag out of the list; 1.3: PC-1500 Software UART (4800 bps), six target computers, Port settings box, Flush and Reset port, wrong baud rate warning
+        public const string Version = "1.6";      // 1.6: the Sharp (other) radio button has a box with the models PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..75, other (folder, Info text and WAV converter per model); 1.5: port TEST button, Renumber and Remove REM in the Files menu, no changes of the port / target / mode / options while a file is sent, default line delay for every baud rate; 1.1: Software UART speeds 1200 to 19200 (SL V3.0), settings.ini, .img files; 1.2: names of the programs checked for the Sharp; 1.4: file info tip, Skip REM, Check Basic, Files menu, drag out of the list; 1.3: PC-1500 Software UART (4800 bps), six target computers, Port settings box, Flush and Reset port, wrong baud rate warning
     }
 
     // Names of programs for the pocket computers: the length and the characters that the Sharp accepts
