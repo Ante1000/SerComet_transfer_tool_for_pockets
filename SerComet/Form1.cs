@@ -108,6 +108,7 @@ namespace UartSlTest
 
         void BuildUi()
         {
+            ClientSize = new Size(ClientSize.Width, ClientSize.Height + 8);        // the title row is 60 px high (the Buy me a coffee picture is 60 x 60)
             const AnchorStyles TL = AnchorStyles.Top | AnchorStyles.Left;
             const AnchorStyles TR = AnchorStyles.Top | AnchorStyles.Right;
             const AnchorStyles TLR = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
@@ -351,24 +352,24 @@ namespace UartSlTest
                 lblDir, txtDir, btnLocations, btnBrowse, btnOpenDir, gbInfo, gbFiles, btnView, chkEof, chkAuto, chkSkipRem, btnConvert, btnAbort, btnSend, btnSendOther, btnRefreshFiles, btnDelete, btnTerminal, gbLog });
 
             // title row: everything else moves down by one row (40 px)
-            foreach (Control c in Controls) c.Top += 52;
+            foreach (Control c in Controls) c.Top += 60;
             {
                 const string titleText = "FILE TRANSFER TOOL FOR PC AND SHARP POCKET COMPUTERS";
                 var titleFont = new Font("Segoe UI", 11F, FontStyle.Bold);
                 Size ts = TextRenderer.MeasureText(titleText, titleFont);
                 int x0 = (ClientSize.Width - (32 + 8 + ts.Width)) / 2 - 22;
-                Controls.Add(new PictureBox { Image = Icons.Comet(32), SizeMode = PictureBoxSizeMode.AutoSize, Left = x0, Top = 10, Anchor = AnchorStyles.Top });
+                Controls.Add(new PictureBox { Image = Icons.Comet(32), SizeMode = PictureBoxSizeMode.AutoSize, Left = x0, Top = 14, Anchor = AnchorStyles.Top });
                 Controls.Add(new Label
                 {
                     Text = titleText, AutoSize = true, Font = titleFont, ForeColor = Color.FromArgb(30, 70, 120),
-                    Left = x0 + 40, Top = 10 + (32 - ts.Height) / 2, Anchor = AnchorStyles.Top
+                    Left = x0 + 40, Top = 14 + (32 - ts.Height) / 2, Anchor = AnchorStyles.Top
                 });
                 // "by Alex F4VTS" to the right of the title, a round "?" button (About) on the left
                 var byFont = new Font("Segoe UI", 9F, FontStyle.Bold | FontStyle.Italic);
                 Size byS = TextRenderer.MeasureText("by Alex F4VTS", byFont);
                 // Buy me a coffee: the picture img\buymeacoffee.jpg (looked for next to the program and in the folders above it); without the file a text link
                 Image bmcImg = LoadBmcImage();
-                int bmcH = 53;          // 44 px + 20 %
+                int bmcH = 60;          // 60 x 60 px
                 int bmcW;
                 if (bmcImg != null) bmcW = Math.Max(20, (int)Math.Round(bmcImg.Width * (double)bmcH / bmcImg.Height));
                 else bmcW = bmcH;          // (the picture is built into the program; this is only a safety net)
@@ -379,13 +380,13 @@ namespace UartSlTest
                     if (c0 is PictureBox) { c0.Left = x0; c0.Anchor = AnchorStyles.Top | AnchorStyles.Right; }
                     else if (c0 is Label && ((Label)c0).Text == titleText) { c0.Left = x0 + 40; c0.Anchor = AnchorStyles.Top | AnchorStyles.Right; }
                 }
-                var by = new Label { Text = "by Alex F4VTS", AutoSize = true, Font = byFont, ForeColor = Color.FromArgb(90, 110, 140), Left = x0 + 40 + ts.Width + 10, Top = 10 + (32 - ts.Height) / 2 + 3, Anchor = AnchorStyles.Top | AnchorStyles.Right };
+                var by = new Label { Text = "by Alex F4VTS", AutoSize = true, Font = byFont, ForeColor = Color.FromArgb(90, 110, 140), Left = x0 + 40 + ts.Width + 10, Top = 14 + (32 - ts.Height) / 2 + 3, Anchor = AnchorStyles.Top | AnchorStyles.Right };
                 Controls.Add(by);
                 Control bmc = new PictureBox { Image = bmcImg, SizeMode = PictureBoxSizeMode.Zoom, Left = by.Left + byS.Width + 12, Top = 0, Width = bmcW, Height = bmcH, Anchor = AnchorStyles.Top | AnchorStyles.Right, Cursor = Cursors.Hand };
                 bmc.Click += delegate { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://www.buymeacoffee.com/Alex_F4VTS") { UseShellExecute = true }); } catch (Exception ex) { Log("Cannot open the page: " + ex.Message); } };
                 tips.SetToolTip(bmc, "Support the author: Buy me a coffee (opens the page buymeacoffee.com/Alex_F4VTS in the browser).");
                 Controls.Add(bmc);
-                var about = new RoundHelpButton { Left = 10, Top = 15, Width = 21, Height = 21, Anchor = AnchorStyles.Top | AnchorStyles.Left };
+                var about = new RoundHelpButton { Left = 10, Top = 19, Width = 21, Height = 21, Anchor = AnchorStyles.Top | AnchorStyles.Left };
                 about.Click += delegate { using (var d = new AboutForm()) d.ShowDialog(this); };
                 tips.SetToolTip(about, "About SerComet: author, license and project page.");
                 Controls.Add(about);
