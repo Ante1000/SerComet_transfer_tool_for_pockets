@@ -37,8 +37,12 @@ namespace UartSlTest
         readonly WrapToolTip tips = new WrapToolTip { AutoPopDelay = 9000, InitialDelay = 400, ReshowDelay = 200, ShowAlways = true };
         TerminalForm term;
         Button btnTerminal, btnAbort, btnConvert, btnLocations, btnDelete;
-        // default folders of the target computers: PC-1500, PC-1600, other Sharp (15-pin), FX-850/870, TRS-80 / NEC, other UART
-        const int NModels = 6;
+        // default folders of the profiles (see NProf)
+        // profiles of the target computers: 0 PC-1500, 1 PC-1600, 2 PC-1350, 3 PC-1360, 4 PC-E500, 5 PC-E500S, 6 PC-1450..90, 7 Sharp other,
+        // 8 Casio FX-850/870, 9 TRS-80 / NEC, 10 other UART. The group (the old model number 0..5) joins the profiles 2..7 as "Other Sharp".
+        const int NProf = 11;
+        static int GroupOf(int prof) { return prof < 2 ? prof : prof <= 7 ? 2 : prof - 5; }
+        int curProf = -1;
         string[] locs = LoadLocations();      // overwritten by settings.ini when it exists
         Button btnTest, btnRefresh, btnOpen, btnFlush, btnReset, btnBrowse, btnOpenDir, btnSend, btnSendOther, btnRefreshFiles;
         TextBox txtDir;
@@ -47,6 +51,7 @@ namespace UartSlTest
         TextBox lblHint;                    // the Info text: read-only, can be selected and copied
         LedLabel led;
         RadioButton radio1500, radio1600, radioOther, radioFx, radioTrs, radioUart;
+        ComboBox comboSharp;                // the Sharp (other) models: PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..90, other
         RadioButton radioSoft, radioRs, radioSio;
         NumericUpDown numDelay;
         Timer timer;
@@ -73,7 +78,9 @@ namespace UartSlTest
             if (startPort != null && comboPorts.Items.Contains(startPort)) comboPorts.SelectedItem = startPort;
             else if (startPort != null && comboPorts.SelectedItem != null)
                 Log("The saved port " + startPort + " is not available; the first available port " + comboPorts.SelectedItem + " is selected.");
-            (startModel == 0 ? radio1500 : startModel == 2 ? radioOther : startModel == 3 ? radioFx : startModel == 4 ? radioTrs : startModel == 5 ? radioUart : radio1600).Checked = true;
+            int startGroup = GroupOf(startModel);
+            if (startGroup == 2) comboSharp.SelectedIndex = startModel - 2;
+            (startGroup == 0 ? radio1500 : startGroup == 2 ? radioOther : startGroup == 3 ? radioFx : startGroup == 4 ? radioTrs : startGroup == 5 ? radioUart : radio1600).Checked = true;
             SetTarget();
             if (!File.Exists(SettingsFile())) SaveSettings();       // first start or the file was deleted: build it again
             Log("Ready. Select the port and click 'Open port'.");
@@ -109,11 +116,19 @@ namespace UartSlTest
             var gbTarget = new GroupBox { Text = "Target computer", Left = 354, Top = 0, Width = 356, Height = 84, Anchor = TR };
             radio1500 = new LockRadio { Text = "Sharp PC-1500", Left = 8, Top = 20, Width = 100 };
             radio1600 = new LockRadio { Text = "Sharp PC-1600", Left = 126, Top = 20, Width = 100, Checked = true };
-            radioOther = new LockRadio { Text = "Sharp (other)", Left = 238, Top = 20, Width = 112 };
+            radioOther = new LockRadio { Text = "", Left = 238, Top = 20, Width = 20 };
+            comboSharp = new LockCombo { Left = 258, Top = 17, Width = 92, DropDownStyle = ComboBoxStyle.DropDown, Enabled = false };
+            comboSharp.Items.AddRange(new object[] { "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450..90", "other" });
+            comboSharp.Text = "Sharp other";
+            // the box only shows the placeholder or a chosen item: typing is not possible
+            comboSharp.KeyPress += delegate (object sn, KeyPressEventArgs ke) { ke.Handled = true; };
+            comboSharp.KeyDown += delegate (object sn, KeyEventArgs ke) { if (ke.KeyCode != Keys.Down && ke.KeyCode != Keys.Up && ke.KeyCode != Keys.F4 && ke.KeyCode != Keys.Tab) { ke.Handled = true; ke.SuppressKeyPress = true; } };
+            comboSharp.TextChanged += delegate { if (comboSharp.SelectedIndex < 0 && comboSharp.Text != "Sharp other") comboSharp.Text = "Sharp other"; };
+            comboSharp.SelectedIndexChanged += delegate { if (radioOther.Checked) SetTarget(); };
             radioFx = new LockRadio { Text = "Casio FX-850..870", Left = 8, Top = 50, Width = 112 };
             radioTrs = new LockRadio { Text = "NEC/TRS-80", Left = 126, Top = 50, Width = 100 };
             radioUart = new LockRadio { Text = "UART other", Left = 238, Top = 50, Width = 112 };
-            gbTarget.Controls.AddRange(new Control[] { radio1500, radio1600, radioOther, radioFx, radioTrs, radioUart });
+            gbTarget.Controls.AddRange(new Control[] { radio1500, radio1600, radioOther, comboSharp, radioFx, radioTrs, radioUart });
 
             banner = new BannerPanel { Left = 10, Top = 88, Width = 700, Height = 132, Anchor = TLR };
 
@@ -419,7 +434,8 @@ namespace UartSlTest
             tips.SetToolTip(led, "Port status: green = open, dark = closed.");
             tips.SetToolTip(radio1500, "Target: Sharp PC-1500 (software serial Saver/Loader at 4800 baud, or RS-232 through the CE-158(X) interface).");
             tips.SetToolTip(radio1600, "Target: Sharp PC-1600 (software serial Saver/Loader or its RS-232 port).");
-            tips.SetToolTip(radioOther, "Target: other Sharp pocket computers with the 15-pin connector (TTL-UART SIO).");
+            tips.SetToolTip(radioOther, "Target: other Sharp pocket computers with the 15-pin connector (TTL-UART SIO). Choose the model in the box beside it.");
+            tips.SetToolTip(comboSharp, "The Sharp model (15-pin connector): PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..90 or other. It sets the folder, the notes in Info and the WAV converter. Active when the Sharp radio button is on.");
             tips.SetToolTip(radioFx, "Casio FX-850P, FX-870P and similar.");
             tips.SetToolTip(radioTrs, "TRS-80 model 100, NEC-8201.");
             tips.SetToolTip(radioUart, "Other computers with UART interface TTL or RS-232.");
@@ -467,22 +483,25 @@ namespace UartSlTest
         void SetTarget()
         {
             int nm = radio1500.Checked ? 0 : radio1600.Checked ? 1 : radioOther.Checked ? 2 : radioFx.Checked ? 3 : radioTrs.Checked ? 4 : 5;
-            if (curModel >= 0 && nm != curModel) CaptureUi(curModel);     // keep the settings of the computer we leave
+            int prof = nm < 2 ? nm : nm == 2 ? 2 + (comboSharp.SelectedIndex < 0 ? 5 : comboSharp.SelectedIndex) : nm + 5;
+            if (curProf >= 0 && prof != curProf) CaptureUi(curProf);     // keep the settings of the computer we leave
             curModel = nm;
+            curProf = prof;
+            comboSharp.Enabled = nm == 2;
             radioSoft.Enabled = nm == 0;          // Software Serial: PC-1500 only (blocked for the PC-1600 for the time being)
             radioRs.Enabled = nm != 2 && nm != 3;
             radioSio.Enabled = nm == 2 || nm == 3 || nm == 5;
             radioRs.Text = "RS-232 serial";
             comboEol.Invalidate();
-            banner.ModelName = ModelCaptions[nm];
+            banner.ModelName = ModelCaptions[prof];
             banner.Model = nm;
             banner.Invalidate();
-            ApplyCfg(nm);
-            SetDefaultDir(cfg[nm].Dir ?? locs[nm]);
+            ApplyCfg(prof);
+            SetDefaultDir(cfg[prof].Dir ?? locs[prof]);
             UpdateMode();
         }
 
-        static readonly string[] ModelCaptions = { "Sharp PC-1500", "Sharp PC-1600", "Sharp with 15-pin connector", "Casio FX-850P / FX-870P", "TRS-80 / NEC PC-8201", "Other UART computer" };
+        static readonly string[] ModelCaptions = { "Sharp PC-1500", "Sharp PC-1600", "Sharp PC-1350", "Sharp PC-1360", "Sharp PC-E500", "Sharp PC-E500S", "Sharp PC-1450..90", "Sharp with 15-pin connector", "Casio FX-850P / FX-870P", "TRS-80 / NEC PC-8201", "Other UART computer" };
 
         string HintText()
         {
@@ -502,6 +521,24 @@ namespace UartSlTest
                 return "UART Other, RS-232: the signal swings between a negative and a positive voltage (about -5 to -15 V and +5 to +15 V). A device with 0 / +5 V logic needs a level converter (for example MAX232 / MAX3232) between it and the RS-232 adapter.\r\n" +
                        "Connect through a USB-RS232 adapter with a null-modem cable (TX and RX crossed).\r\n" +
                        "Text transfer (.bas) with the baud rate (up to 115200), flow control, line end and line delay set here (8N1). Use the Terminal for tests.";
+            if (curModel == 2 && curProf == 2)
+                return "Sharp PC-1350 (15-pin connector, TTL-UART SIO via a USB/COM adapter, 1200 bps).\r\n" +
+                       "OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send) or SAVE (SerComet: Receive). Text transfer (.bas); the file is saved after EOF (1Ah) or 3 s of silence.\r\n" +
+                       "WAV: the tokenized program as a tape recording (CLOAD / CSAVE, ID 70H); a BASIC text file is converted to a recording and back.";
+            if (curModel == 2 && curProf == 3)
+                return "Sharp PC-1360 (15-pin connector, TTL-UART SIO via a USB/COM adapter, 1200 bps).\r\n" +
+                       "OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send) or SAVE (SerComet: Receive). After MERGE of several programs the transmission by SAVE / LOAD may not work correctly (see the manual).\r\n" +
+                       "WAV: the tokenized program as a tape recording (CLOAD / CSAVE, ID 72H, two byte tokens); a BASIC text file is converted to a recording and back.";
+            if (curModel == 2 && (curProf == 4 || curProf == 5))
+                return "Sharp " + (curProf == 4 ? "PC-E500" : "PC-E500S (structured BASIC: SWITCH, WHILE, REPEAT ...)") + " (15-pin connector, TTL-UART SIO, up to 9600 bps).\r\n" +
+                       "OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then LOAD / SAVE (COM is the default device); SAVE [\"name\"[,A]]: on COM the program is always sent as ASCII text. Text transfer (.bas); the file is saved after EOF (1Ah) or 3 s of silence.\r\n" +
+                       "WAV: BASIC text is written as an ASCII tape file (SAVE \"CAS:\"); recordings of SAVE \"CAS:\" and CSAVE are read back as BASIC text.";
+            if (curModel == 2 && curProf == 6)
+                return "Sharp PC-1450 to PC-1490 (15-pin connector, TTL-UART SIO via a USB/COM adapter).\r\n" +
+                       "Tokenization and tape format is not supported. You can use the usual UART transfer of Basic programs.";
+            if (curModel == 2)
+                return "Other Sharp pocket computer with the 15-pin connector (TTL-UART SIO via a USB/COM adapter).\r\n" +
+                       "Tokenization and tape format is not supported. You can use the usual UART transfer of Basic programs.";
             if (radioSio.Checked)
                 return "Compatible: PC-1350, PC-1360, PC-1450..90, PC-E500..650, PC-U6000, PC-2500 (15-pin, TTL-UART SIO via a USB/COM adapter).\r\n" +
                        "PC-1350 / PC-1360: OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send) or SAVE (SerComet: Receive).\r\n" +
@@ -523,7 +560,7 @@ namespace UartSlTest
 
         static string DefaultLocation(int i)
         {
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), new[] { "PC1500", "PC1600", "PC_15-pin", "Casio", "TRS-80", "UART" }[i]);
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), new[] { "PC1500", "PC1600", "PC1350", "PC1360", "PCE500", "PCE500S", "PC1450", "SHARP_other", "Casio", "TRS-80", "UART" }[i]);
         }
 
         // ------------------------------------------------------------------ settings.ini
@@ -555,12 +592,22 @@ namespace UartSlTest
             return ms;
         }
 
-        readonly ModelCfg[] cfg = { new ModelCfg { Delay = DefaultDelay(9600, 0) }, new ModelCfg { Mode = 1, Baud = "4800", Delay = DefaultDelay(4800, 1) },
-            new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) }, new ModelCfg { Mode = 2, Baud = "4800", Delay = DefaultDelay(4800, 3) },
-            new ModelCfg { Mode = 1, Baud = "1200", Delay = DefaultDelay(1200, 4), Eol = 0 }, new ModelCfg { Mode = 1, Delay = DefaultDelay(9600, 5) } };
+        readonly ModelCfg[] cfg = {
+            new ModelCfg { Delay = DefaultDelay(9600, 0) },                                                  // PC-1500
+            new ModelCfg { Mode = 1, Baud = "4800", Delay = DefaultDelay(4800, 1) },                         // PC-1600
+            new ModelCfg { Mode = 2, Baud = "1200", Delay = DefaultDelay(1200, 2) },                         // PC-1350
+            new ModelCfg { Mode = 2, Baud = "1200", Delay = DefaultDelay(1200, 2) },                         // PC-1360
+            new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) },                                        // PC-E500
+            new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) },                                        // PC-E500S
+            new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) },                                        // PC-1450..90
+            new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) },                                        // Sharp other
+            new ModelCfg { Mode = 2, Baud = "4800", Delay = DefaultDelay(4800, 3) },                         // Casio
+            new ModelCfg { Mode = 1, Baud = "1200", Delay = DefaultDelay(1200, 4), Eol = 0 },                // TRS-80 / NEC
+            new ModelCfg { Mode = 1, Delay = DefaultDelay(9600, 5) } };                                      // other UART
         int curModel = -1, startModel = 1;
         string startPort;
-        static readonly string[] ModelNames = { "PC-1500", "PC-1600", "Other Sharp", "FX-850/870", "TRS-80", "UART Other" };
+        static readonly string[] ModelNames = { "PC-1500", "PC-1600", "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450", "Sharp other", "FX-850/870", "TRS-80", "UART Other" };
+        static readonly string[] GroupNames = { "PC-1500", "PC-1600", "Other Sharp" };
         static readonly string[] ModeNames = { "Software UART", "RS-232", "TTL-UART" };
         static readonly string[] EolNames = { "CR", "CR+LF", "LF" };
         static readonly string[] FlowNames = { "None", "XON/XOFF", "RTS/CTS", "DSR/DTR" };
@@ -580,7 +627,7 @@ namespace UartSlTest
 
         void CaptureUi(int m)
         {
-            if (m < 0 || m >= NModels) return;
+            if (m < 0 || m >= NProf) return;
             var c = cfg[m];
             c.Mode = radioSio.Checked ? 2 : radioRs.Checked ? 1 : 0;
             c.Baud = savedBaud;
@@ -594,9 +641,10 @@ namespace UartSlTest
             c.Dir = txtDir.Text;
         }
 
-        void ApplyCfg(int m)
+        void ApplyCfg(int prof)
         {
-            var c = cfg[m];
+            int m = GroupOf(prof);
+            var c = cfg[prof];
             if (m == 1 && c.Mode == 0) { c.Mode = 1; c.Baud = "4800"; }      // PC-1600: the Software Serial is blocked; RS-232 at 4800 bps is the default
             if (m == 2 || m == 3 || (m == 5 && c.Mode == 2)) radioSio.Checked = true;
             else if (m == 4 || m == 5 || c.Mode == 1) radioRs.Checked = true;
@@ -638,8 +686,9 @@ namespace UartSlTest
                     return sec.TryGetValue(s1, out d) && d.TryGetValue(k, out v) && v.Length > 0 ? v : null;
                 };
                 startPort = get("General", "Port");
-                startModel = IndexOf(ModelNames, get("General", "Target"), 1);
-                for (int m = 0; m < NModels; m++)
+                string tg = get("General", "Target");
+                startModel = string.Equals(tg, "Other Sharp", StringComparison.OrdinalIgnoreCase) ? 7 : IndexOf(ModelNames, tg, 1);
+                for (int m = 0; m < NProf; m++)
                 {
                     string d = get("Folders", ModelNames[m]);
                     if (d != null) locs[m] = d;
@@ -665,17 +714,17 @@ namespace UartSlTest
         {
             try
             {
-                CaptureUi(curModel);
+                CaptureUi(curProf);
                 var sb = new StringBuilder();
                 sb.AppendLine("; SerComet settings (written when the program is closed)");
                 sb.AppendLine("[General]");
                 sb.AppendLine("Port=" + (comboPorts.SelectedItem as string ?? ""));
-                sb.AppendLine("Target=" + ModelNames[curModel < 0 ? 1 : curModel]);
+                sb.AppendLine("Target=" + ModelNames[curProf < 0 ? 1 : curProf]);
                 sb.AppendLine();
                 sb.AppendLine("; default folders of the programs (Folders window)");
                 sb.AppendLine("[Folders]");
-                for (int m = 0; m < NModels; m++) sb.AppendLine(ModelNames[m] + "=" + locs[m]);
-                for (int m = 0; m < NModels; m++)
+                for (int m = 0; m < NProf; m++) sb.AppendLine(ModelNames[m] + "=" + locs[m]);
+                for (int m = 0; m < NProf; m++)
                 {
                     var c = cfg[m];
                     sb.AppendLine();
@@ -705,14 +754,14 @@ namespace UartSlTest
 
         static string[] LoadLocations()
         {
-            var l = new string[NModels];
-            for (int i = 0; i < NModels; i++) l[i] = DefaultLocation(i);
+            var l = new string[NProf];
+            for (int i = 0; i < NProf; i++) l[i] = DefaultLocation(i);
             try
             {
                 if (File.Exists(LocationsFile()))
                 {
                     string[] lines = File.ReadAllLines(LocationsFile());
-                    for (int i = 0; i < NModels && i < lines.Length; i++) if (lines[i].Trim().Length > 0) l[i] = lines[i].Trim();
+                    for (int i = 0; i < NProf && i < lines.Length; i++) if (lines[i].Trim().Length > 0) l[i] = lines[i].Trim();
                 }
             }
             catch { }
@@ -722,13 +771,13 @@ namespace UartSlTest
         // second window: the folders of the programs for each target computer
         void EditLocations()
         {
-            using (var d = new LocationsForm(locs, Enumerable.Range(0, NModels).Select(DefaultLocation).ToArray()))
+            using (var d = new LocationsForm(locs, Enumerable.Range(0, NProf).Select(DefaultLocation).ToArray()))
             {
                 if (d.ShowDialog(this) != DialogResult.OK) return;
                 locs = d.Result;
-                for (int m = 0; m < NModels; m++) cfg[m].Dir = locs[m];      // the new default folders are used from now on
+                for (int m = 0; m < NProf; m++) cfg[m].Dir = locs[m];      // the new default folders are used from now on
                 SaveSettings();
-                SetDefaultDir(locs[curModel < 0 ? 1 : curModel]);
+                SetDefaultDir(locs[curProf < 0 ? 1 : curProf]);
             }
         }
 
@@ -1372,7 +1421,7 @@ namespace UartSlTest
         }
 
         // ------------------------------------------------------------------ names for the Sharp
-        int NameModel { get { return curModel < 0 ? 1 : curModel > 2 ? 2 : curModel; } }      // the other computers use the rules of the 15-pin models
+        int NameModel { get { if (curProf == 4 || curProf == 5) return 1; return curModel < 0 ? 1 : curModel > 2 ? 2 : curModel; } }      // the PC-E500 uses the rules of the PC-1600 (8 characters), the other computers those of the 15-pin models
 
         // the name of a program for the selected computer (length and characters); no name: PRG + time
         string SharpBase(string raw)
@@ -1402,7 +1451,7 @@ namespace UartSlTest
             string raw = Path.GetFileNameWithoutExtension(path);
             bool changed;
             string n = SharpName.Fix(raw, NameModel, out changed);
-            if (changed) Log("Name for the " + ModelNames[NameModel] + ": \"" + n + "\" (shortened or changed from \"" + raw + "\": " + SharpName.Rules(NameModel) + ").");
+            if (changed) Log("Name for the " + GroupNames[NameModel] + ": \"" + n + "\" (shortened or changed from \"" + raw + "\": " + SharpName.Rules(NameModel) + ").");
         }
 
         string UniquePath(string name, string ext)
@@ -1726,7 +1775,8 @@ namespace UartSlTest
             string name = (string)lstFiles.SelectedItem;
             string path = Path.Combine(txtDir.Text, name);
             string ext = Path.GetExtension(name).ToLowerInvariant();
-            if (curModel > 2) { Log("WAV: the converters are for the Sharp PC-1500, PC-1600, PC-1350, PC-1360 and PC-E500 (choose Sharp PC-1500, Sharp PC-1600 or Sharp (other) as the target computer)."); return; }
+            if (curModel > 2) { Log("WAV: the converters are for the Sharp PC-1500, PC-1600, PC-1350, PC-1360, PC-E500 and PC-E500S (choose the computer in the Target computer box)."); return; }
+            if (curProf == 6 || curProf == 7) { Log("WAV: tokenization and tape format is not supported for this computer (PC-1450..90 / other)."); return; }
             try
             {
                 if (ext == ".wav") WavToBasic(path);
@@ -1765,37 +1815,6 @@ namespace UartSlTest
             return result;
         }
 
-        // Sharp (other): which computer? returns 1350, 1360, 500 or -1
-        int AskOtherSharp(string file)
-        {
-            int result = -1;
-            using (var f = new Form())
-            {
-                f.Text = "WAV: " + file;
-                f.FormBorderStyle = FormBorderStyle.FixedDialog; f.MaximizeBox = false; f.MinimizeBox = false; f.ShowInTaskbar = false;
-                f.StartPosition = FormStartPosition.CenterParent;
-                f.ClientSize = new Size(470, 170);
-                var lbl = new Label
-                {
-                    Left = 14, Top = 12, Width = 442, Height = 100, AutoSize = false,
-                    Text = "Choose the computer for the tape recording:\r\n\r\n" +
-                           "PC-1350 / PC-1360 - the tokenized program on the tape (CLOAD).\r\n" +
-                           "PC-E500(S) - an ASCII BASIC file as SAVE \"CAS:NAME\" writes it (LOAD \"CAS:NAME\")."
-                };
-                var b1 = new Button { Text = "PC-1350", Left = 14, Top = 126, Width = 100, Height = 28 };
-                var b2 = new Button { Text = "PC-1360", Left = 124, Top = 126, Width = 100, Height = 28 };
-                var b3 = new Button { Text = "PC-E500(S)", Left = 234, Top = 126, Width = 100, Height = 28 };
-                var bc = new Button { Text = "Cancel", Left = 356, Top = 126, Width = 100, Height = 28, DialogResult = DialogResult.Cancel };
-                b1.Click += delegate { result = 1350; f.DialogResult = DialogResult.OK; };
-                b2.Click += delegate { result = 1360; f.DialogResult = DialogResult.OK; };
-                b3.Click += delegate { result = 500; f.DialogResult = DialogResult.OK; };
-                f.Controls.AddRange(new Control[] { lbl, b1, b2, b3, bc });
-                f.CancelButton = bc;
-                f.ShowDialog(this);
-            }
-            return result;
-        }
-
         void BasicToWav(string path)
         {
             string src = Encoding.GetEncoding(28591).GetString(File.ReadAllBytes(path));
@@ -1804,8 +1823,7 @@ namespace UartSlTest
             if (tape.Length == 0) tape = "PROGRAM";
             if (curModel == 2)
             {
-                int pc = AskOtherSharp(Path.GetFileName(path));
-                if (pc < 0) return;
+                int pc = curProf == 2 ? 1350 : curProf == 3 ? 1360 : 500;         // the model is chosen in the Target computer box
                 byte[] w2;
                 string suffix2;
                 if (pc == 500)
@@ -1864,18 +1882,19 @@ namespace UartSlTest
             if (curModel == 2)
             {
                 string warn2;
-                try
+                if (curProf <= 3) try          // PC-1350 / PC-1360: the model in the Target computer box decides which tape format is read
                 {
                     int idb;
                     byte[] prog = TapeWav.Decode1350(wav, out name, out idb, out warn2);
                     string pr2;
                     text = SharpTok.Detokenize(prog, idb == 0x70 ? 1350 : 1360, out pr2);
                     how = "PC-" + (idb == 0x70 ? "1350" : "1360");
+                    if ((curProf == 2 && idb != 0x70) || (curProf == 3 && idb != 0x72)) Log("WAV: the recording is of the PC-" + (idb == 0x70 ? "1350" : "1360") + ", its tokens were used (the selected computer is the PC-" + (curProf == 2 ? "1350" : "1360") + ").");
                     if (warn2 != null) Log("WAV: " + warn2 + ".");
                     if (pr2 != null) Log("WAV: conversion problem: " + pr2);
                 }
                 catch (Exception ex) { why0 = ex.Message; }
-                if (text == null)
+                if (text == null && curProf >= 4)
                 {
                     try
                     {
@@ -3897,7 +3916,7 @@ int removed, kept, cut; List<string> moved;
     // Window for the folders of the programs (one per target computer)
     public class LocationsForm : Form
     {
-        readonly TextBox[] boxes = new TextBox[6];
+        readonly TextBox[] boxes = new TextBox[11];
         public string[] Result;
 
         public LocationsForm(string[] current, string[] defaults)
@@ -3907,16 +3926,16 @@ int removed, kept, cut; List<string> moved;
             MaximizeBox = MinimizeBox = false;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(560, 278);
+            ClientSize = new Size(560, 12 + 11 * 32 + 52);
             try { Icon = Icons.AppIcon(); } catch { }
             var tt = new WrapToolTip { AutoPopDelay = 9000, InitialDelay = 400, ShowAlways = true };
-            string[] names = { "PC-1500", "PC-1600", "Other Sharp", "FX-850/870", "TRS-80", "UART Other" };
-            for (int i = 0; i < 6; i++)
+            string[] names = { "PC-1500", "PC-1600", "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450..90", "Sharp other", "FX-850/870", "TRS-80", "UART Other" };
+            for (int i = 0; i < 11; i++)
             {
                 int row = i;
-                Controls.Add(new Label { Text = names[i] + ":", Left = 12, Top = 19 + i * 36, Width = 85 });
-                boxes[i] = new TextBox { Left = 100, Top = 15 + i * 36, Width = 365, Text = current[i] };
-                var browse = new Button { Text = "Browse...", Left = 472, Top = 14 + i * 36, Width = 78, Height = 24 };
+                Controls.Add(new Label { Text = names[i] + ":", Left = 12, Top = 17 + i * 32, Width = 85 });
+                boxes[i] = new TextBox { Left = 100, Top = 13 + i * 32, Width = 365, Text = current[i] };
+                var browse = new Button { Text = "Browse...", Left = 472, Top = 12 + i * 32, Width = 78, Height = 24 };
                 browse.Click += delegate
                 {
                     using (var f = new FolderBrowserDialog())
@@ -3929,19 +3948,19 @@ int removed, kept, cut; List<string> moved;
                 tt.SetToolTip(browse, "Choose the folder.");
                 Controls.AddRange(new Control[] { boxes[i], browse });
             }
-            var defs = new Button { Text = "Defaults", Left = 12, Top = 236, Width = 90, Height = 26 };
-            defs.Click += delegate { for (int i = 0; i < 6; i++) boxes[i].Text = defaults[i]; };
+            var defs = new Button { Text = "Defaults", Left = 12, Top = 12 + 11 * 32 + 14, Width = 90, Height = 26 };
+            defs.Click += delegate { for (int i = 0; i < 11; i++) boxes[i].Text = defaults[i]; };
             tt.SetToolTip(defs, "Restore the standard folders (in Documents).");
-            var ok = new Button { Text = "OK", Left = 370, Top = 236, Width = 85, Height = 26, DialogResult = DialogResult.OK };
-            var cancel = new Button { Text = "Cancel", Left = 465, Top = 236, Width = 85, Height = 26, DialogResult = DialogResult.Cancel };
+            var ok = new Button { Text = "OK", Left = 370, Top = 12 + 11 * 32 + 14, Width = 85, Height = 26, DialogResult = DialogResult.OK };
+            var cancel = new Button { Text = "Cancel", Left = 465, Top = 12 + 11 * 32 + 14, Width = 85, Height = 26, DialogResult = DialogResult.Cancel };
             Controls.AddRange(new Control[] { defs, ok, cancel });
             AcceptButton = ok;
             CancelButton = cancel;
             FormClosing += delegate
             {
                 if (DialogResult != DialogResult.OK) return;
-                Result = new string[6];
-                for (int i = 0; i < 6; i++) Result[i] = boxes[i].Text.Trim().Length > 0 ? boxes[i].Text.Trim() : defaults[i];
+                Result = new string[11];
+                for (int i = 0; i < 11; i++) Result[i] = boxes[i].Text.Trim().Length > 0 ? boxes[i].Text.Trim() : defaults[i];
             };
         }
     }
@@ -5267,7 +5286,7 @@ int removed, kept, cut; List<string> moved;
 
     public static class AppInfo
     {
-        public const string Version = "1.5";      // 1.5: port TEST button, Renumber and Remove REM in the Files menu, no changes of the port / target / mode / options while a file is sent, default line delay for every baud rate; 1.1: Software UART speeds 1200 to 19200 (SL V3.0), settings.ini, .img files; 1.2: names of the programs checked for the Sharp; 1.4: file info tip, Skip REM, Check Basic, Files menu, drag out of the list; 1.3: PC-1500 Software UART (4800 bps), six target computers, Port settings box, Flush and Reset port, wrong baud rate warning
+        public const string Version = "1.6";      // 1.6: the Sharp (other) radio button has a box with the models PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..90, other (folder, Info text and WAV converter per model); 1.5: port TEST button, Renumber and Remove REM in the Files menu, no changes of the port / target / mode / options while a file is sent, default line delay for every baud rate; 1.1: Software UART speeds 1200 to 19200 (SL V3.0), settings.ini, .img files; 1.2: names of the programs checked for the Sharp; 1.4: file info tip, Skip REM, Check Basic, Files menu, drag out of the list; 1.3: PC-1500 Software UART (4800 bps), six target computers, Port settings box, Flush and Reset port, wrong baud rate warning
     }
 
     // Names of programs for the pocket computers: the length and the characters that the Sharp accepts
