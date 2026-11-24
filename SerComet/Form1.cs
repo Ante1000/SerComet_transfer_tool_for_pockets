@@ -2832,24 +2832,46 @@ int removed, kept, cut; List<string> moved;
 
         // Sharp pocket computers with the 15-pin connector (drawing of a PC-E500): dark grey body, a large display,
         // function keys under it, the QWERTY keys and a numeric pad with light keys
-        // TRS-80 Model 100 / NEC PC-8201: a wide LCD above a keyboard
+        // TRS-80 Model 100 / NEC PC-8201 (as on the photo of the Model 100): cream body, a wide LCD in a dark frame with a label plate and a red LED
+        // on the right, a strip of flat function keys, then the black keyboard tray with dark keys and a long space bar
         static void DrawTrs80(Graphics g, int kx, int top)
         {
-            FillRound(g, Color.FromArgb(25, 25, 28), kx - 86, top + 10, 172, 82, 6);
-            FillRound(g, Color.FromArgb(150, 152, 150), kx - 85, top + 8, 170, 82, 6);
-            FillRound(g, Color.FromArgb(50, 50, 54), kx - 78, top + 13, 156, 38, 3);                          // display frame
-            using (var b = new SolidBrush(Color.FromArgb(160, 176, 150))) g.FillRectangle(b, kx - 74, top + 17, 148, 30);   // LCD 40 x 8
-            using (var b = new SolidBrush(Color.FromArgb(60, 78, 56)))
-                for (int row = 0; row < 4; row++) for (int c = 0; c < 36; c++) g.FillRectangle(b, kx - 70 + c * 4, top + 20 + row * 6, 3, 3);
-            using (var f = new Font("Arial", 6F, FontStyle.Bold)) Text(g, "TRS-80", f, Color.FromArgb(40, 40, 44), kx, top + 53);
-            using (var bk = new SolidBrush(Color.FromArgb(40, 40, 44)))
-            using (var bf = new SolidBrush(Color.FromArgb(215, 215, 210)))
+            var state = g.Save();
+            g.TranslateTransform(kx, top + 60);
+            g.ScaleTransform(0.8F, 0.8F);          // 20 % smaller than before
+            g.TranslateTransform(-kx, -(top + 60));
+            float bx = kx - 85, by = top + 8, bw = 170, bh = 82;
+            Action<float, float, float, float, Color> R = (fx, fy, fw, fh, c) =>
             {
-                for (int i = 0; i < 8; i++) g.FillRectangle(bf, kx - 76 + i * 19, top + 62, 15, 5);               // function keys
-                for (int row = 0; row < 3; row++)
-                    for (int col = 0; col < 13; col++) g.FillRectangle(bk, kx - 76 + col * 11 + row * 3, top + 70 + row * 6, 9, 4);
-                g.FillRectangle(bk, kx - 40, top + 87, 70, 3);
-            }
+                using (var b = new SolidBrush(c)) g.FillRectangle(b, bx + fx * bw, by + fy * bh, fw * bw, fh * bh);
+            };
+            Action<float, float, float> K = (cx, cy, w) => R(cx - w / 2, cy - .037F, w, .074F, Color.FromArgb(54, 56, 62));   // one key: centre x, centre y, width
+            FillRound(g, Color.FromArgb(25, 25, 28), kx - 86, top + 10, 172, 82, 6);
+            FillRound(g, Color.FromArgb(226, 222, 206), bx, by, bw, bh, 6);                                          // cream body
+            FillRound(g, Color.FromArgb(46, 48, 50), bx + .08F * bw, by + .06F * bh, .75F * bw, .31F * bh, 2);       // display frame
+            R(.095F, .085F, .72F, .26F, Color.FromArgb(170, 178, 160));                                              // the LCD
+            for (int row = 0; row < 4; row++)
+                for (int c = 0; c < 36; c++) R(.105F + c * .0195F, .105F + row * .052F, .013F, .028F, Color.FromArgb(96, 104, 88));   // text
+            R(.105F, .105F + 1 * .052F, .12F, .028F, Color.FromArgb(70, 76, 66));                                    // the highlighted BASIC
+            R(.85F, .09F, .11F, .20F, Color.FromArgb(40, 42, 46));                                                   // the label plate
+            R(.86F, .105F, .09F, .06F, Color.FromArgb(225, 225, 222));
+            R(.86F, .205F, .09F, .06F, Color.FromArgb(225, 225, 222));
+            using (var b = new SolidBrush(Color.FromArgb(190, 40, 40))) g.FillEllipse(b, bx + .865F * bw, by + .31F * bh, 3, 3);   // the LED
+            float[] gx = { .047F, .28F, .516F, .75F };                                                               // function key groups of four
+            for (int gi = 0; gi < 4; gi++)
+                for (int i = 0; i < 4; i++) R(gx[gi] + i * .052F, .43F, .05F, .03F, Color.FromArgb(50, 52, 56));
+            R(.047F, .49F, .91F, .47F, Color.FromArgb(30, 30, 34));                                                  // the keyboard tray
+            float[] r1 = { .078F, .142F, .208F, .271F, .338F, .403F, .466F, .533F, .599F, .665F, .730F, .796F, .862F, .92F };
+            foreach (float x in r1) K(x, .54F, .054F);                                                               // ESC 1 ... 0 - = DEL
+            K(.10F, .64F, .07F); for (int i = 0; i < 11; i++) K(.174F + i * .0655F, .64F, .054F);                    // TAB Q ... P ]
+            K(.118F, .73F, .07F); for (int i = 0; i < 11; i++) K(.192F + i * .0655F, .73F, .054F);                   // CTRL A ... ; '
+            R(.885F, .60F, .07F, .17F, Color.FromArgb(54, 56, 62));                                                  // the tall ENTER
+            K(.076F, .82F, .054F); K(.149F, .82F, .07F);                                                             // CAPS LOCK, SHIFT
+            for (int i = 0; i < 11; i++) K(.223F + i * .0655F, .82F, .054F);                                         // Z ... / ?
+            K(.886F, .82F, .07F);                                                                                    // right SHIFT
+            K(.223F, .91F, .054F); K(.745F, .91F, .054F); K(.813F, .91F, .054F);                                     // GRPH, CODE, NUM
+            R(.275F, .875F, .42F, .07F, Color.FromArgb(70, 72, 78));                                                 // the long space bar
+            g.Restore(state);
         }
 
         // Casio FX-850P / FX-870P: a wide display on the left, coloured function keys and a numeric block with red BS / BRK on the right
