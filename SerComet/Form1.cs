@@ -2948,42 +2948,42 @@ int removed, kept, cut; List<string> moved;
             g.Restore(state);
         }
 
-        // Sharp PC-1450 ... PC-1475 (as on the photo of the PC-1450): silver body, a dark panel with a wide display on the left, dark scientific keys
-        // at the top right, a row of function keys, dark QWERTY keys and a block of dark numeric keys
+        // Sharp PC-1450 ... PC-1475 (as on the photo of the PC-1450): silver body, a brown frame with a small display on the left, dark scientific keys
+        // at the top right, a row of cursor keys, silver QWERTY keys and a block of dark numeric keys with a light blue column
         static void DrawPc1450(Graphics g, int kx, int top)
         {
             var state = g.Save();
             g.TranslateTransform(kx, top + 60);
             g.ScaleTransform(0.7F, 0.7F);          // the same size as the PC-E500 picture
             g.TranslateTransform(-kx, -(top + 60));
-            FillRound(g, Color.FromArgb(25, 25, 28), kx - 86, top + 10, 172, 82, 6);
-            FillRound(g, Color.FromArgb(196, 192, 178), kx - 85, top + 8, 170, 82, 6);                               // silver-gold body
-            FillRound(g, Color.FromArgb(78, 54, 42), kx - 66, top + 10, 90, 27, 3);                                  // brown frame
-            using (var b = new SolidBrush(Color.FromArgb(168, 178, 160))) g.FillRectangle(b, kx - 44, top + 19, 46, 12);   // the small display
-            using (var b = new SolidBrush(Color.FromArgb(52, 62, 48)))
-                for (int c = 0; c < 9; c++) g.FillRectangle(b, kx - 42 + c * 5, top + 22, 4, 6);
-            using (var f = new Font("Arial", 5F, FontStyle.Bold)) Text(g, "SHARP", f, Color.FromArgb(235, 235, 235), kx - 21, top + 10);
-            using (var bd = new SolidBrush(Color.FromArgb(62, 62, 64)))
-            using (var bk = new SolidBrush(Color.FromArgb(46, 46, 50)))
-            using (var br = new SolidBrush(Color.FromArgb(205, 50, 50)))
-            using (var bo = new SolidBrush(Color.FromArgb(225, 150, 40)))
-            using (var bg = new SolidBrush(Color.FromArgb(40, 70, 60)))
+            float bx = kx - 85, by = top + 8, bw = 170, bh = 82;
+            Action<float, float, float, float, Color> R = (fx, fy, fw, fh, c) =>
             {
-                g.FillRectangle(bg, kx - 83, top + 17, 8, 6);                                                         // the power switch, left
-                for (int row = 0; row < 3; row++)                                                                    // scientific keys, top right
-                    for (int col = 0; col < 5; col++)
-                        g.FillRectangle(row == 0 && col == 4 ? br : bd, kx + 33 + col * 10, top + 11 + row * 8, 8, 6);
-                for (int col = 0; col < 3; col++) g.FillRectangle(bd, kx - 28 + col * 12, top + 41, 9, 4);          // the cursor keys
-                g.FillRectangle(bo, kx + 14, top + 41, 11, 4);
-                int[] cnt = { 10, 9, 7 };
-                for (int row = 0; row < 3; row++)
-                    for (int col = 0; col < cnt[row]; col++)
-                        g.FillRectangle(bk, kx - 80 + col * 9 + row * 3, top + 49 + row * 8, 7, 5);                 // QWERTY keys
-                g.FillRectangle(bk, kx - 52, top + 74, 34, 4);
-                for (int row = 0; row < 4; row++)
-                    for (int col = 0; col < 5; col++)
-                        g.FillRectangle(col == 4 && row == 1 ? bo : bk, kx + 31 + col * 10, top + 47 + row * 9, 8, 6);   // numeric block
-            }
+                using (var b = new SolidBrush(c)) g.FillRectangle(b, bx + fx * bw, by + fy * bh, fw * bw, fh * bh);
+            };
+            FillRound(g, Color.FromArgb(25, 25, 28), kx - 86, top + 10, 172, 82, 6);
+            FillRound(g, Color.FromArgb(190, 188, 176), bx, by, bw, bh, 6);                                          // silver body
+            FillRound(g, Color.FromArgb(78, 54, 42), bx + .09F * bw, by + .03F * bh, .53F * bw, .44F * bh, 3);       // brown frame
+            R(.19F, .14F, .30F, .17F, Color.FromArgb(168, 178, 160));                                                // the small display
+            for (int c = 0; c < 10; c++) R(.20F + c * .028F, .18F, .022F, .10F, Color.FromArgb(52, 62, 48));
+            using (var f = new Font("Arial", 5F, FontStyle.Bold)) Text(g, "SHARP", f, Color.FromArgb(235, 235, 235), bx + .21F * bw, by + .035F * bh);
+            Color dk = Color.FromArgb(62, 62, 64), ora = Color.FromArgb(225, 150, 40), kc = Color.FromArgb(214, 212, 204);
+            R(.03F, .22F, .05F, .15F, Color.FromArgb(30, 30, 34));                                                   // the power switch, left
+            for (int row = 0; row < 3; row++)                                                                        // scientific keys, top right
+                for (int col = 0; col < 5; col++)
+                    R(.66F + col * .065F, .06F + row * .115F, .052F, .09F, row == 0 && col == 4 ? Color.FromArgb(205, 50, 50) : dk);
+            for (int col = 0; col < 4; col++) R(.38F + col * .065F, .50F, .05F, .065F, dk);                         // the cursor keys
+            R(.58F, .50F, .05F, .065F, ora);                                                                          // SHIFT
+            for (int col = 0; col < 3; col++) R(.03F + col * .055F, .50F, .05F, .065F, Color.FromArgb(40, 70, 60));  // CAL, BASIC, BRK (level with the cursor keys)
+            int[] cnt = { 10, 9, 7 };
+            for (int row = 0; row < 3; row++)
+                for (int col = 0; col < cnt[row]; col++)
+                    R(.09F + col * .053F + row * .01F, .62F + row * .12F, .043F, .075F, kc);                       // QWERTY keys
+            R(.03F, .62F, .05F, .075F, ora); R(.03F, .74F, .05F, .075F, kc); R(.03F, .86F, .05F, .075F, kc);
+            R(.18F, .86F, .11F, .075F, kc); R(.41F, .86F, .15F, .075F, kc);
+            for (int row = 0; row < 4; row++)
+                for (int col = 0; col < 5; col++)
+                    R(.66F + col * .065F, .43F + row * .145F, .052F, .11F, col < 4 ? Color.FromArgb(60, 60, 64) : Color.FromArgb(150, 160, 170));   // numeric block
             g.Restore(state);
         }
 
