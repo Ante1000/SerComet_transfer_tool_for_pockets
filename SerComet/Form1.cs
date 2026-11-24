@@ -382,7 +382,7 @@ namespace UartSlTest
                 }
                 var by = new Label { Text = "by Alex F4VTS", AutoSize = true, Font = byFont, ForeColor = Color.FromArgb(90, 110, 140), Left = x0 + 40 + ts.Width + 10, Top = 14 + (32 - ts.Height) / 2 + 3, Anchor = AnchorStyles.Top | AnchorStyles.Right };
                 Controls.Add(by);
-                Control bmc = new PictureBox { Image = bmcImg, SizeMode = PictureBoxSizeMode.Zoom, Left = by.Left + byS.Width + 12, Top = 0, Width = bmcW, Height = bmcH, Anchor = AnchorStyles.Top | AnchorStyles.Right, Cursor = Cursors.Hand };
+                Control bmc = new PictureBox { Image = bmcImg, SizeMode = PictureBoxSizeMode.Zoom, Left = by.Left + byS.Width + 12, Top = 4, Width = bmcW, Height = bmcH, Anchor = AnchorStyles.Top | AnchorStyles.Right, Cursor = Cursors.Hand };
                 bmc.Click += delegate { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://www.buymeacoffee.com/Alex_F4VTS") { UseShellExecute = true }); } catch (Exception ex) { Log("Cannot open the page: " + ex.Message); } };
                 tips.SetToolTip(bmc, "Support the author: Buy me a coffee (opens the page buymeacoffee.com/Alex_F4VTS in the browser).");
                 Controls.Add(bmc);
