@@ -424,8 +424,8 @@ namespace UartSlTest
             btnRefreshFiles.Click += delegate { RefreshFiles(); };
             btnTerminal.Click += delegate { OpenTerminal(); };
             btnAbort.Click += delegate { Abort(); };
-            btnConvert.Click += delegate { ConvertSelected(); ConvPause(); };
-            btnView.Click += delegate { WavSelected(); ConvPause(); };
+            btnConvert.Click += delegate { ConvertSelected(); };
+            btnView.Click += delegate { WavSelected(); };
             lstFiles.MouseDoubleClick += delegate (object sn, MouseEventArgs me)      // double click on a file name = View
             {
                 int i = lstFiles.IndexFromPoint(me.Location);
@@ -1515,6 +1515,7 @@ namespace UartSlTest
                     string bas = Pc1600Basic.Detokenize(data, p1500, out problem);
                     outPath = UniquePathIn(Path.GetDirectoryName(path), Path.GetFileNameWithoutExtension(path), ".bas");
                     File.WriteAllBytes(outPath, enc.GetBytes(bas));
+                    ConvWait();
                     Log("Converted " + Path.GetFileName(path) + " to BASIC text -> " + Path.GetFileName(outPath) + (problem != null ? " (warning: " + problem + ")" : ""));
                 }
                 else
@@ -1524,6 +1525,7 @@ namespace UartSlTest
                     if (img == null) { Log("Tokenizer error: " + problem); return; }
                     outPath = UniquePathIn(Path.GetDirectoryName(path), Path.GetFileNameWithoutExtension(path), ".img");
                     File.WriteAllBytes(outPath, img);
+                    ConvWait();
                     Log("Converted " + Path.GetFileName(path) + " -> " + Path.GetFileName(outPath) + " (" + img.Length + " B)");
                 }
                 RefreshFiles();
@@ -1874,6 +1876,7 @@ namespace UartSlTest
                 string out2 = UniquePath2(Path.Combine(txtDir.Text, baseName + suffix2 + ".wav"));
                 File.WriteAllBytes(out2, w2);
                 TapeWav.WavInfo wi2; int wo2, wl2; TapeWav.Parse(w2, out wi2, out wo2, out wl2);
+                ConvWait();
                 Log("WAV written: " + Path.GetFileName(out2) + " (PC-" + (pc == 500 ? "E500(S)" : pc.ToString()) + ", tape name " + tape.Substring(0, Math.Min(pc == 500 ? 8 : 7, tape.Length)) + ", " + wi2.Seconds.ToString("0") + " s).");
                 RefreshFiles();
                 int ix2 = lstFiles.Items.IndexOf(Path.GetFileName(out2));
@@ -1900,6 +1903,7 @@ namespace UartSlTest
             string outPath = UniquePath2(Path.Combine(txtDir.Text, baseName + suffix + ".wav"));
             File.WriteAllBytes(outPath, wav);
             TapeWav.WavInfo wi; int wo, wl; TapeWav.Parse(wav, out wi, out wo, out wl);
+            ConvWait();
             Log("WAV written: " + Path.GetFileName(outPath) + " (" + (mode == 0 ? "MODE 0, CE-1600P, tape name " + tape.Substring(0, Math.Min(8, tape.Length)) : "CE-150 format, tape name " + tape.Substring(0, Math.Min(7, tape.Length))) + ", " + wi.Seconds.ToString("0") + " s).");
             RefreshFiles();
             int ix = lstFiles.Items.IndexOf(Path.GetFileName(outPath));
@@ -1955,6 +1959,7 @@ namespace UartSlTest
                 string base2 = SharpBase(Path.GetFileNameWithoutExtension(path));
                 string out3 = UniqueSharp(base2, ".bas");
                 File.WriteAllBytes(out3, Encoding.GetEncoding(28591).GetBytes(text));
+                ConvWait();
                 Log("WAV decoded (" + how + (string.IsNullOrEmpty(name) ? "" : ", tape name " + name) + ") -> " + Path.GetFileName(out3) + ".");
                 RefreshFiles();
                 int ix3 = lstFiles.Items.IndexOf(Path.GetFileName(out3));
@@ -1981,6 +1986,7 @@ namespace UartSlTest
             string baseName = SharpBase(Path.GetFileNameWithoutExtension(path));
             string outPath = UniqueSharp(baseName, ".bas");
             File.WriteAllBytes(outPath, Encoding.GetEncoding(28591).GetBytes(text));
+            ConvWait();
             Log("WAV decoded (" + how + (string.IsNullOrEmpty(name) ? "" : ", tape name " + name) + ") -> " + Path.GetFileName(outPath) + ".");
             RefreshFiles();
             int ix = lstFiles.Items.IndexOf(Path.GetFileName(outPath));
@@ -2079,28 +2085,26 @@ namespace UartSlTest
             SelectionChanged();
         }
 
-        // 1 s pause after a conversion (Convert button, WAV converter): both buttons stay disabled, it all worked too fast
-        bool convPause;
-        async void ConvPause()
+        // an artificial 1 s extension of a successful conversion (Convert, WAV converter): the log entry and the new file in Files come after it
+        void ConvWait()
         {
-            convPause = true;
-            SelectionChanged();
-            try { await Task.Delay(1000); } catch { }
-            convPause = false;
-            SelectionChanged();
+            var old = Cursor.Current;
+            Cursor.Current = Cursors.WaitCursor;
+            System.Threading.Thread.Sleep(1000);
+            Cursor.Current = old;
         }
 
         void SelectionChanged()
         {
             bool sel = lstFiles.SelectedItem != null;
             string selExt = sel ? Path.GetExtension((string)lstFiles.SelectedItem).ToLowerInvariant() : "";
-            if (btnView != null) btnView.Enabled = !convPause && sel && (selExt == ".bas" || selExt == ".txt" || selExt == ".wav");       // the WAV converter
+            if (btnView != null) btnView.Enabled = sel && (selExt == ".bas" || selExt == ".txt" || selExt == ".wav");       // the WAV converter
             if (btnSend != null) btnSend.Enabled = sel && selExt != ".wav" && !sending && port != null && port.IsOpen;
             if (btnDelete != null) btnDelete.Enabled = sel;
             if (btnConvert != null)
             {
                 string ext = sel ? Path.GetExtension((string)lstFiles.SelectedItem).ToLowerInvariant() : "";
-                btnConvert.Enabled = !convPause && sel && !rs232 && (ext == ".bas" || ext == ".txt" || ext == ".img" || ext == ".bin");   // Software UART mode only
+                btnConvert.Enabled = sel && !rs232 && (ext == ".bas" || ext == ".txt" || ext == ".img" || ext == ".bin");   // Software UART mode only
             }
         }
 
