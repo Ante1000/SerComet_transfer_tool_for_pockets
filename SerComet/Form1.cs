@@ -358,8 +358,8 @@ namespace UartSlTest
                 // the Buy me a coffee button (colours and text of the web button: blue 5F7FFF, white text, black outline); it opens the page of the author
                 string cookie = null;
                 foreach (FontFamily ff in FontFamily.Families) if (ff.Name == "Cookie") cookie = "Cookie";
-                var bmcFont = new Font(cookie ?? "Segoe Script", 11F, cookie != null ? FontStyle.Regular : FontStyle.Bold);
-                int bmcW = TextRenderer.MeasureText("Buy me a coffee", bmcFont).Width + 26;
+                var bmcFont = new Font(cookie ?? "Segoe Script", 8.5F, cookie != null ? FontStyle.Regular : FontStyle.Bold);
+                int bmcW = TextRenderer.MeasureText("Buy me a coffee", bmcFont).Width + 12;
                 // the group icon + title + "by Alex F4VTS" + the button is centred
                 x0 = (ClientSize.Width - (32 + 8 + ts.Width + 10 + byS.Width + 12 + bmcW)) / 2 - 22;
                 foreach (Control c0 in Controls)
@@ -372,8 +372,9 @@ namespace UartSlTest
                 var bmc = new Button
                 {
                     Text = "Buy me a coffee", Font = bmcFont, ForeColor = Color.White, BackColor = Color.FromArgb(0x5F, 0x7F, 0xFF), FlatStyle = FlatStyle.Flat,
-                    UseVisualStyleBackColor = false, Left = by.Left + byS.Width + 12, Top = 8, Width = bmcW, Height = 34, Anchor = AnchorStyles.Top, Cursor = Cursors.Hand,
-                    TabStop = false
+                    UseVisualStyleBackColor = false, Left = by.Left + byS.Width + 12, Top = 7, Width = bmcW, Height = 36, Anchor = AnchorStyles.Top, Cursor = Cursors.Hand,
+                    TabStop = false, Image = Icons.Cup(), ImageAlign = ContentAlignment.TopCenter, TextAlign = ContentAlignment.BottomCenter,
+                    TextImageRelation = TextImageRelation.ImageAboveText, Padding = new Padding(0, 1, 0, 1)
                 };
                 bmc.FlatAppearance.BorderColor = Color.Black;
                 bmc.FlatAppearance.BorderSize = 1;
@@ -2675,6 +2676,23 @@ int removed, kept, cut; List<string> moved;
         public static Bitmap Flush() { return Make((g, p, b) => { g.FillPolygon(b, new[] { new Point(3, 3), new Point(17, 3), new Point(11, 10), new Point(11, 14), new Point(9, 14), new Point(9, 10) }); g.FillEllipse(b, 8, 15, 4, 4); }); }   // funnel + drop
         public static Bitmap Plane() { return Make((g, p, b) => { g.FillPolygon(b, new[] { new Point(2, 10), new Point(18, 3), new Point(13, 17), new Point(10, 12) }); }); }
         public static Bitmap Note() { return Make((g, p, b) => { g.TranslateTransform(10, 8.5f); g.ScaleTransform(0.8f, 0.8f); g.TranslateTransform(-10, -10); g.FillEllipse(b, 4, 12, 8, 6); g.DrawLine(p, 11, 14, 11, 3); g.DrawLine(p, 11, 3, 16, 6); }); }   // 20 % smaller
+        // a small coffee cup (yellow with a black outline) for the Buy me a coffee button
+        public static Bitmap Cup()
+        {
+            var b = new Bitmap(14, 13);
+            using (var g = Graphics.FromImage(b))
+            using (var pen = new Pen(Color.Black, 1.2f))
+            using (var yel = new SolidBrush(Color.FromArgb(0xFF, 0xDD, 0x00)))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                var cup = new[] { new PointF(1.5f, 2.5f), new PointF(10.5f, 2.5f), new PointF(9.5f, 10.5f), new PointF(2.5f, 10.5f) };
+                g.FillPolygon(yel, cup);
+                g.DrawPolygon(pen, cup);
+                g.DrawArc(pen, 8.5f, 3.5f, 4f, 4.5f, -90, 180);       // the handle
+                g.DrawLine(pen, 0.5f, 12f, 11.5f, 12f);               // the saucer
+            }
+            return b;
+        }
         public static Bitmap File() { return Make((g, p, b) => { g.DrawRectangle(p, 5, 2, 10, 16); g.DrawLine(p, 8, 8, 12, 8); g.DrawLine(p, 8, 12, 12, 12); }); }
         // shooting star (yellow star head, curved light-blue forked tail) on a navy sky, drawn at any size
         public static Bitmap Comet(int size)
