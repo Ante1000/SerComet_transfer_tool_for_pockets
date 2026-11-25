@@ -3,7 +3,7 @@
 // (FTDI / CP2102 / CH340); the X-07 side is a software UART on pins 10 (RX) and 11 (TX) with INVERTED logic.
 //
 // RTS / CTS (pins 12 / 13) are switched off for now: USE_HANDSHAKE = false. Pin 13 (the LED of the Pro Mini) then shows the activity.
-// 4800 baud on both sides (the speed of the X-07 serial port in the gist). Set the same speed in SerComet / the terminal:
+// 1200 baud on both sides (the gist uses 4800; change USB_BAUD and X07_BAUD together with the speed set on the X-07). Set the same speed in SerComet / the terminal:
 // the bridge does not follow a speed change of the PC, so the SerComet port test passes only at USB_BAUD.
 //
 // TEST_MODE:  0 = the bridge,
@@ -33,8 +33,8 @@ static const uint8_t  PIN_CTS    = 13;           // input, high = the X-07 accep
 
 static const bool     USE_HANDSHAKE   = false;   // RTS / CTS: temporarily off
 static const bool     INVERTED        = true;    // inverted logic on the X-07 side
-static const long     USB_BAUD        = 4800;    // the PC side
-static const long     X07_BAUD        = 4800;    // the X-07 side
+static const long     USB_BAUD        = 1200;    // the PC side
+static const long     X07_BAUD        = 1200;    // the X-07 side
 static const uint16_t TX_BYTE_DELAY_MS = 0;      // 0 = full speed; 33 = about 30 bytes/s for EXEC &HEE1F
 static const bool     WAIT_RX_IDLE    = true;    // do not start a byte towards the X-07 while the X-07 is sending one (it would be lost)
 
