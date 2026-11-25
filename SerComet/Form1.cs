@@ -2168,6 +2168,28 @@ namespace UartSlTest
             if (wasOpen) { comboPorts.SelectedItem = name; TogglePort(); }          // the port is open again, as it was before the test
         }
 
+        // the three tests of Check Basic that matter for Renumber: "All lines have a line number", "No repeated line numbers",
+        // "Line numbers in ascending order" (the same code and the same texts as in Check Basic); only the failed ones are returned
+        List<string> RenumberChecks(string text)
+        {
+            var res = new List<string>();
+            int f, w;
+            var prof = BasicCheck.Profiles[BasicCheck.ProfileOfTarget(curModel < 0 ? 1 : curModel)];
+            foreach (CheckItem it in BasicCheck.Check(text, prof, out f, out w))
+                if (it.Level >= 1 && (it.Text.StartsWith("All lines have a line number") || it.Text.StartsWith("No repeated line numbers") || it.Text.StartsWith("Line numbers in ascending order")))
+                    res.Add(it.Text);
+            return res;
+        }
+
+        void RenumberWarn(string name, List<string> warns, bool done)
+        {
+            if (warns == null || warns.Count == 0) return;
+            string msg = "Renumber " + name + (done ? " is done, but the file had these faults:" : " was not done, because of these faults of the file:") + "\r\n\r\n" + string.Join("\r\n", warns.ToArray());
+            if (done && warns.Exists(x => x.StartsWith("Line numbers in ascending order")))
+                msg += "\r\n\r\nThe lines were numbered in the order of the FILE, so the order of the program may now differ from the one the computer would have made (it sorts the lines when they are entered).";
+            MessageBox.Show(this, msg, "Renumber: warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
         // Renumber: the line numbers of a BASIC text file and the GOTO / GOSUB / THEN ... targets
         void RenumberSelected()
         {
@@ -2180,6 +2202,7 @@ namespace UartSlTest
                 int maxLine = BasicCheck.Profiles[BasicCheck.ProfileOfTarget(curModel < 0 ? 1 : curModel)].MaxLine;
                 int count = BasicTools.CountNumbered(text);
                 if (count == 0) { Log("Renumber " + name + ": the file has no numbered lines."); return; }
+                List<string> warns = RenumberChecks(text);          // the tests of Check Basic: numbers present, not repeated, ascending
                 int step, start;
                 using (var d = new RenumberForm(name, count, maxLine))
                 {
@@ -2187,7 +2210,7 @@ namespace UartSlTest
                     step = d.Step; start = d.Start;
                 }
                 RenumberResult r = BasicTools.Renumber(text, start, step, maxLine);
-                if (r.Error != null) { Log("Renumber " + name + ": " + r.Error); return; }
+                if (r.Error != null) { Log("Renumber " + name + ": " + r.Error); RenumberWarn(name, warns, false); return; }
                 if (r.Overflow)
                 {
                     int alt = 0;
@@ -2196,6 +2219,7 @@ namespace UartSlTest
                     if (alt == 0)
                     {
                         Log("Renumber " + name + ": " + r.Count + " lines from " + start + " do not fit below " + maxLine + " even with step 1; nothing changed.");
+                        RenumberWarn(name, warns, false);
                         return;
                     }
                     long lastAlt = start + (long)(r.Count - 1) * alt;
@@ -2203,11 +2227,12 @@ namespace UartSlTest
                         "Renumber", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) { Log("Renumber " + name + ": cancelled (the step " + step + " is too large)."); return; }
                     step = alt;
                     r = BasicTools.Renumber(text, start, step, maxLine);
-                    if (r.Error != null || r.Overflow) { Log("Renumber " + name + ": failed."); return; }
+                    if (r.Error != null || r.Overflow) { Log("Renumber " + name + ": failed."); RenumberWarn(name, warns, false); return; }
                 }
                 File.WriteAllBytes(path, Encoding.GetEncoding(28591).GetBytes(r.Text));
                 Log("Renumber " + name + ": " + r.Count + " lines, was " + r.OldFirst + " to " + r.OldLast + ", now " + r.NewFirst + " to " + r.NewLast + " (start " + start + ", step " + step + "); " + r.RefsChanged + " line references changed.");
                 if (r.Missing.Count > 0) Log("Renumber " + name + ": references to lines that do not exist were left as they are: " + string.Join(", ", r.Missing.ToArray()) + ".");
+                RenumberWarn(name, warns, true);                    // at the end of Renumber: a warning window with the faults of the file
             }
             catch (Exception ex) { Log("Renumber error: " + ex.Message); }
             RefreshFiles();
