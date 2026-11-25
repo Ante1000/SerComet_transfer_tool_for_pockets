@@ -549,7 +549,7 @@ namespace UartSlTest
             if (curModel == 6)
                 return "Canon X07 has INVERTED TTL-UART logic. To connect it to a PC through USB you need an FTDI converter with inverted logic (set in its EEPROM with FT_Prog) " +
                        "or the Arduino converter described on the GitHub page of SerComet (folder Arduino_X07_bridge). TTL-UART only, 300 to 4800 bps (1200 is the default).\r\n" +
-                       "Receiving a program in the X07 from SerComet: INIT #1,\"COM:\",1200,\"B\" and EXEC &HEE1F (the box EOF sends the line EXEC &HEE33 at the end). Sending from the X07 to the PC: INIT #1,\"COM:\",1200,\"B\" and LIST#1.\r\n" +
+                       "Receiving a program in the X07 from SerComet: INIT #1,\"COM:\",1200,\"B\" and EXEC &HEE1F (the box EOF sends the line EXEC &HEE33 at the end). With the box Auto token on SerComet sends the tokenized program instead, for LOAD \"COM:\",1200,\"B\" (no INIT needed). Sending from the X07 to the PC: INIT #1,\"COM:\",1200,\"B\" and LIST#1.\r\n" +
                        "WAV: the tokenized program as a tape recording (CSAVE / CLOAD, 1200 baud FSK); a BASIC text file is converted to a recording and back.";
             if (curModel == 3)
                 return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
@@ -906,7 +906,7 @@ namespace UartSlTest
             bool softEdit = !rs232 && !radio1500.Checked;                  // Software UART of the PC-1600: the speed can be chosen
             numDelay.Enabled = comboEol.Enabled = comboFlow.Enabled = chkEof.Enabled = rs232;
             btnTerminal.Enabled = rs232 && port != null && port.IsOpen;                       // the Terminal needs an open port
-            chkAuto.Enabled = !rs232;
+            chkAuto.Enabled = !rs232 || curModel == 6;          // Canon X07: "Auto token" = the tokenized stream for LOAD "COM:"
             comboBaud.Enabled = false;                                      // (so that filling the list does not change the saved values)
             FillBaud(rs232 ? TextBaudsFor(curModel) : SoftBauds);
             comboBaud.SelectedItem = rs232 ? savedBaud : softEdit ? savedSoftBaud : "4800";
@@ -2440,7 +2440,8 @@ int removed, kept, cut; List<string> moved;
             byte[] data;
             try { data = File.ReadAllBytes(path); }
             catch (Exception ex) { Log("Read error: " + ex.Message); return; }
-            bool text = rs232;
+            bool x07bin = curModel == 6 && rs232 && chkAuto.Checked;      // Canon X07: the tokenized program for LOAD "COM:" (the stream of SAVE "COM:")
+            bool text = rs232 && !x07bin;
             int delay = (int)numDelay.Value;
             bool eof = chkEof.Checked;
             bool dsrFlow = rs232 && comboFlow.SelectedIndex == 3;
@@ -2469,7 +2470,22 @@ int removed, kept, cut; List<string> moved;
                     try { byte[] est = Pc1600Basic.Tokenize(src, curModel == 0, out pr); if (est != null) WarnSize(est.Length + 1, false); } catch { }
                 }
             }
-            if (!text)
+            if (x07bin)
+            {
+                string src7 = Encoding.GetEncoding(28591).GetString(data);
+                if (chkSkipRem.Checked)
+                {
+                    int rm7, kp7;
+                    src7 = StripRemLines(src7, out rm7, out kp7);
+                    Log("Skip REM: " + rm7 + " comment lines left out" + (kp7 > 0 ? ", " + kp7 + " kept (a GOTO / GOSUB points to them)" : "") + ".");
+                }
+                string pr7;
+                byte[] img7 = X07Tok.Tokenize(src7, out pr7);
+                if (img7 == null) { Log("Tokenizer error: " + pr7); return; }
+                data = img7;
+                Log("Canon X07: tokenized " + Regex.Matches(src7, @"(?m)^\s*\d+").Count + " lines, " + img7.Length + " B (the stream of SAVE \"COM:\", for LOAD \"COM:\",1200,\"B\").");
+            }
+            else if (!text)
             {
                 string err;
                 byte[] img;
@@ -2595,7 +2611,7 @@ int removed, kept, cut; List<string> moved;
                     if (!abortRequested) throw;
                   }
                 });
-                if (abortRequested) Log("Transmission aborted."); else Log(text ? "Sent." : "Sent. The PC-1600 finishes after 0.5 s of silence; check the program with LIST.");
+                if (abortRequested) Log("Transmission aborted."); else Log(text || x07bin ? "Sent." : "Sent. The PC-1600 finishes after 0.5 s of silence; check the program with LIST.");
             }
             catch (Exception ex) { Log("Send error: " + ex.Message); }
             finally

@@ -52,6 +52,7 @@ static const bool     XONXOFF_TO_PC   = true;    // the queue is slower than the
                                                  // XON/XOFF, Tera Term: Flow control xon/xoff) so that no byte is lost
 
 static const uint32_t BIT_US = 1000000UL / X07_BAUD;
+static const uint8_t  STOP_BITS = 2;               // stop bits towards the X-07 (the tape format of the X-07 has 2; a receiver with 1 stop bit does not mind)
 
 static const uint16_t QSIZE = 512;
 static uint8_t  q[QSIZE];
@@ -92,7 +93,7 @@ static uint8_t txByte(uint8_t b)
   }
   waitUntil(t0 + 9UL * BIT_US);
   digitalWrite(PIN_X07_TX, pinLevel(1));                      // stop bit (and idle)
-  waitUntil(t0 + 10UL * BIT_US);
+  waitUntil(t0 + (uint32_t)(9 + STOP_BITS) * BIT_US);
   return heard;
 }
 
