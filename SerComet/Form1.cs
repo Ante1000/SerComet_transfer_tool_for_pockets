@@ -39,8 +39,8 @@ namespace UartSlTest
         Button btnTerminal, btnAbort, btnConvert, btnLocations, btnDelete;
         // default folders of the profiles (see NProf)
         // profiles of the target computers: 0 PC-1500, 1 PC-1600, 2 PC-1350, 3 PC-1360, 4 PC-E500, 5 PC-E500S, 6 PC-1450..75, 7 Sharp other,
-        // 8 Casio FX-850/870, 9 TRS-80 / NEC, 10 other UART. The group (the old model number 0..5) joins the profiles 2..7 as "Other Sharp".
-        const int NProf = 11;
+        // 8 Casio FX-850/870, 9 TRS-80 / NEC, 10 other UART, 11 Canon X07. The group (the old model number 0..6) joins the profiles 2..7 as "Other Sharp".
+        const int NProf = 12;
         static int GroupOf(int prof) { return prof < 2 ? prof : prof <= 7 ? 2 : prof - 5; }
         int curProf = -1;
         string[] locs = LoadLocations();      // overwritten by settings.ini when it exists
@@ -50,7 +50,7 @@ namespace UartSlTest
         ListBox lstFiles;
         TextBox lblHint;                    // the Info text: read-only, can be selected and copied
         LedLabel led;
-        RadioButton radio1500, radio1600, radioOther, radioFx, radioTrs, radioUart;
+        RadioButton radio1500, radio1600, radioOther, radioFx, radioX07, radioTrs, radioUart;
         ComboBox comboSharp;                // the Sharp (other) models: PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..75, other
         RadioButton radioSoft, radioRs, radioSio;
         NumericUpDown numDelay;
@@ -80,7 +80,7 @@ namespace UartSlTest
                 Log("The saved port " + startPort + " is not available; the first available port " + comboPorts.SelectedItem + " is selected.");
             int startGroup = GroupOf(startModel);
             if (startGroup == 2) comboSharp.SelectedIndex = startModel - 2;
-            (startGroup == 0 ? radio1500 : startGroup == 2 ? radioOther : startGroup == 3 ? radioFx : startGroup == 4 ? radioTrs : startGroup == 5 ? radioUart : radio1600).Checked = true;
+            (startGroup == 0 ? radio1500 : startGroup == 2 ? radioOther : startGroup == 3 ? radioFx : startGroup == 4 ? radioTrs : startGroup == 5 ? radioUart : startGroup == 6 ? radioX07 : radio1600).Checked = true;
             SetTarget();
             if (!File.Exists(SettingsFile())) SaveSettings();       // first start or the file was deleted: build it again
             Log("Ready. Select the port and click 'Open port'.");
@@ -139,10 +139,11 @@ namespace UartSlTest
             comboSharp.KeyDown += delegate (object sn, KeyEventArgs ke) { if (ke.KeyCode != Keys.Down && ke.KeyCode != Keys.Up && ke.KeyCode != Keys.F4 && ke.KeyCode != Keys.Tab) { ke.Handled = true; ke.SuppressKeyPress = true; } };
             comboSharp.TextChanged += delegate { if (comboSharp.SelectedIndex < 0 && comboSharp.Text != "Sharp other") comboSharp.Text = "Sharp other"; };
             comboSharp.SelectedIndexChanged += delegate { if (radioOther.Checked) SetTarget(); };
-            radioFx = new LockRadio { Text = "Casio FX-850..870", Left = 8, Top = 50, Width = 112 };
-            radioTrs = new LockRadio { Text = "NEC/TRS-80", Left = 126, Top = 50, Width = 100 };
-            radioUart = new LockRadio { Text = "UART other", Left = 238, Top = 50, Width = 112 };
-            gbTarget.Controls.AddRange(new Control[] { radio1500, radio1600, radioOther, comboSharp, radioFx, radioTrs, radioUart });
+            radioFx = new LockRadio { Text = "Casio FX-850/70", Left = 6, Top = 50, Width = 112 };
+            radioX07 = new LockRadio { Text = "Canon X07", Left = 122, Top = 50, Width = 80 };
+            radioTrs = new LockRadio { Text = "NEC/TRS-80", Left = 204, Top = 50, Width = 90 };
+            radioUart = new LockRadio { Text = "Other", Left = 296, Top = 50, Width = 56 };
+            gbTarget.Controls.AddRange(new Control[] { radio1500, radio1600, radioOther, comboSharp, radioFx, radioX07, radioTrs, radioUart });
 
             banner = new BannerPanel { Left = 10, Top = 88, Width = 700, Height = 132, Anchor = TLR };
 
@@ -407,6 +408,7 @@ namespace UartSlTest
             radio1600.CheckedChanged += delegate { if (radio1600.Checked) SetTarget(); };
             radioOther.CheckedChanged += delegate { if (radioOther.Checked) SetTarget(); };
             radioFx.CheckedChanged += delegate { if (radioFx.Checked) SetTarget(); };
+            radioX07.CheckedChanged += delegate { if (radioX07.Checked) SetTarget(); };
             radioTrs.CheckedChanged += delegate { if (radioTrs.Checked) SetTarget(); };
             radioUart.CheckedChanged += delegate { if (radioUart.Checked) SetTarget(); };
             comboBaud.SelectedIndexChanged += delegate { if (comboBaud.Enabled && comboBaud.SelectedItem != null) { if (rs232) { savedBaud = (string)comboBaud.SelectedItem; numDelay.Value = Math.Max(numDelay.Minimum, Math.Min(numDelay.Maximum, DefaultDelay(int.Parse(savedBaud), curModel))); } else savedSoftBaud = (string)comboBaud.SelectedItem; lblHint.Text = HintText(); } ApplyBaud(); };
@@ -440,7 +442,11 @@ namespace UartSlTest
             btnSendOther.Enabled = false;          // the port is closed at the start
             btnDelete.Enabled = false;
             btnConvert.Enabled = false;
-            comboFlow.SelectedIndexChanged += delegate { ApplyFlow(); };
+            comboFlow.SelectedIndexChanged += delegate
+            {
+                if (curModel == 6 && comboFlow.SelectedIndex == 3) { comboFlow.SelectedIndex = 1; Log("Canon X07: DSR/DTR flow control is not available (None, XON/XOFF or RTS/CTS)."); return; }
+                ApplyFlow();
+            };
             btnLocations.Click += delegate { EditLocations(); };
             btnDelete.Click += delegate { DeleteSelected(); };
             chkAuto.CheckedChanged += delegate { RefreshFiles(); };
@@ -470,6 +476,7 @@ namespace UartSlTest
             tips.SetToolTip(radioOther, "Target: other Sharp pocket computers with the 15-pin connector (TTL-UART SIO). Choose the model in the box beside it.");
             tips.SetToolTip(comboSharp, "The Sharp model (15-pin connector): PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..75 or Sharp other. It sets the folder, the notes in Info and the WAV converter. Active when the Sharp radio button is on.");
             tips.SetToolTip(radioFx, "Casio FX-850P, FX-870P and similar.");
+            tips.SetToolTip(radioX07, "Canon X07 (inverted TTL-UART logic: an inverting converter is needed, see Info).");
             tips.SetToolTip(radioTrs, "TRS-80 model 100, NEC-8201.");
             tips.SetToolTip(radioUart, "Other computers with UART interface TTL or RS-232.");
             tips.SetToolTip(radioSoft, "Software UART in the Sharp (machine-language Saver/Loader), binary .img files. PC-1600: speed 1200 to 19200 (as chosen in the SL installer); PC-1500: 4800 baud.");
@@ -515,15 +522,15 @@ namespace UartSlTest
         //   4 TRS-80 / NEC (RS-232), 5 other UART computer (RS-232 or TTL-UART)
         void SetTarget()
         {
-            int nm = radio1500.Checked ? 0 : radio1600.Checked ? 1 : radioOther.Checked ? 2 : radioFx.Checked ? 3 : radioTrs.Checked ? 4 : 5;
+            int nm = radio1500.Checked ? 0 : radio1600.Checked ? 1 : radioOther.Checked ? 2 : radioFx.Checked ? 3 : radioTrs.Checked ? 4 : radioX07.Checked ? 6 : 5;
             int prof = nm < 2 ? nm : nm == 2 ? 2 + (comboSharp.SelectedIndex < 0 ? 5 : comboSharp.SelectedIndex) : nm + 5;
             if (curProf >= 0 && prof != curProf) CaptureUi(curProf);     // keep the settings of the computer we leave
             curModel = nm;
             curProf = prof;
             comboSharp.Enabled = nm == 2;
             radioSoft.Enabled = nm == 0;          // Software Serial: PC-1500 only (blocked for the PC-1600 for the time being)
-            radioRs.Enabled = nm != 2 && nm != 3;
-            radioSio.Enabled = nm == 2 || nm == 3 || nm == 5;
+            radioRs.Enabled = nm != 2 && nm != 3 && nm != 6;       // the Canon X07: TTL-UART only
+            radioSio.Enabled = nm == 2 || nm == 3 || nm == 5 || nm == 6;
             radioRs.Text = "RS-232 serial";
             comboEol.Invalidate();
             banner.ModelName = ModelCaptions[prof];
@@ -535,10 +542,16 @@ namespace UartSlTest
             UpdateMode();
         }
 
-        static readonly string[] ModelCaptions = { "Sharp PC-1500", "Sharp PC-1600", "Sharp PC-1350", "Sharp PC-1360", "Sharp PC-E500", "Sharp PC-E500S", "Sharp PC-1450..75", "Sharp with UART connector", "Casio FX-850P / FX-870P", "TRS-80 mod.100 / NEC PC-8201", "Other computer with UART" };
+        static readonly string[] ModelCaptions = { "Sharp PC-1500", "Sharp PC-1600", "Sharp PC-1350", "Sharp PC-1360", "Sharp PC-E500", "Sharp PC-E500S", "Sharp PC-1450..75", "Sharp with UART connector", "Casio FX-850P / FX-870P", "TRS-80 mod.100 / NEC PC-8201", "Other computer with UART", "Canon X07" };
 
         string HintText()
         {
+            if (curModel == 6)
+                return "Canon X07 has INVERTED TTL-UART logic. To connect it to a PC through USB you need an FTDI converter with inverted logic (set in its EEPROM with FT_Prog) " +
+                       "or the Arduino converter described on the GitHub page of SerComet (folder Arduino_X07_bridge). TTL-UART only, 300 to 4800 bps (1200 is the default).\r\n" +
+                       "Flow: only None, XON/XOFF or RTS/CTS (no DSR/DTR). EOF (1AH): you have to decide yourself whether the marker is needed.\r\n" +
+                       "Receiving a program in the X07 from SerComet: INIT #1,\"COM:\",1200,\"B\" and EXEC &HEE1F. Sending from the X07 to the PC: INIT #1,\"COM:\",1200,\"B\" and LIST#1.\r\n" +
+                       "WAV: the tokenized program as a tape recording (CSAVE / CLOAD, 1200 baud FSK); a BASIC text file is converted to a recording and back.";
             if (curModel == 3)
                 return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
                        "OPEN \"COM0:6,N,8,1,N,N,N,N,N\" AS #1 (6 = 4800, 5 = 2400, 4 = 1200, 3 = 600, 2 = 300); PRINT #1,..; INPUT #1,A$; LINE INPUT #1,A$; CLOSE.\r\n" +
@@ -594,7 +607,7 @@ namespace UartSlTest
 
         static string DefaultLocation(int i)
         {
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), new[] { "PC1500", "PC1600", "PC1350", "PC1360", "PCE500", "PCE500S", "PC1450", "SHARP_other", "Casio", "TRS-80", "UART" }[i]);
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), new[] { "PC1500", "PC1600", "PC1350", "PC1360", "PCE500", "PCE500S", "PC1450", "SHARP_other", "Casio", "TRS-80", "UART", "X07" }[i]);
         }
 
         // ------------------------------------------------------------------ settings.ini
@@ -637,10 +650,11 @@ namespace UartSlTest
             new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) },                                        // Sharp other
             new ModelCfg { Mode = 2, Baud = "4800", Delay = DefaultDelay(4800, 3) },                         // Casio
             new ModelCfg { Mode = 1, Baud = "1200", Delay = DefaultDelay(1200, 4), Eol = 0 },                // TRS-80 / NEC
-            new ModelCfg { Mode = 1, Delay = DefaultDelay(9600, 5) } };                                      // other UART
+            new ModelCfg { Mode = 1, Delay = DefaultDelay(9600, 5) },                                        // other UART
+            new ModelCfg { Mode = 2, Baud = "1200", Delay = DefaultDelay(1200, 1), Eof = false } };         // Canon X07
         int curModel = -1, startModel = 1;
         string startPort;
-        static readonly string[] ModelNames = { "PC-1500", "PC-1600", "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450", "Sharp other", "FX-850/870", "TRS-80", "UART Other" };
+        static readonly string[] ModelNames = { "PC-1500", "PC-1600", "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450", "Sharp other", "FX-850/870", "TRS-80", "UART Other", "Canon X07" };
         static readonly string[] GroupNames = { "PC-1500", "PC-1600", "Other Sharp" };
         static readonly string[] ModeNames = { "Software UART", "RS-232", "TTL-UART" };
         static readonly string[] EolNames = { "CR", "CR+LF", "LF" };
@@ -680,10 +694,10 @@ namespace UartSlTest
             int m = GroupOf(prof);
             var c = cfg[prof];
             if (m == 1 && c.Mode == 0) { c.Mode = 1; c.Baud = "4800"; }      // PC-1600: the Software Serial is blocked; RS-232 at 4800 bps is the default
-            if (m == 2 || m == 3 || (m == 5 && c.Mode == 2)) radioSio.Checked = true;
+            if (m == 2 || m == 3 || m == 6 || (m == 5 && c.Mode == 2)) radioSio.Checked = true;
             else if (m == 4 || m == 5 || c.Mode == 1) radioRs.Checked = true;
             else radioSoft.Checked = true;
-            savedBaud = Array.IndexOf(TextBaudsFor(m), c.Baud) >= 0 ? c.Baud : (m == 3 ? "4800" : "9600");
+            savedBaud = Array.IndexOf(TextBaudsFor(m), c.Baud) >= 0 ? c.Baud : (m == 3 ? "4800" : m == 6 ? "1200" : "9600");
             savedSoftBaud = Array.IndexOf(SoftBauds, c.SoftBaud) >= 0 ? c.SoftBaud : "9600";
             numDelay.Value = Math.Max(numDelay.Minimum, Math.Min(numDelay.Maximum, c.Delay));
             comboEol.SelectedIndex = c.Eol >= 0 && c.Eol < 3 ? c.Eol : 1;
@@ -865,7 +879,8 @@ namespace UartSlTest
         static readonly string[] SoftBauds = { "1200", "2400", "4800", "9600", "19200" };
         static readonly string[] FxBauds = { "300", "600", "1200", "2400", "4800" };      // Casio FX-850P / 870P: BASIC offers 150 to 4800 bps
         static readonly string[] UartBauds = { "300", "600", "1200", "2400", "4800", "9600", "19200", "38400", "57600", "115200" };   // UART Other: up to 115200
-        static string[] TextBaudsFor(int m) { return m == 3 ? FxBauds : m == 5 ? UartBauds : TextBauds; }
+        static readonly string[] X07Bauds = { "300", "600", "1200", "2400", "4800" };      // Canon X07: 300 to 4800 bps, 1200 is the default
+        static string[] TextBaudsFor(int m) { return m == 3 ? FxBauds : m == 5 ? UartBauds : m == 6 ? X07Bauds : TextBauds; }
 
         // the combo has all the speeds for the text modes and the five speeds of the SL installer for the Software UART
         void FillBaud(string[] list)
@@ -890,7 +905,8 @@ namespace UartSlTest
         {
             rs232 = radioRs.Checked || radioSio.Checked;
             bool softEdit = !rs232 && !radio1500.Checked;                  // Software UART of the PC-1600: the speed can be chosen
-            numDelay.Enabled = btnTerminal.Enabled = comboEol.Enabled = comboFlow.Enabled = chkEof.Enabled = rs232;
+            numDelay.Enabled = comboEol.Enabled = comboFlow.Enabled = chkEof.Enabled = rs232;
+            btnTerminal.Enabled = rs232 && port != null && port.IsOpen;                       // the Terminal needs an open port
             chkAuto.Enabled = !rs232;
             comboBaud.Enabled = false;                                      // (so that filling the list does not change the saved values)
             FillBaud(rs232 ? TextBaudsFor(curModel) : SoftBauds);
@@ -899,6 +915,7 @@ namespace UartSlTest
             tips.SetToolTip(comboBaud, softEdit
                 ? "Baud rate of the Software UART (8N1), the same as chosen in the SL installer. 9600 is the default and recommended, 19200 is fast, the lower speeds 4800 and 2400 (and 1200) are more reliable."
                 : rs232 ? "Baud rate (8N1) of the text transfer." : "Baud rate: fixed 4800 for the Saver/Loader of the PC-1500.");
+            if (curModel == 6 && comboFlow.SelectedIndex == 3) comboFlow.SelectedIndex = 1;       // the Canon X07: no DSR/DTR
             ApplyFlow();
             if (!rs232 && term != null) term.Close();
             lblHint.Text = HintText();
@@ -1147,6 +1164,7 @@ namespace UartSlTest
         void SetRefreshMode(bool open)
         {
             btnFlush.Enabled = btnReset.Enabled = btnTest.Enabled = open;
+            btnTerminal.Enabled = open && rs232;                                               // Terminal: text modes with an open port only
         }
 
         // close the port and open it again with the current settings; the buffers are cleared
@@ -1811,7 +1829,7 @@ namespace UartSlTest
             string name = (string)lstFiles.SelectedItem;
             string path = Path.Combine(txtDir.Text, name);
             string ext = Path.GetExtension(name).ToLowerInvariant();
-            if (curModel > 2) { Log("WAV: the converters are for the Sharp PC-1500, PC-1600, PC-1350, PC-1360, PC-E500 and PC-E500S (choose the computer in the Target computer box)."); return; }
+            if (curModel > 2 && curModel != 6) { Log("WAV: the converters are for the Sharp PC-1500, PC-1600, PC-1350, PC-1360, PC-E500, PC-E500S and the Canon X07 (choose the computer in the Target computer box)."); return; }
             if (curProf == 6 || curProf == 7) { Log("WAV: tokenization and tape format is not supported for this computer (PC-1450..75 / other)."); return; }
             try
             {
@@ -1857,6 +1875,23 @@ namespace UartSlTest
             string baseName = Path.GetFileNameWithoutExtension(path);
             string tape = new string(baseName.ToUpperInvariant().Where(c => (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')).ToArray());
             if (tape.Length == 0) tape = "PROGRAM";
+            if (curModel == 6)
+            {
+                string pr6;
+                byte[] img6 = X07Tok.Tokenize(src, out pr6);
+                if (img6 == null) { Log("WAV: tokenizer error: " + pr6); return; }
+                string tn6 = tape.Substring(0, Math.Min(6, tape.Length));
+                byte[] w6 = TapeWav.EncodeX07(tn6, img6);
+                string out6 = UniquePath2(Path.Combine(txtDir.Text, baseName + "_X07.wav"));
+                File.WriteAllBytes(out6, w6);
+                TapeWav.WavInfo wi6; int wo6, wl6; TapeWav.Parse(w6, out wi6, out wo6, out wl6);
+                ConvWait();
+                Log("WAV written: " + Path.GetFileName(out6) + " (Canon X07, 1200 baud, tape name " + tn6 + ", " + Math.Round(wi6.Seconds, 1).ToString(System.Globalization.CultureInfo.InvariantCulture) + " s). Load it on the X07 with CLOAD.");
+                RefreshFiles();
+                int ix6 = lstFiles.Items.IndexOf(Path.GetFileName(out6));
+                if (ix6 >= 0) lstFiles.SelectedIndex = ix6;
+                return;
+            }
             if (curModel == 2)
             {
                 int pc = curProf == 2 ? 1350 : curProf == 3 ? 1360 : 500;         // the model is chosen in the Target computer box
@@ -1917,6 +1952,25 @@ namespace UartSlTest
             byte[] wav = File.ReadAllBytes(path);
             string name = null, text = null, why0 = null, why1 = null;
             string how = null;
+            if (curModel == 6)
+            {
+                string pr6, name6, warn6;
+                byte[] prog6;
+                try { prog6 = TapeWav.DecodeX07(wav, out name6, out warn6); }
+                catch (Exception ex) { Log("WAV: the recording cannot be decoded (Canon X07: " + ex.Message + ")."); return; }
+                string text6 = X07Tok.Detokenize(prog6, out pr6);
+                if (warn6 != null) Log("WAV: " + warn6 + ".");
+                if (pr6 != null) Log("WAV: conversion problem: " + pr6);
+                string base6 = SharpBase(Path.GetFileNameWithoutExtension(path));
+                string outx = UniqueSharp(base6, ".bas");
+                File.WriteAllBytes(outx, Encoding.GetEncoding(28591).GetBytes(text6));
+                ConvWait();
+                Log("WAV decoded (Canon X07" + (string.IsNullOrEmpty(name6) ? "" : ", tape name " + name6) + ") -> " + Path.GetFileName(outx) + ".");
+                RefreshFiles();
+                int ix6 = lstFiles.Items.IndexOf(Path.GetFileName(outx));
+                if (ix6 >= 0) lstFiles.SelectedIndex = ix6;
+                return;
+            }
             if (curModel == 2)
             {
                 string warn2;
@@ -2963,6 +3017,31 @@ int removed, kept, cut; List<string> moved;
         }
 
         // a generic pocket computer (for any computer with a UART): a one-line display, a key matrix and a cable on the side
+        // Canon X-07: a small dark grey body, a four line LCD at the top and rows of small keys
+        static void DrawX07(Graphics g, int kx, int top)
+        {
+            var state = g.Save();
+            g.TranslateTransform(kx, top + 60);
+            g.ScaleTransform(0.7F, 0.7F);
+            g.TranslateTransform(-kx, -(top + 60));
+            float bx = kx - 85, by = top + 8, bw = 170, bh = 82;
+            Action<float, float, float, float, Color> R = (fx, fy, fw, fh, c) =>
+            {
+                using (var b = new SolidBrush(c)) g.FillRectangle(b, bx + fx * bw, by + fy * bh, fw * bw, fh * bh);
+            };
+            FillRound(g, Color.FromArgb(25, 25, 28), kx - 86, top + 10, 172, 82, 6);
+            FillRound(g, Color.FromArgb(92, 96, 104), bx, by, bw, bh, 6);
+            FillRound(g, Color.FromArgb(40, 42, 46), bx + .08F * bw, by + .06F * bh, .84F * bw, .32F * bh, 2);
+            R(.10F, .10F, .80F, .24F, Color.FromArgb(172, 182, 160));
+            for (int row = 0; row < 4; row++)
+                for (int c = 0; c < 20; c++) R(.11F + c * .038F, .12F + row * .055F, .028F, .035F, Color.FromArgb(70, 80, 64));
+            using (var f = new Font("Arial", 5F, FontStyle.Bold)) Text(g, "CANON  X-07", f, Color.FromArgb(235, 235, 235), bx + .5F * bw, by + .39F * bh);
+            for (int row = 0; row < 4; row++)
+                for (int c = 0; c < (row == 3 ? 8 : 12); c++)
+                    R(.08F + c * .072F + (row == 3 ? .12F : 0), .50F + row * .115F, .058F, .08F, row == 0 ? Color.FromArgb(205, 130, 40) : Color.FromArgb(40, 42, 48));
+            g.Restore(state);
+        }
+
         static void DrawGenericPocket(Graphics g, int kx, int top)
         {
             var state = g.Save();
@@ -3176,6 +3255,7 @@ int removed, kept, cut; List<string> moved;
             else if (Model == 3) DrawCasio(g, kx, top);
             else if (Model == 4) DrawTrs80(g, kx, top);
             else if (Model == 5) DrawGenericPocket(g, kx, top);
+            else if (Model == 6) DrawX07(g, kx, top);
             else DrawPc1600(g, kx, top);
 
             // captions
@@ -3681,12 +3761,13 @@ int removed, kept, cut; List<string> moved;
             Add("Casio FX-850P / FX-870P", 1, 65535, 255, 0, true, true, false, false, Core + Casio);
             Add("NEC PC-8201 / TRS-80 Model 100", 0, 65529, 255, 0, true, true, false, false, Core + Model100);
             Add("Other computer (general check)", 0, 65535, 0, 0, true, false, false, false, Core + Sharp1350 + Sharp1360 + SharpE500 + Casio + Model100);
+            Add("Canon X07", 0, 9999, 79, 0, true, false, false, false, Core + " " + string.Join(" ", X07Tok.WordKeywords()));
         }
 
         // profile of the target computer of SerComet: 0 PC-1500, 1 PC-1600, 2 other Sharp, 3 Casio, 4 TRS-80 / NEC, 5 other UART
         public static int ProfileOfTarget(int model)
         {
-            return model == 0 ? 0 : model == 1 ? 1 : model == 2 ? 3 : model == 3 ? 6 : model == 4 ? 7 : 8;
+            return model == 0 ? 0 : model == 1 ? 1 : model == 2 ? 3 : model == 3 ? 6 : model == 4 ? 7 : model == 6 ? 9 : 8;
         }
 
         static readonly Regex RxStr = new Regex("\"[^\"]*\"?", RegexOptions.Compiled);
@@ -4112,10 +4193,10 @@ int removed, kept, cut; List<string> moved;
             MaximizeBox = MinimizeBox = false;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(560, 12 + 11 * 32 + 52);
+            ClientSize = new Size(560, 12 + 12 * 32 + 52);
             try { Icon = Icons.AppIcon(); } catch { }
             var tt = new WrapToolTip { AutoPopDelay = 9000, InitialDelay = 400, ShowAlways = true };
-            string[] names = { "PC-1500", "PC-1600", "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450..75", "Sharp other", "FX-850/870", "TRS-80", "UART Other" };
+            string[] names = { "PC-1500", "PC-1600", "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450..75", "Sharp other", "FX-850/870", "TRS-80", "UART Other", "Canon X07" };
             for (int i = 0; i < 11; i++)
             {
                 int row = i;
@@ -4134,11 +4215,11 @@ int removed, kept, cut; List<string> moved;
                 tt.SetToolTip(browse, "Choose the folder.");
                 Controls.AddRange(new Control[] { boxes[i], browse });
             }
-            var defs = new Button { Text = "Defaults", Left = 12, Top = 12 + 11 * 32 + 14, Width = 90, Height = 26 };
+            var defs = new Button { Text = "Defaults", Left = 12, Top = 12 + 12 * 32 + 14, Width = 90, Height = 26 };
             defs.Click += delegate { for (int i = 0; i < 11; i++) boxes[i].Text = defaults[i]; };
             tt.SetToolTip(defs, "Restore the standard folders (in Documents).");
-            var ok = new Button { Text = "OK", Left = 370, Top = 12 + 11 * 32 + 14, Width = 85, Height = 26, DialogResult = DialogResult.OK };
-            var cancel = new Button { Text = "Cancel", Left = 465, Top = 12 + 11 * 32 + 14, Width = 85, Height = 26, DialogResult = DialogResult.Cancel };
+            var ok = new Button { Text = "OK", Left = 370, Top = 12 + 12 * 32 + 14, Width = 85, Height = 26, DialogResult = DialogResult.OK };
+            var cancel = new Button { Text = "Cancel", Left = 465, Top = 12 + 12 * 32 + 14, Width = 85, Height = 26, DialogResult = DialogResult.Cancel };
             Controls.AddRange(new Control[] { defs, ok, cancel });
             AcceptButton = ok;
             CancelButton = cancel;
@@ -4981,6 +5062,149 @@ int removed, kept, cut; List<string> moved;
     //   MODE 1: the PC-1500 / CE-150 tape format (PC-1500 and the PC-1600 in MODE 1), the program is the tokenized image,
     //   MODE 0: the PC-1600 format for the CE-1600P (LOAD "CAS:NAME"), the program is an ASCII BASIC file.
     // 44100 Hz, 8 bit, mono. Decoding reads back what the encoders write (and the recordings of the same tools).
+    // Canon X-07 BASIC: the program as it is in the memory and on the tape: lines [pointer to the next line 2 B][line number 2 B][tokens and text][00];
+    // the first line is at 0553H and the pointers are absolute addresses; a token is a byte from 80H (the table of the Canon X-07 BASIC).
+    // The keywords are tokenized everywhere outside quotation marks, REM and DATA (an apostrophe is :REM' = 3AH 8EH FFH); ELSE gets a colon before it.
+    public static class X07Tok
+    {
+        const int Start = 0x0553;
+        const int MaxLine = 9999, MaxBody = 79;
+
+        public static readonly string[] Names = ("END FOR NEXT DATA INPUT DIM READ LET GOTO RUN IF RESTORE GOSUB RETURN REM STOP ELSE TR MOTOR DEFSTR DEFINT DEFSNG DEFDBL LINE ERROR RESUME OUT ON LPRINT DEFFN POKE PRINT " +
+            "CONT LIST LLIST CLEAR CIRCLE CONSOLE CLS COLOR EXEC LOCATE PSET PRESET OFF SLEEP DIR DELETE FSET PAINT LOAD SAVE INIT ERASE BEEP CLOAD CSAVE NEW TAB( TO FN USING ERL ERR " +
+            "STRING$ INSTR INKEY$ INP VARPTR USR SNS ALM$ DATE$ TIME$ START$ FONT$ KEY$ SCREEN THEN NOT STEP + - * / ^ AND OR XOR EQV MOD \\ > = < SGN " +
+            "INT ABS FRE POS SQR RND LOG EXP COS SIN TAN ATN PEEK CINT CSNG CDBL FIX LEN HEX$ STR$ VAL ASC CHR$ TKEY LEFT$ RIGHT$ MID$ CSRLIN STICK STRIG POINT '").Split(' ');
+
+        static readonly List<KeyValuePair<string, int>> Kw = Names.Select((n, i) => new KeyValuePair<string, int>(n, 0x80 + i)).Where(k => k.Key != "'").OrderByDescending(k => k.Key.Length).ToList();
+
+        // the keywords made of letters (for the checks of Check Basic)
+        public static List<string> WordKeywords()
+        {
+            var l = new List<string>();
+            foreach (string n in Names) if (n.Length > 0 && char.IsLetter(n[0])) l.Add(n.TrimEnd('('));
+            return l;
+        }
+
+        // lines of BASIC text -> the program (the lines + 12 NUL bytes: 13 NUL bytes with the end of the last line); null and problem = an error
+        public static byte[] Tokenize(string text, out string problem)
+        {
+            problem = null;
+            var o = new List<byte>();
+            int addr = Start, fileLine = 0, prev = -1;
+            foreach (string raw in text.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\u001A", "").Split('\n'))
+            {
+                fileLine++;
+                string t = raw.TrimEnd();
+                if (t.Trim().Length == 0) continue;
+                Match m = Regex.Match(t, @"^\s*(\d+) ?(.*)$");
+                if (!m.Success || m.Groups[1].Value.Length > 5) { problem = "line " + fileLine + " of the file has no line number."; return null; }
+                int num = int.Parse(m.Groups[1].Value);
+                if (num > MaxLine) { problem = "line " + fileLine + ": the line number " + num + " is above " + MaxLine + "."; return null; }
+                byte[] body = Body(m.Groups[2].Value);
+                if (body.Length > MaxBody) { problem = "line " + num + " is too long (" + body.Length + " bytes, the X07 accepts " + MaxBody + ")."; return null; }
+                addr += 4 + body.Length + 1;
+                if (addr > 0xFFFF) { problem = "the program is too long."; return null; }
+                o.Add((byte)(addr & 255)); o.Add((byte)(addr >> 8)); o.Add((byte)(num & 255)); o.Add((byte)(num >> 8));
+                o.AddRange(body); o.Add(0);
+                prev = num;
+            }
+            if (prev < 0) { problem = "the file has no numbered lines."; return null; }
+            for (int k = 0; k < 12; k++) o.Add(0);
+            return o.ToArray();
+        }
+
+        static byte[] Body(string s)
+        {
+            var o = new List<byte>();
+            int i = 0; bool q = false;
+            while (i < s.Length)
+            {
+                char c = s[i];
+                if (c == '"') { q = !q; o.Add(0x22); i++; continue; }
+                if (q) { o.Add((byte)c); i++; continue; }
+                if (c == '\'')
+                {
+                    o.Add(0x3A); o.Add(0x8E); o.Add(0xFF);
+                    for (i++; i < s.Length; i++) o.Add((byte)s[i]);
+                    break;
+                }
+                int tok = -1, len = 0;
+                foreach (var k in Kw)
+                    if (string.Compare(s, i, k.Key, 0, k.Key.Length, StringComparison.OrdinalIgnoreCase) == 0) { tok = k.Value; len = k.Key.Length; break; }
+                if (tok < 0) { o.Add((byte)c); i++; continue; }
+                if (tok == 0x90)                                    // ELSE: a colon before it
+                {
+                    int j = o.Count - 1;
+                    while (j >= 0 && o[j] == 0x20) j--;
+                    if (j < 0 || o[j] != 0x3A) o.Add(0x3A);
+                }
+                o.Add((byte)tok); i += len;
+                if (tok == 0x8E) { for (; i < s.Length; i++) o.Add((byte)s[i]); break; }                  // REM: the rest is a comment
+                if (tok == 0x83)                                    // DATA: the text up to the next colon outside quotation marks
+                {
+                    bool dq = false;
+                    for (; i < s.Length; i++)
+                    {
+                        if (s[i] == '"') dq = !dq;
+                        else if (s[i] == ':' && !dq) break;
+                        o.Add((byte)s[i]);
+                    }
+                }
+            }
+            return o.ToArray();
+        }
+
+        // the program -> BASIC text (CR+LF after every line); problem = a warning (the text is still returned)
+        public static string Detokenize(byte[] prog, out string problem)
+        {
+            problem = null;
+            var sb = new StringBuilder();
+            int p = 0, n = 0;
+            while (p + 4 <= prog.Length)
+            {
+                int ptr = prog[p] | prog[p + 1] << 8;
+                if (ptr == 0) break;
+                int num = prog[p + 2] | prog[p + 3] << 8;
+                int e = p + 4;
+                while (e < prog.Length && prog[e] != 0) e++;
+                if (e >= prog.Length) problem = "the last line is not finished.";
+                sb.Append(num).Append(' ').Append(Text(prog, p + 4, e)).Append("\r\n");
+                n++;
+                p = e + 1;
+            }
+            if (n == 0) problem = "no BASIC line found.";
+            return sb.ToString();
+        }
+
+        static string Text(byte[] b, int s, int e)
+        {
+            var o = new StringBuilder();
+            bool q = false, lit = false, data = false;
+            for (int i = s; i < e; i++)
+            {
+                byte c = b[i];
+                if (lit) { o.Append((char)c); continue; }
+                if (q) { o.Append((char)c); if (c == 0x22) q = false; continue; }
+                if (data)
+                {
+                    if (c == 0x22) { q = true; o.Append('"'); continue; }
+                    if (c == 0x3A) data = false;
+                    o.Append((char)c); continue;
+                }
+                if (c == 0x22) { q = true; o.Append('"'); continue; }
+                if (c == 0x3A && i + 2 < e && b[i + 1] == 0x8E && b[i + 2] == 0xFF) { o.Append('\''); lit = true; i += 2; continue; }
+                if (c >= 0x80)
+                {
+                    o.Append(Names[c - 0x80]);
+                    if (c == 0x8E) lit = true; else if (c == 0x83) data = true;
+                    continue;
+                }
+                o.Append((char)c);
+            }
+            return o.ToString();
+        }
+    }
+
     public static class TapeWav
     {
         public struct WavInfo { public int Channels, Rate, Bits; public long DataBytes; public double Seconds; }
@@ -5416,6 +5640,100 @@ int removed, kept, cut; List<string> moved;
             return WavFile(buf, (int)Fs);
         }
 
+        // ================================================================ Canon X-07 tape: 1200 baud FSK, 0 = one cycle of 1200 Hz, 1 = two cycles of 2400 Hz;
+        // a byte = 1 start bit (0), 8 data bits (LSB first), 2 stop bits (1). 4 s of 2400 Hz, 10 x D3H, the name (6 characters), 0.25 s of 2400 Hz,
+        // the program (the lines of the tokenizer, the last line is followed by 13 NUL bytes in all), 0.5 s of 2400 Hz.
+        public static byte[] EncodeX07(string name, byte[] prog)
+        {
+            var bytes = new List<byte>();
+            for (int k = 0; k < 10; k++) bytes.Add(0xD3);
+            byte[] nb = Encoding.GetEncoding(28591).GetBytes((name ?? "").ToUpperInvariant());
+            for (int k = 0; k < 6; k++) bytes.Add(k < nb.Length ? nb[k] : (byte)0x20);     // a shorter name is filled with spaces
+            var bits = new List<int>();
+            for (int k = 0; k < 4800; k++) bits.Add(1);                                   // 4 s
+            Action<byte> put = bt => { bits.Add(0); for (int k = 0; k < 8; k++) bits.Add((bt >> k) & 1); bits.Add(1); bits.Add(1); };
+            foreach (byte b in bytes) put(b);
+            for (int k = 0; k < 300; k++) bits.Add(1);                                    // 0.25 s
+            foreach (byte b in prog) put(b);
+            for (int k = 0; k < 600; k++) bits.Add(1);                                    // 0.5 s
+            var edges = new List<double>();
+            double t = 0;
+            Action<double, int> tone = (f, cycles) => { double half = Fs / f / 2; for (int c = 0; c < cycles; c++) { t += half; edges.Add(t); t += half; edges.Add(t); } };
+            foreach (int b in bits) { if (b != 0) tone(2400, 2); else tone(1200, 1); }
+            int total = (int)t + 1;
+            var buf = new byte[total];
+            for (int i = 0; i < total; i++) buf[i] = 128;
+            double pos = 0; bool high = true;
+            foreach (double e in edges)
+            {
+                long a = Round(pos), z = Round(e);
+                byte v = high ? (byte)226 : (byte)30;
+                for (long i = a; i < z && i < total; i++) buf[i] = v;
+                pos = e; high = !high;
+            }
+            return WavFile(buf, (int)Fs);
+        }
+
+        // returns the lines of the program (as the tokenizer makes them, without the NUL bytes at the end); warn = a message when the recording is cut
+        public static byte[] DecodeX07(byte[] wav, out string name, out string warn)
+        {
+            warn = null; name = "";
+            int rate;
+            byte[] d = Samples(wav, out rate);
+            var rise = new List<int>();
+            bool prev = d.Length > 0 && d[0] >= 128;
+            for (int i = 0; i < d.Length; i++) { bool s = d[i] >= 128; if (s && !prev) rise.Add(i); prev = s; }
+            // the header: the first long run of 2400 Hz cycles (the noise before it and the short tones are skipped)
+            int run = 0, from = -1;
+            for (int i = 1; i < rise.Count && from < 0; i++)
+            {
+                double us = (rise[i] - rise[i - 1]) * 1e6 / rate;
+                if (us <= 620) run++;
+                else { if (run >= 2400) from = i; run = 0; }
+            }
+            if (from < 0) throw new Exception("no Canon X-07 tape header (a long 2400 Hz tone) found");
+            var bits = new List<int>();
+            char cur = ' '; double acc = 0;
+            Action flush = () => { if (cur == 'H' || cur == 'L') { long n = Round(acc / (1e6 / 1200)); for (long k = 0; k < n; k++) bits.Add(cur == 'H' ? 1 : 0); } };
+            for (int i = from; i < rise.Count; i++)
+            {
+                double us = (rise[i] - rise[i - 1]) * 1e6 / rate;
+                char c = us > 1100 ? 'G' : us > 620 ? 'L' : 'H';
+                if (c == cur) acc += us; else { flush(); cur = c; acc = us; }
+            }
+            flush();
+            int ix = 0;
+            while (ix < bits.Count && bits[ix] == 1) ix++;
+            var by = new List<int>();
+            while (ix + 9 <= bits.Count)
+            {
+                if (bits[ix] != 0) { ix++; continue; }
+                int v = 0; for (int k = 0; k < 8; k++) v |= bits[ix + 1 + k] << k;
+                by.Add(v); ix += 9;
+                while (ix < bits.Count && bits[ix] == 1) ix++;
+            }
+            int k0 = 0;
+            while (k0 < by.Count && by[k0] == 0xD3) k0++;
+            if (k0 < 3 || by.Count < k0 + 10) throw new Exception("no Canon X-07 program found in the recording");
+            var nm = new StringBuilder();
+            for (int k = 0; k < 6; k++) { int ch = by[k0 + k]; if (ch > 32) nm.Append((char)ch); }
+            name = nm.ToString();
+            int p = k0 + 6;
+            var prog = new List<byte>();
+            while (p + 4 <= by.Count)
+            {
+                int ptr = by[p] | by[p + 1] << 8;
+                if (ptr == 0) break;
+                int e = p + 4;
+                while (e < by.Count && by[e] != 0) e++;
+                if (e >= by.Count) { warn = "the recording ends inside a line (the last line is lost)"; break; }
+                for (int q = p; q <= e; q++) prog.Add((byte)by[q]);
+                p = e + 1;
+            }
+            if (prog.Count == 0) throw new Exception("the recording has no BASIC line");
+            return prog.ToArray();
+        }
+
         // returns the program image (without the end marker); warn = a message when a check sum does not agree
         public static byte[] Decode1350(byte[] wav, out string name, out int idByte, out string warn)
         {
@@ -5630,7 +5948,7 @@ int removed, kept, cut; List<string> moved;
 
     public static class AppInfo
     {
-        public const string Version = "1.6";      // 1.6: the Sharp (other) radio button has a box with the models PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..75, other (folder, Info text and WAV converter per model); 1.5: port TEST button, Renumber and Remove REM in the Files menu, no changes of the port / target / mode / options while a file is sent, default line delay for every baud rate; 1.1: Software UART speeds 1200 to 19200 (SL V3.0), settings.ini, .img files; 1.2: names of the programs checked for the Sharp; 1.4: file info tip, Skip REM, Check Basic, Files menu, drag out of the list; 1.3: PC-1500 Software UART (4800 bps), six target computers, Port settings box, Flush and Reset port, wrong baud rate warning
+        public const string Version = "1.6";      // 1.6: the Canon X07 (TTL-UART with inverted logic, WAV converter), the Terminal button only with an open port; the Sharp (other) radio button has a box with the models PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..75, other (folder, Info text and WAV converter per model); 1.5: port TEST button, Renumber and Remove REM in the Files menu, no changes of the port / target / mode / options while a file is sent, default line delay for every baud rate; 1.1: Software UART speeds 1200 to 19200 (SL V3.0), settings.ini, .img files; 1.2: names of the programs checked for the Sharp; 1.4: file info tip, Skip REM, Check Basic, Files menu, drag out of the list; 1.3: PC-1500 Software UART (4800 bps), six target computers, Port settings box, Flush and Reset port, wrong baud rate warning
     }
 
     // Names of programs for the pocket computers: the length and the characters that the Sharp accepts
