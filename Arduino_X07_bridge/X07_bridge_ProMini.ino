@@ -25,8 +25,10 @@
 //             2 = the X-07 side: a test line is sent to pin 11 every 0.5 s and everything received on pin 10 goes to the PC.
 //
 // The X-07 routine EE1F (EXEC &HEE1F, input of a program into the X-07) takes only about 30 bytes per second (the gist uses
-// "pv -L 30"): for that set TX_BYTE_DELAY_MS to 33. The bytes wait in a 512 byte queue; a larger file than the queue needs
-// a pause between the lines on the PC side (Line delay of SerComet), because there is no flow control to the PC.
+// "pv -L 30"): faster bytes give "I/O error" on the X-07, so TX_BYTE_DELAY_MS is 33. The PC sends faster (120 bytes/s at 1200
+// baud), so the bytes wait in a 512 byte queue and the sketch stops the PC with XOFF / XON. Set the flow control XON/XOFF in
+// SerComet (Flow) or in the terminal program. The X-07 wants CR as the end of a line (not CR+LF): Line end = CR in SerComet.
+// On the X-07 the same speed has to be set in INIT#5,"COM:",1200,... as in the sketch.
 
 #define TEST_MODE 0
 
@@ -41,7 +43,11 @@ static const bool     USE_HANDSHAKE   = false;   // RTS / CTS: off
 static const bool     INVERTED        = true;    // inverted logic on the X-07 side
 static const long     USB_BAUD        = 1200;    // the PC side
 static const long     X07_BAUD        = 1200;    // the X-07 side
-static const uint16_t TX_BYTE_DELAY_MS = 0;      // 0 = full speed; 33 = about 30 bytes/s for EXEC &HEE1F
+static const uint16_t TX_BYTE_DELAY_MS = 33;     // the time from the start of one byte to the start of the next one towards the X-07:
+                                                 // 33 = about 30 bytes/s (EXEC &HEE1F cannot take more: faster data give "I/O error" on the X-07);
+                                                 // 0 = full speed
+static const bool     XONXOFF_TO_PC   = true;    // the queue is slower than the PC: XOFF (13H) / XON (11H) are sent to the PC (SerComet: Flow
+                                                 // XON/XOFF, Tera Term: Flow control xon/xoff) so that no byte is lost
 
 static const uint32_t BIT_US = 1000000UL / X07_BAUD;
 
@@ -49,7 +55,8 @@ static const uint16_t QSIZE = 512;
 static uint8_t  q[QSIZE];
 static uint16_t qHead = 0, qTail = 0, qCount = 0;
 static uint32_t lastTx = 0, ledOffAt = 0;
-static bool loopbackWire = false;               // set at the start: pin 11 is wired to pin 10
+static bool loopbackWire = false;
+static bool xoffSent = false;               // set at the start: pin 11 is wired to pin 10
 
 static inline void waitUntil(uint32_t t) { while ((int32_t)(micros() - t) < 0) { } }
 
@@ -150,16 +157,23 @@ void loop()
     qCount++;
   }
 
+  // the flow control towards the PC
+  if (XONXOFF_TO_PC)
+  {
+    if (!xoffSent && qCount > QSIZE * 3 / 4) { Serial.write((uint8_t)0x13); xoffSent = true; }
+    else if (xoffSent && qCount < QSIZE / 4) { Serial.write((uint8_t)0x11); xoffSent = false; }
+  }
+
   // X-07 -> PC (a byte that the X-07 is sending now has the priority)
   if (!loopbackWire && startBitSeen()) { ledOn(); Serial.write(rxByte()); ledOff(); }
 
   // queue -> X-07 (one byte at a time, at most one per TX_BYTE_DELAY_MS)
   else if (qCount > 0 && (!USE_HANDSHAKE || digitalRead(PIN_CTS) == HIGH) && (uint32_t)(millis() - lastTx) >= TX_BYTE_DELAY_MS)
   {
+    lastTx = millis();                                          // the start of this byte (the spacing is measured from start to start)
     uint8_t heard = txByte(q[qTail]);
     qTail = (qTail + 1) % QSIZE;
     qCount--;
-    lastTx = millis();
     if (loopbackWire) { ledOn(); Serial.write(heard); ledOff(); }   // the loopback: what was heard on pin 10 goes back to the PC
   }
 #endif
