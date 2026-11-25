@@ -549,7 +549,6 @@ namespace UartSlTest
             if (curModel == 6)
                 return "Canon X07 has INVERTED TTL-UART logic. To connect it to a PC through USB you need an FTDI converter with inverted logic (set in its EEPROM with FT_Prog) " +
                        "or the Arduino converter described on the GitHub page of SerComet (folder Arduino_X07_bridge). TTL-UART only, 300 to 4800 bps (1200 is the default).\r\n" +
-                       "Flow: only None, XON/XOFF or RTS/CTS (no DSR/DTR). EOF (1AH): you have to decide yourself whether the marker is needed.\r\n" +
                        "Receiving a program in the X07 from SerComet: INIT #1,\"COM:\",1200,\"B\" and EXEC &HEE1F. Sending from the X07 to the PC: INIT #1,\"COM:\",1200,\"B\" and LIST#1.\r\n" +
                        "WAV: the tokenized program as a tape recording (CSAVE / CLOAD, 1200 baud FSK); a BASIC text file is converted to a recording and back.";
             if (curModel == 3)
@@ -607,7 +606,7 @@ namespace UartSlTest
 
         static string DefaultLocation(int i)
         {
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), new[] { "PC1500", "PC1600", "PC1350", "PC1360", "PCE500", "PCE500S", "PC1450", "SHARP_other", "Casio", "TRS-80", "UART", "X07" }[i]);
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), new[] { "PC1500", "PC1600", "PC1350", "PC1360", "PCE500", "PCE500S", "PC1450", "SHARP_other", "Casio", "TRS-80", "UART", "Canon_X07" }[i]);
         }
 
         // ------------------------------------------------------------------ settings.ini
@@ -5179,7 +5178,7 @@ int removed, kept, cut; List<string> moved;
         static string Text(byte[] b, int s, int e)
         {
             var o = new StringBuilder();
-            bool q = false, lit = false, data = false;
+            bool q = false, lit = false, data = false, con = false;
             for (int i = s; i < e; i++)
             {
                 byte c = b[i];
@@ -5193,12 +5192,16 @@ int removed, kept, cut; List<string> moved;
                 }
                 if (c == 0x22) { q = true; o.Append('"'); continue; }
                 if (c == 0x3A && i + 2 < e && b[i + 1] == 0x8E && b[i + 2] == 0xFF) { o.Append('\''); lit = true; i += 2; continue; }
+                if (c == 0x3A && i + 1 < e && b[i + 1] == 0x90) continue;                // the X07 does not list the colon before ELSE (SerComet adds it again)
                 if (c >= 0x80)
                 {
+                    if (con && c >= 0xE0) { o.Append((char)c); con = false; continue; }  // the X07 lists a byte E0H..FFH after CONSOLE as a character
                     o.Append(Names[c - 0x80]);
+                    con = c == 0xA5;
                     if (c == 0x8E) lit = true; else if (c == 0x83) data = true;
                     continue;
                 }
+                if (c != 0x20) con = false;
                 o.Append((char)c);
             }
             return o.ToString();
