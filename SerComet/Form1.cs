@@ -109,6 +109,8 @@ namespace UartSlTest
         void BuildUi()
         {
             ClientSize = new Size(ClientSize.Width, ClientSize.Height + 8);        // the title row is 60 px high (the Buy me a coffee picture is 60 x 60)
+            FormBorderStyle = FormBorderStyle.FixedSingle;                         // fixed size of the window: no resizing, no maximizing
+            MaximizeBox = false;
             const AnchorStyles TL = AnchorStyles.Top | AnchorStyles.Left;
             const AnchorStyles TR = AnchorStyles.Top | AnchorStyles.Right;
             const AnchorStyles TLR = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
