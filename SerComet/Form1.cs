@@ -4182,7 +4182,7 @@ int removed, kept, cut; List<string> moved;
     // Window for the folders of the programs (one per target computer)
     public class LocationsForm : Form
     {
-        readonly TextBox[] boxes = new TextBox[11];
+        readonly TextBox[] boxes = new TextBox[12];
         public string[] Result;
 
         public LocationsForm(string[] current, string[] defaults)
@@ -4195,8 +4195,8 @@ int removed, kept, cut; List<string> moved;
             ClientSize = new Size(560, 12 + 12 * 32 + 52);
             try { Icon = Icons.AppIcon(); } catch { }
             var tt = new WrapToolTip { AutoPopDelay = 9000, InitialDelay = 400, ShowAlways = true };
-            string[] names = { "PC-1500", "PC-1600", "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450..75", "Sharp other", "FX-850/870", "TRS-80", "UART Other", "Canon X07" };
-            for (int i = 0; i < 11; i++)
+            string[] names = { "PC-1500", "PC-1600", "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450..75", "Sharp other", "FX-850/870", "TRS-80", "UART Other", "Canon_X07" };
+            for (int i = 0; i < 12; i++)
             {
                 int row = i;
                 Controls.Add(new Label { Text = names[i] + ":", Left = 12, Top = 17 + i * 32, Width = 85 });
@@ -4215,7 +4215,7 @@ int removed, kept, cut; List<string> moved;
                 Controls.AddRange(new Control[] { boxes[i], browse });
             }
             var defs = new Button { Text = "Defaults", Left = 12, Top = 12 + 12 * 32 + 14, Width = 90, Height = 26 };
-            defs.Click += delegate { for (int i = 0; i < 11; i++) boxes[i].Text = defaults[i]; };
+            defs.Click += delegate { for (int i = 0; i < 12; i++) boxes[i].Text = defaults[i]; };
             tt.SetToolTip(defs, "Restore the standard folders (in Documents).");
             var ok = new Button { Text = "OK", Left = 370, Top = 12 + 12 * 32 + 14, Width = 85, Height = 26, DialogResult = DialogResult.OK };
             var cancel = new Button { Text = "Cancel", Left = 465, Top = 12 + 12 * 32 + 14, Width = 85, Height = 26, DialogResult = DialogResult.Cancel };
@@ -4225,8 +4225,8 @@ int removed, kept, cut; List<string> moved;
             FormClosing += delegate
             {
                 if (DialogResult != DialogResult.OK) return;
-                Result = new string[11];
-                for (int i = 0; i < 11; i++) Result[i] = boxes[i].Text.Trim().Length > 0 ? boxes[i].Text.Trim() : defaults[i];
+                Result = new string[12];
+                for (int i = 0; i < 12; i++) Result[i] = boxes[i].Text.Trim().Length > 0 ? boxes[i].Text.Trim() : defaults[i];
             };
         }
     }
