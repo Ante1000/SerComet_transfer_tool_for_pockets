@@ -2181,11 +2181,11 @@ namespace UartSlTest
                 int a = it.Text.IndexOf("Fail (");
                 string detail = a >= 0 ? it.Text.Substring(a + 6).TrimEnd(')') : "";       // the numbers of the lines from the test
                 if (it.Text.StartsWith("All lines have a line number"))
-                    res.Add("TEST. Lines without a line number (" + detail + ")");
+                    res.Add("TEST FAILED: Lines without a line number (" + detail + ")");
                 else if (it.Text.StartsWith("No repeated line numbers"))
-                    res.Add("TEST. Repeated line numbers (lines " + (detail.StartsWith("repeated: ") ? detail.Substring(10) : detail) + ")");
+                    res.Add("TEST FAILED: Repeated line numbers (lines " + (detail.StartsWith("repeated: ") ? detail.Substring(10) : detail) + ")");
                 else if (it.Text.StartsWith("Line numbers in ascending order"))
-                    res.Add("TEST. Line numbers are not in ascending order");
+                    res.Add("TEST FAILED: Line numbers are not in ascending order");
             }
             return res;
         }
