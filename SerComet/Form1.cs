@@ -500,7 +500,7 @@ namespace UartSlTest
             tips.SetToolTip(btnView, "WAV: PC-1500, PC-1600, PC-1350, PC-1360 and PC-E500 (the last three under Sharp (other)). A BASIC text file (.bas / .txt) is converted to a tape recording (.wav; the PC-1600 asks for MODE 0 = CE-1600P or MODE 1 = CE-150), a .wav recording is converted back to BASIC text.");
             tips.SetToolTip(chkEof, "Add the end-of-file marker. Text modes: after the file (and the dummy line) send the end-of-file character 1Ah (Ctrl-Z) so that the Sharp finishes the reception (1Ah is the end-of-file code of an ASCII file). Switch it off if the Sharp reports an error.");
             tips.SetToolTip(btnAbort, "Abort the transmission at once: stops sending the file and discards data waiting to be sent or received.");
-            tips.SetToolTip(btnConvert, "Software UART mode only. Convert the selected file: BASIC text (.bas, .txt) to a program image (.img), or a program image (.img, or a .bin that is a BASIC program) to BASIC text (.bas).");
+            tips.SetToolTip(btnConvert, "Software UART mode and Canon X07 only. Convert the selected file: BASIC text (.bas, .txt) to a program image (.img), or a program image (.img, or a .bin that is a BASIC program) to BASIC text (.bas).");
             tips.SetToolTip(chkSkipRem, "Skip REM: lines that contain only a comment (REM) are not sent to the pocket computer, to save its memory. A REM line that a GOTO / GOSUB points to is kept. Off by default. Not applied to ready program images (.img).");
             tips.SetToolTip(chkAuto, "Software UART. ON: the converter is active. A program received from the Sharp is saved as BASIC text (.bas) and BASIC files are tokenized automatically when sent (the image is not kept). OFF: only program images (.img) are used, no automatic conversion (use the Convert button).");
             tips.SetToolTip(btnLocations, "Set the default folders of the programs for PC-1500, PC-1600 and the other models.");
@@ -549,9 +549,9 @@ namespace UartSlTest
             if (curModel == 6)
                 return "Canon X07 has INVERTED TTL-UART logic. To connect it to a PC through USB you need an FTDI converter with inverted logic (set in its EEPROM with FT_Prog) " +
                        "or the Arduino converter described on the GitHub page of SerComet (folder Arduino_X07_bridge). TTL-UART only, 300 to 4800 bps (1200 is the default).\r\n" +
-                       "Receiving a program in the X07 from SerComet (Auto token on, the tokenized format): LOAD \"COM:\",1200 (the mode \"B\" is the default, INIT is not needed).\r\n" +
+                       "Receiving a program in the X07 from SerComet (Auto token on, the tokenized format, recommended): LOAD \"COM:\",1200 (the mode \"B\" is the default, INIT is not needed).\r\n" +
                        "Receiving a text listing (Auto token off): INIT #1,\"COM:\",1200,\"B\" and EXEC &HEE1F (the box EOF sends the line EXEC &HEE33 at the end).\r\n" +
-                       "Sending from the X07 to the PC: INIT #1,\"COM:\",1200,\"B\" and LIST#1.\r\n" +
+                       "Sending from the X07 to the PC: LIST#1 after INIT #1,\"COM:\",1200,\"B\" (a text listing, saved as .bas) or SAVE \"COM:\",1200 (tokenized; with Auto token on it is converted to a .bas listing, otherwise it is saved as .img and Convert makes the text of it).\r\n" +
                        "WAV: the tokenized program as a tape recording (CSAVE / CLOAD, 1200 baud FSK); a BASIC text file is converted to a recording and back.";
             if (curModel == 3)
                 return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
@@ -1122,7 +1122,7 @@ namespace UartSlTest
                 if (Directory.Exists(txtDir.Text))
                 {
                     var found = new List<string>();
-                    foreach (string pat in rs232 ? new[] { "*.bas", "*.txt", "*.wav" } : chkAuto.Checked ? new[] { "*.img", "*.bas", "*.txt", "*.wav" } : new[] { "*.img", "*.wav" })
+                    foreach (string pat in rs232 ? (curModel == 6 ? new[] { "*.bas", "*.txt", "*.img", "*.wav" } : new[] { "*.bas", "*.txt", "*.wav" }) : chkAuto.Checked ? new[] { "*.img", "*.bas", "*.txt", "*.wav" } : new[] { "*.img", "*.wav" })
                         foreach (string f in Directory.GetFiles(txtDir.Text, pat)) found.Add(Path.GetFileName(f));
                     found.Sort(StringComparer.OrdinalIgnoreCase);
                     lstFiles.Items.AddRange(found.ToArray());
@@ -1301,7 +1301,7 @@ namespace UartSlTest
                     if (prog) { rxStartLogged = true; started = true; }
                 }
                 if (!receiving) rxStartLogged = false;
-                int eofAt = rs232 ? rx.IndexOf(0x1A) : -1;     // 1Ah = end-of-file code of an ASCII file: finish at once
+                int eofAt = rs232 && curModel != 6 ? rx.IndexOf(0x1A) : -1;       // (the Canon X07 sends binary data: a 1Ah byte is not the end)     // 1Ah = end-of-file code of an ASCII file: finish at once
                 if (eofAt >= 0)
                 {
                     data = rx.GetRange(0, eofAt).ToArray();
@@ -1368,10 +1368,35 @@ namespace UartSlTest
             return true;
         }
 
+        // Canon X07: the stream of SAVE "COM:" (tokenized): a BASIC listing with Auto token on, otherwise a .img file; a text listing (LIST#1) goes the normal way
+        bool ReceivedX07(byte[] data)
+        {
+            if (!X07Tok.IsStream(data)) return false;
+            Directory.CreateDirectory(txtDir.Text);
+            string pr;
+            string text = X07Tok.Detokenize(data, out pr);
+            string name = SharpBase(ProgImage.NameFromText(Encoding.GetEncoding(28591).GetBytes(text)));
+            if (chkAuto.Checked)
+            {
+                string path = UniqueSharp(name, ".bas");
+                File.WriteAllBytes(path, Encoding.GetEncoding(28591).GetBytes(text));
+                Log("RECEIVED " + data.Length + " B (tokenized, SAVE \"COM:\") -> " + Path.GetFileName(path) + " (converted to BASIC text)." + (pr != null ? " Warning: " + pr : ""));
+            }
+            else
+            {
+                string path = UniqueSharp(name, ".img");
+                File.WriteAllBytes(path, data);
+                Log("RECEIVED " + data.Length + " B (tokenized, SAVE \"COM:\") -> " + Path.GetFileName(path) + " (Convert makes the BASIC text of it).");
+            }
+            RefreshFiles();
+            return true;
+        }
+
         void Received(byte[] data)
         {
             try
             {
+                if (curModel == 6 && ReceivedX07(data)) return;
                 if (rs232 && ReceivedInternalFormat(data)) return;
                 if (rs232 && !LooksLikeProgramText(data))
                 {
@@ -1528,6 +1553,30 @@ namespace UartSlTest
                 var enc = Encoding.GetEncoding(28591);
                 string problem;
                 string outPath;
+                if (curModel == 6)
+                {
+                    string pr6;
+                    if (ext == ".img" || ext == ".bin")
+                    {
+                        if (!X07Tok.IsStream(data)) { Log("Not converted: " + Path.GetFileName(path) + " is not a tokenized Canon X07 program (the stream of SAVE \"COM:\")."); return; }
+                        string txt6 = X07Tok.Detokenize(data, out pr6);
+                        outPath = UniquePathIn(Path.GetDirectoryName(path), Path.GetFileNameWithoutExtension(path), ".bas");
+                        File.WriteAllBytes(outPath, enc.GetBytes(txt6));
+                        ConvWait();
+                        Log("Converted " + Path.GetFileName(path) + " to BASIC text -> " + Path.GetFileName(outPath) + (pr6 != null ? " (warning: " + pr6 + ")" : ""));
+                    }
+                    else
+                    {
+                        byte[] img6 = X07Tok.Tokenize(enc.GetString(data), out pr6);
+                        if (img6 == null) { Log("Tokenizer error: " + pr6); return; }
+                        outPath = UniquePathIn(Path.GetDirectoryName(path), Path.GetFileNameWithoutExtension(path), ".img");
+                        File.WriteAllBytes(outPath, img6);
+                        ConvWait();
+                        Log("Converted " + Path.GetFileName(path) + " -> " + Path.GetFileName(outPath) + " (" + img6.Length + " B, the stream for LOAD \"COM:\")");
+                    }
+                    RefreshFiles();
+                    return;
+                }
                 if (ext == ".img" || ext == ".bin")
                 {
                     string err;
@@ -2161,7 +2210,7 @@ namespace UartSlTest
             if (btnConvert != null)
             {
                 string ext = sel ? Path.GetExtension((string)lstFiles.SelectedItem).ToLowerInvariant() : "";
-                btnConvert.Enabled = sel && !rs232 && (ext == ".bas" || ext == ".txt" || ext == ".img" || ext == ".bin");   // Software UART mode only
+                btnConvert.Enabled = sel && (!rs232 || curModel == 6) && (ext == ".bas" || ext == ".txt" || ext == ".img" || ext == ".bin");   // Software UART mode only
             }
         }
 
@@ -2442,7 +2491,9 @@ int removed, kept, cut; List<string> moved;
             byte[] data;
             try { data = File.ReadAllBytes(path); }
             catch (Exception ex) { Log("Read error: " + ex.Message); return; }
-            bool x07bin = curModel == 6 && rs232 && chkAuto.Checked;      // Canon X07: the tokenized program for LOAD "COM:" (the stream of SAVE "COM:")
+            string ext7 = Path.GetExtension(path).ToLowerInvariant();
+            bool x07img = curModel == 6 && rs232 && (ext7 == ".img" || ext7 == ".bin");               // a tokenized file is sent as it is
+            bool x07bin = curModel == 6 && rs232 && (chkAuto.Checked || x07img);      // Canon X07: the tokenized program for LOAD "COM:" (the stream of SAVE "COM:")
             bool text = rs232 && !x07bin;
             int delay = (int)numDelay.Value;
             bool eof = chkEof.Checked;
@@ -2472,7 +2523,12 @@ int removed, kept, cut; List<string> moved;
                     try { byte[] est = Pc1600Basic.Tokenize(src, curModel == 0, out pr); if (est != null) WarnSize(est.Length + 1, false); } catch { }
                 }
             }
-            if (x07bin)
+            if (x07img)
+            {
+                if (!X07Tok.IsStream(data)) { Log("File rejected: it is not a tokenized Canon X07 program (the stream of SAVE \"COM:\")."); return; }
+                Log("Canon X07: " + data.Length + " B tokenized program (for LOAD \"COM:\",1200).");
+            }
+            else if (x07bin)
             {
                 string src7 = Encoding.GetEncoding(28591).GetString(data);
                 if (chkSkipRem.Checked)
@@ -5109,6 +5165,23 @@ int removed, kept, cut; List<string> moved;
             var l = new List<string>();
             foreach (string n in Names) if (n.Length > 0 && char.IsLetter(n[0])) l.Add(n.TrimEnd('('));
             return l;
+        }
+
+        // is it the stream of SAVE "COM:" (lines with pointers that follow from the address 0553H)?
+        public static bool IsStream(byte[] d)
+        {
+            int p = 0, addr = Start, n = 0;
+            while (p + 4 <= d.Length)
+            {
+                int ptr = d[p] | d[p + 1] << 8;
+                if (ptr == 0) break;
+                int e = p + 4;
+                while (e < d.Length && d[e] != 0) e++;
+                if (e >= d.Length) return false;
+                if (ptr != addr + (e + 1 - p)) return false;
+                addr = ptr; p = e + 1; n++;
+            }
+            return n > 0;
         }
 
         // lines of BASIC text -> the program (the lines + 12 NUL bytes: 13 NUL bytes with the end of the last line); null and problem = an error
