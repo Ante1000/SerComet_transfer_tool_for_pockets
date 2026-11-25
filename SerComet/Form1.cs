@@ -549,7 +549,9 @@ namespace UartSlTest
             if (curModel == 6)
                 return "Canon X07 has INVERTED TTL-UART logic. To connect it to a PC through USB you need an FTDI converter with inverted logic (set in its EEPROM with FT_Prog) " +
                        "or the Arduino converter described on the GitHub page of SerComet (folder Arduino_X07_bridge). TTL-UART only, 300 to 4800 bps (1200 is the default).\r\n" +
-                       "Receiving a program in the X07 from SerComet: INIT #1,\"COM:\",1200,\"B\" and EXEC &HEE1F (the box EOF sends the line EXEC &HEE33 at the end). With the box Auto token on SerComet sends the tokenized program instead, for LOAD \"COM:\",1200,\"B\" (no INIT needed). Sending from the X07 to the PC: INIT #1,\"COM:\",1200,\"B\" and LIST#1.\r\n" +
+                       "Receiving a program in the X07 from SerComet (Auto token on, the tokenized format): LOAD \"COM:\",1200 (the mode \"B\" is the default, INIT is not needed).\r\n" +
+                       "Receiving a text listing (Auto token off): INIT #1,\"COM:\",1200,\"B\" and EXEC &HEE1F (the box EOF sends the line EXEC &HEE33 at the end).\r\n" +
+                       "Sending from the X07 to the PC: INIT #1,\"COM:\",1200,\"B\" and LIST#1.\r\n" +
                        "WAV: the tokenized program as a tape recording (CSAVE / CLOAD, 1200 baud FSK); a BASIC text file is converted to a recording and back.";
             if (curModel == 3)
                 return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
