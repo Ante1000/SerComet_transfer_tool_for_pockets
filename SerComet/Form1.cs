@@ -2176,8 +2176,17 @@ namespace UartSlTest
             int f, w;
             var prof = BasicCheck.Profiles[BasicCheck.ProfileOfTarget(curModel < 0 ? 1 : curModel)];
             foreach (CheckItem it in BasicCheck.Check(text, prof, out f, out w))
-                if (it.Level >= 1 && (it.Text.StartsWith("All lines have a line number") || it.Text.StartsWith("No repeated line numbers") || it.Text.StartsWith("Line numbers in ascending order")))
-                    res.Add(it.Text);
+            {
+                if (it.Level < 1) continue;
+                int a = it.Text.IndexOf("Fail (");
+                string detail = a >= 0 ? it.Text.Substring(a + 6).TrimEnd(')') : "";       // the numbers of the lines from the test
+                if (it.Text.StartsWith("All lines have a line number"))
+                    res.Add("TEST. Lines without a line number (" + detail + ")");
+                else if (it.Text.StartsWith("No repeated line numbers"))
+                    res.Add("TEST. Repeated line numbers (lines " + (detail.StartsWith("repeated: ") ? detail.Substring(10) : detail) + ")");
+                else if (it.Text.StartsWith("Line numbers in ascending order"))
+                    res.Add("TEST. Line numbers are not in ascending order");
+            }
             return res;
         }
 
@@ -2185,7 +2194,7 @@ namespace UartSlTest
         {
             if (warns == null || warns.Count == 0) return;
             string msg = "Renumber " + name + (done ? " is done, but the file had these faults:" : " was not done, because of these faults of the file:") + "\r\n\r\n" + string.Join("\r\n", warns.ToArray());
-            if (done && warns.Exists(x => x.StartsWith("Line numbers in ascending order")))
+            if (done && warns.Exists(x => x.StartsWith("TEST. Line numbers are not in ascending order")))
                 msg += "\r\n\r\nThe lines were numbered in the order of the FILE, so the order of the program may now differ from the one the computer would have made (it sorts the lines when they are entered).";
             MessageBox.Show(this, msg, "Renumber: warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
