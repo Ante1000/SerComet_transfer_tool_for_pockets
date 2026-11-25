@@ -549,7 +549,7 @@ namespace UartSlTest
             if (curModel == 6)
                 return "Canon X07 has INVERTED TTL-UART logic. To connect it to a PC through USB you need an FTDI converter with inverted logic (set in its EEPROM with FT_Prog) " +
                        "or the Arduino converter described on the GitHub page of SerComet (folder Arduino_X07_bridge). TTL-UART only, 300 to 4800 bps (1200 is the default).\r\n" +
-                       "Receiving a program in the X07 from SerComet: INIT #1,\"COM:\",1200,\"B\" and EXEC &HEE1F. Sending from the X07 to the PC: INIT #1,\"COM:\",1200,\"B\" and LIST#1.\r\n" +
+                       "Receiving a program in the X07 from SerComet: INIT #1,\"COM:\",1200,\"B\" and EXEC &HEE1F (the box EOF sends the line EXEC &HEE33 at the end). Sending from the X07 to the PC: INIT #1,\"COM:\",1200,\"B\" and LIST#1.\r\n" +
                        "WAV: the tokenized program as a tape recording (CSAVE / CLOAD, 1200 baud FSK); a BASIC text file is converted to a recording and back.";
             if (curModel == 3)
                 return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
@@ -650,7 +650,7 @@ namespace UartSlTest
             new ModelCfg { Mode = 2, Baud = "4800", Delay = DefaultDelay(4800, 3) },                         // Casio
             new ModelCfg { Mode = 1, Baud = "1200", Delay = DefaultDelay(1200, 4), Eol = 0 },                // TRS-80 / NEC
             new ModelCfg { Mode = 1, Delay = DefaultDelay(9600, 5) },                                        // other UART
-            new ModelCfg { Mode = 2, Baud = "1200", Delay = DefaultDelay(1200, 1), Eof = false } };         // Canon X07
+            new ModelCfg { Mode = 2, Baud = "1200", Delay = 100, Eol = 0, Eof = true } };                   // Canon X07: CR only (CR+LF made two line ends), 100 ms after a line, "EOF" = the line EXEC &HEE33
         int curModel = -1, startModel = 1;
         string startPort;
         static readonly string[] ModelNames = { "PC-1500", "PC-1600", "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450", "Sharp other", "FX-850/870", "TRS-80", "UART Other", "Canon X07" };
@@ -2575,7 +2575,16 @@ int removed, kept, cut; List<string> moved;
                         }
                     }
                     if (abortRequested) return;
-                    if (text && eof) p.Write(new byte[] { 0x1A }, 0, 1);
+                    if (text && eof)
+                    {
+                        if (curModel == 6)
+                        {
+                            // Canon X07: the end of the input of EXEC &HEE1F is the line EXEC &HEE33 (as in the Arduino gist of the X07); 1Ah is not used
+                            byte[] last = new List<byte>(Encoding.ASCII.GetBytes("EXEC &HEE33")).Concat(eol).ToArray();
+                            p.Write(last, 0, last.Length);
+                        }
+                        else p.Write(new byte[] { 0x1A }, 0, 1);
+                    }
                     while (p.BytesToWrite > 0) System.Threading.Thread.Sleep(10);
                     report(100);
                   }
