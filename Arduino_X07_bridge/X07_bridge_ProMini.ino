@@ -113,6 +113,9 @@ void setup()
   {
     pinMode(PIN_CTS, OUTPUT);                                  // the LED
     digitalWrite(PIN_CTS, LOW);
+    // three blinks after every start: if they appear each time a program opens the COM port, the board is reset by DTR
+    // (the sketch then starts 1 - 2 s after the port was opened and the first bytes sent in that time are lost)
+    for (uint8_t i = 0; i < 3; i++) { digitalWrite(PIN_CTS, HIGH); delay(100); digitalWrite(PIN_CTS, LOW); delay(150); }
   }
 }
 

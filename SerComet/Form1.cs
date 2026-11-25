@@ -4586,6 +4586,9 @@ int removed, kept, cut; List<string> moved;
                 p.ReadBufferSize = 4096; p.WriteTimeout = 3000;
                 p.Handshake = flow == 2 ? System.IO.Ports.Handshake.RequestToSend : flow == 1 ? System.IO.Ports.Handshake.XOnXOff : System.IO.Ports.Handshake.None;
                 p.Open();
+                // boards that reset when the port is opened (Arduino with a CH340 / FTDI: DTR -> RESET) start the sketch only after the
+                // boot loader time of 1 - 2 s; data sent earlier are lost
+                System.Threading.Thread.Sleep(2500);
                 if (flow == 3)
                 {
                     p.DtrEnable = true; System.Threading.Thread.Sleep(50);
