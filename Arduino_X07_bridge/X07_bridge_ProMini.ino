@@ -5,23 +5,30 @@
 //
 // This version does not use the library SoftwareSerial (it cannot receive while it transmits, so a wire between pin 11 and pin 10
 // is never heard). The UART of the X-07 side is bit-banged here: while a byte is transmitted, pin 10 is sampled in the middle of
-// every bit, so TEST_MODE 3 (pin 11 wired to pin 10) works as a loopback.
+// every bit, so a wire from pin 11 to pin 10 works as a loopback (see LOOPBACK below).
 //
-// RTS / CTS (pins 12 / 13) are switched off: USE_HANDSHAKE = false. Pin 13 (the LED of the Pro Mini) then shows the activity.
+// RTS / CTS (pins 12 / 13) are switched off: USE_HANDSHAKE = false. Pin 13 is then the LED of the Pro Mini.
 // 1200 baud on both sides, 8N1. Set the same speed in SerComet / the terminal; the bridge does not follow a speed change
 // of the PC, so the SerComet port test can pass only at USB_BAUD (the other speeds of the list FAIL by design).
 //
-// TEST_MODE:  0 = the bridge PC <-> X-07,
+// LED (pin 13 of the Pro Mini): lights up when a byte begins to arrive from the X-07 on pin 10 (the start bit) and goes out 80 ms
+// after the last byte. If it flickers with nothing connected, pin 10 is floating: put 10 k from pin 10 to GND (the idle level of
+// the inverted line is LOW, the gist has the same resistor). Three short blinks after every start = the sketch has (re)started.
+//
+// LOOPBACK: after every start the sketch sends 0x55 and 0xAA on pin 11 and listens on pin 10 meanwhile: when both come back, the wire
+// between pin 11 and pin 10 is there and the sketch works as a loopback (everything from the PC goes out on pin 11 and returns to
+// the PC): the SerComet port test at USB_BAUD passes then. One long blink = the loopback was found. Without the wire (the X-07
+// connected) the sketch is the bridge. Nothing has to be changed in the sketch to switch between the two.
+//
+// TEST_MODE:  0 = the bridge (and the loopback, see above),
 //             1 = the PC side only: everything received from the PC is sent back,
-//             2 = the X-07 side: a test line is sent to pin 11 every 0.5 s and everything received on pin 10 goes to the PC,
-//             3 = loopback: pin 11 wired to pin 10; every byte from the PC goes out on pin 11, is heard on pin 10 and returned
-//                 to the PC (the SerComet port test at USB_BAUD must pass: this checks the pins, the inversion and the timing).
+//             2 = the X-07 side: a test line is sent to pin 11 every 0.5 s and everything received on pin 10 goes to the PC.
 //
 // The X-07 routine EE1F (EXEC &HEE1F, input of a program into the X-07) takes only about 30 bytes per second (the gist uses
 // "pv -L 30"): for that set TX_BYTE_DELAY_MS to 33. The bytes wait in a 512 byte queue; a larger file than the queue needs
 // a pause between the lines on the PC side (Line delay of SerComet), because there is no flow control to the PC.
 
-#define TEST_MODE 3
+#define TEST_MODE 0
 
 #include <Arduino.h>
 
@@ -42,6 +49,7 @@ static const uint16_t QSIZE = 512;
 static uint8_t  q[QSIZE];
 static uint16_t qHead = 0, qTail = 0, qCount = 0;
 static uint32_t lastTx = 0, ledOffAt = 0;
+static bool loopbackWire = false;               // set at the start: pin 11 is wired to pin 10
 
 static inline void waitUntil(uint32_t t) { while ((int32_t)(micros() - t) < 0) { } }
 
@@ -49,12 +57,9 @@ static inline void waitUntil(uint32_t t) { while ((int32_t)(micros() - t) < 0) {
 static inline uint8_t pinLevel(uint8_t bit) { return INVERTED ? !bit : bit; }
 static inline uint8_t bitOfPin()            { uint8_t v = digitalRead(PIN_X07_RX); return INVERTED ? !v : v; }
 
-static void led()
-{
-  if (USE_HANDSHAKE) return;
-  digitalWrite(PIN_CTS, HIGH);
-  ledOffAt = millis() + 20;
-}
+// the LED: on, and off again 80 ms after the last call of ledOff()
+static void ledOn()  { if (!USE_HANDSHAKE) { digitalWrite(PIN_CTS, HIGH); ledOffAt = 0; } }
+static void ledOff() { if (!USE_HANDSHAKE) ledOffAt = millis() + 80; }
 
 static void ledPoll()
 {
@@ -117,12 +122,16 @@ void setup()
     // (the sketch then starts 1 - 2 s after the port was opened and the first bytes sent in that time are lost)
     for (uint8_t i = 0; i < 3; i++) { digitalWrite(PIN_CTS, HIGH); delay(100); digitalWrite(PIN_CTS, LOW); delay(150); }
   }
+  // is pin 11 wired to pin 10? (the pins and the inversion are tested at the same time)
+  delay(50);
+  loopbackWire = (txByte(0x55) == 0x55) && (txByte(0xAA) == 0xAA);
+  if (loopbackWire && !USE_HANDSHAKE) { digitalWrite(PIN_CTS, HIGH); delay(700); digitalWrite(PIN_CTS, LOW); }
 }
 
 void loop()
 {
 #if TEST_MODE == 1
-  while (Serial.available() > 0) { Serial.write((uint8_t)Serial.read()); led(); }
+  while (Serial.available() > 0) Serial.write((uint8_t)Serial.read());
 #elif TEST_MODE == 2
   static uint32_t last = 0;
   if ((uint32_t)(millis() - last) >= 500)
@@ -130,9 +139,8 @@ void loop()
     last = millis();
     const char *s = "X07 TEST 0123456789\r\n";
     for (; *s; s++) txByte((uint8_t)*s);
-    led();
   }
-  if (startBitSeen()) { Serial.write(rxByte()); led(); }
+  if (startBitSeen()) { ledOn(); Serial.write(rxByte()); ledOff(); }
 #else
   // PC -> queue
   while (Serial.available() > 0 && qCount < QSIZE)
@@ -143,7 +151,7 @@ void loop()
   }
 
   // X-07 -> PC (a byte that the X-07 is sending now has the priority)
-  if (startBitSeen() && TEST_MODE != 3) { Serial.write(rxByte()); led(); }
+  if (!loopbackWire && startBitSeen()) { ledOn(); Serial.write(rxByte()); ledOff(); }
 
   // queue -> X-07 (one byte at a time, at most one per TX_BYTE_DELAY_MS)
   else if (qCount > 0 && (!USE_HANDSHAKE || digitalRead(PIN_CTS) == HIGH) && (uint32_t)(millis() - lastTx) >= TX_BYTE_DELAY_MS)
@@ -152,8 +160,7 @@ void loop()
     qTail = (qTail + 1) % QSIZE;
     qCount--;
     lastTx = millis();
-    if (TEST_MODE == 3) Serial.write(heard);                   // the loopback: what was heard on pin 10 goes back to the PC
-    led();
+    if (loopbackWire) { ledOn(); Serial.write(heard); ledOff(); }   // the loopback: what was heard on pin 10 goes back to the PC
   }
 #endif
   ledPoll();
