@@ -46,6 +46,8 @@ static const long     X07_BAUD        = 1200;    // the X-07 side
 static const uint16_t TX_BYTE_DELAY_MS = 33;     // the time from the start of one byte to the start of the next one towards the X-07:
                                                  // 33 = about 30 bytes/s (EXEC &HEE1F cannot take more: faster data give "I/O error" on the X-07);
                                                  // 0 = full speed
+static const uint16_t LINE_DELAY_MS   = 500;     // the pause after a CR (the end of a line): the X-07 needs time to store the line and does not read
+                                                 // the port meanwhile (without it only the first line of a program arrives)
 static const bool     XONXOFF_TO_PC   = true;    // the queue is slower than the PC: XOFF (13H) / XON (11H) are sent to the PC (SerComet: Flow
                                                  // XON/XOFF, Tera Term: Flow control xon/xoff) so that no byte is lost
 
@@ -56,7 +58,8 @@ static uint8_t  q[QSIZE];
 static uint16_t qHead = 0, qTail = 0, qCount = 0;
 static uint32_t lastTx = 0, ledOffAt = 0;
 static bool loopbackWire = false;
-static bool xoffSent = false;               // set at the start: pin 11 is wired to pin 10
+static bool xoffSent = false;
+static bool lastWasCR = false;               // set at the start: pin 11 is wired to pin 10
 
 static inline void waitUntil(uint32_t t) { while ((int32_t)(micros() - t) < 0) { } }
 
@@ -168,9 +171,10 @@ void loop()
   if (!loopbackWire && startBitSeen()) { ledOn(); Serial.write(rxByte()); ledOff(); }
 
   // queue -> X-07 (one byte at a time, at most one per TX_BYTE_DELAY_MS)
-  else if (qCount > 0 && (!USE_HANDSHAKE || digitalRead(PIN_CTS) == HIGH) && (uint32_t)(millis() - lastTx) >= TX_BYTE_DELAY_MS)
+  else if (qCount > 0 && (!USE_HANDSHAKE || digitalRead(PIN_CTS) == HIGH) && (uint32_t)(millis() - lastTx) >= (lastWasCR ? LINE_DELAY_MS : TX_BYTE_DELAY_MS))
   {
     lastTx = millis();                                          // the start of this byte (the spacing is measured from start to start)
+    lastWasCR = (q[qTail] == 0x0D);
     uint8_t heard = txByte(q[qTail]);
     qTail = (qTail + 1) % QSIZE;
     qCount--;
