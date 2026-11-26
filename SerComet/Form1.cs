@@ -4207,7 +4207,7 @@ int removed, kept, cut; List<string> moved;
     // ---- Repair of a BASIC listing for the rules of the chosen machine (the editor window: Edit/Repair)
     public sealed class RepairOptions
     {
-        public bool DelBadRem, ReplaceChars, Shorten, FixCase, NumberLines, SortLines, DedupLines;
+        public bool RemoveEmpty, DelBadRem, ReplaceChars, Shorten, FixCase, NumberLines, SortLines, DedupLines;
     }
 
     public sealed class RepairResult
@@ -4219,7 +4219,7 @@ int removed, kept, cut; List<string> moved;
 
     public static class BasicRepair
     {
-        sealed class L { public int Num = -1; public string Body = ""; }
+        sealed class L { public int Num = -1; public string Body = "", Raw = ""; public bool Blank, Dirty; }       // Dirty = changed: the line is written in the standard form, otherwise as it was
 
         static readonly Regex RxNum = new Regex(@"^\s*(\d+) ?(.*)$", RegexOptions.Compiled);
         static readonly Regex RxRef = new Regex(@"(?:GOTO|GOSUB|THEN|ELSE|RESTORE|RUN)\s*(\d+(?:\s*,\s*\d+)*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -4392,22 +4392,27 @@ int removed, kept, cut; List<string> moved;
         static string Join(List<L> ls)
         {
             var sb = new StringBuilder();
-            foreach (L l in ls) sb.Append(l.Num >= 0 ? l.Num + " " + l.Body : l.Body).Append("\r\n");
+            foreach (L l in ls) sb.Append(l.Blank ? "" : !l.Dirty ? l.Raw : l.Num >= 0 ? l.Num + " " + l.Body : l.Body).Append("\r\n");
             return sb.ToString();
         }
 
-        static List<L> Parse(string text, out int empty)
+        static List<L> Parse(string text, out int empty, bool removeEmpty)
         {
             empty = 0;
             var ls = new List<L>();
             foreach (string raw0 in text.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\u001A", "").Split('\n'))
             {
-                string raw = raw0.TrimEnd();
-                if (raw.Trim().Length == 0) { empty++; continue; }
+                string raw = removeEmpty ? raw0.TrimEnd() : raw0;
+                if (raw.Trim().Length == 0)
+                {
+                    empty++;
+                    if (!removeEmpty) ls.Add(new L { Blank = true, Raw = raw });
+                    continue;
+                }
                 Match m = RxNum.Match(raw);
-                var l = new L();
+                var l = new L { Raw = raw };
                 if (m.Success && m.Groups[1].Value.Length < 10) { l.Num = int.Parse(m.Groups[1].Value); l.Body = m.Groups[2].Value; }
-                else l.Body = raw.Trim();
+                else l.Body = removeEmpty ? raw.Trim() : raw;
                 ls.Add(l);
             }
             return ls;
@@ -4417,8 +4422,17 @@ int removed, kept, cut; List<string> moved;
         {
             var res = new RepairResult();
             int empty;
-            List<L> ls = Parse(text, out empty);
-            if (empty > 0) res.Report.Add("Empty lines removed: " + empty);
+            if (!(o.RemoveEmpty || o.DelBadRem || o.ReplaceChars || o.Shorten || o.FixCase || o.NumberLines || o.SortLines || o.DedupLines))
+            {
+                res.Text = text;
+                res.Report.Add("No option is checked: nothing was changed.");
+                int f0, w0;
+                BasicCheck.Check(text, p, out f0, out w0);
+                res.FaultsLeft = f0;
+                return res;
+            }
+            List<L> ls = Parse(text, out empty, o.RemoveEmpty);
+            if (o.RemoveEmpty && empty > 0) res.Report.Add("Empty lines removed: " + empty);
             int n;
 
             // 1. REM lines that the machine cannot take (too long or with characters that are not allowed); a line that a GOTO / GOSUB points to stays
@@ -4443,7 +4457,7 @@ int removed, kept, cut; List<string> moved;
             if (o.ReplaceChars)
             {
                 n = 0;
-                foreach (L l in ls) { string a = Ascii(l.Body); if (a != l.Body) { l.Body = a; n++; } }
+                foreach (L l in ls) { string a = Ascii(l.Body); if (a != l.Body) { l.Body = a; l.Dirty = true; n++; } }
                 if (n > 0) res.Report.Add("Lines with replaced characters (accents -> letters, tab -> space, others -> ?): " + n);
             }
 
@@ -4451,7 +4465,7 @@ int removed, kept, cut; List<string> moved;
             if (o.FixCase)
             {
                 n = 0;
-                foreach (L l in ls) { string a = FixCase(l.Body, p); if (a != l.Body) { l.Body = a; n++; } }
+                foreach (L l in ls) { string a = FixCase(l.Body, p); if (a != l.Body) { l.Body = a; l.Dirty = true; n++; } }
                 if (n > 0) res.Report.Add("Lines with corrected letter case of the commands: " + n);
             }
 
@@ -4461,12 +4475,12 @@ int removed, kept, cut; List<string> moved;
                 n = 0; int fail = 0;
                 for (int i = 0; i < ls.Count; i++)
                 {
-                    if (ls[i].Num >= 0) continue;
+                    if (ls[i].Num >= 0 || ls[i].Blank) continue;
                     int prev = -1, next = int.MaxValue;
                     for (int k = i - 1; k >= 0; k--) if (ls[k].Num >= 0) { prev = ls[k].Num; break; }
                     for (int k = i + 1; k < ls.Count; k++) if (ls[k].Num >= 0) { next = ls[k].Num; break; }
                     int cand = prev >= 0 ? prev + 1 : Math.Max(p.MinLine, 1);
-                    if (cand < next && cand <= p.MaxLine) { ls[i].Num = cand; n++; } else fail++;
+                    if (cand < next && cand <= p.MaxLine) { ls[i].Num = cand; ls[i].Dirty = true; n++; } else fail++;
                 }
                 if (n > 0) res.Report.Add("Lines numbered: " + n);
                 if (fail > 0) res.Report.Add("Lines that could not be numbered (no free number): " + fail + " (use Renumber)");
@@ -4488,9 +4502,9 @@ int removed, kept, cut; List<string> moved;
             if (o.SortLines)
             {
                 bool unnumbered = false, unsorted = false; int prevNum = -1;
-                foreach (L l in ls) { if (l.Num < 0) unnumbered = true; else { if (l.Num < prevNum) unsorted = true; prevNum = l.Num; } }
+                foreach (L l in ls) { if (l.Blank) continue; if (l.Num < 0) unnumbered = true; else { if (l.Num < prevNum) unsorted = true; prevNum = l.Num; } }
                 if (unsorted && unnumbered) res.Report.Add("The lines were not sorted: some lines have no number (number them first)");
-                else if (unsorted) { ls = ls.OrderBy(x => x.Num).ToList(); res.Report.Add("Lines sorted by their numbers"); }
+                else if (unsorted) { ls = ls.Where(x => !x.Blank).OrderBy(x => x.Num).ToList(); res.Report.Add("Lines sorted by their numbers (empty lines dropped)"); }
             }
 
             // 7. too long lines: unneeded spaces out, REM text cut, DATA and statements split into two or more lines (when the numbers are free)
@@ -4501,15 +4515,15 @@ int removed, kept, cut; List<string> moved;
                 {
                     L l = ls[i];
                     if (l.Body.Length <= p.MaxLen) continue;
-                    if (IsRem(l.Body)) { l.Body = l.Body.Substring(0, p.MaxLen).TrimEnd(); cutRem++; continue; }
+                    if (IsRem(l.Body)) { l.Body = l.Body.Substring(0, p.MaxLen).TrimEnd(); l.Dirty = true; cutRem++; continue; }
                     string c = Compact(l.Body);
-                    if (c.Length <= p.MaxLen) { l.Body = c; compact++; continue; }
+                    if (c.Length <= p.MaxLen) { l.Body = c; l.Dirty = true; compact++; continue; }
                     List<string> parts = SplitData(c, p.MaxLen) ?? SplitLine(c, p.MaxLen);
                     int next = int.MaxValue;
                     for (int k = i + 1; k < ls.Count; k++) if (ls[k].Num >= 0) { next = ls[k].Num; break; }
                     if (parts == null || l.Num < 0 || l.Num + parts.Count - 1 >= next || l.Num + parts.Count - 1 > p.MaxLine) { left++; continue; }
-                    l.Body = parts[0];
-                    for (int k = 1; k < parts.Count; k++) ls.Insert(i + k, new L { Num = l.Num + k, Body = parts[k] });
+                    l.Body = parts[0]; l.Dirty = true;
+                    for (int k = 1; k < parts.Count; k++) ls.Insert(i + k, new L { Num = l.Num + k, Body = parts[k], Dirty = true });
                     split++; i += parts.Count - 1;
                 }
                 if (compact > 0) res.Report.Add("Lines shortened by removing spaces: " + compact);
@@ -4534,7 +4548,7 @@ int removed, kept, cut; List<string> moved;
         readonly TextBox txt;
         readonly CheckProfile prof;
         bool modified;
-        CheckBox cbDelRem, cbChars, cbShort, cbCase, cbNumber, cbSort, cbDedup;
+        CheckBox cbEmpty, cbDelRem, cbChars, cbShort, cbCase, cbNumber, cbSort, cbDedup;
         static readonly Encoding Latin = Encoding.GetEncoding(28591);
         string Title { get { return "Edit/Repair: " + Path.GetFileName(path) + " (" + prof.Name + ")"; } }
 
@@ -4567,6 +4581,7 @@ int removed, kept, cut; List<string> moved;
                 bar.Controls.Add(c);
                 return c;
             };
+            cbEmpty = cb("Remove empty lines and trailing spaces", true, "Delete the empty lines and the spaces at the ends of the lines. With no option checked Repair changes nothing.");
             cbDelRem = cb("Delete bad REM lines", false, "Delete the REM (or ') lines that are too long for the machine or have characters that are not allowed. A REM line that a GOTO / GOSUB points to stays.");
             cbChars = cb("Replace non allowed characters", true, "Accented letters become letters (a, e, l ...), a tab becomes a space, the other characters become a question mark.");
             cbShort = cb("Shorten lines", true, "Try to shorten the lines that are longer than the machine accepts: remove unneeded spaces, cut a REM text, split DATA and statements (at a colon, never after an IF) into two or more lines when the line numbers are free.");
@@ -4601,7 +4616,7 @@ int removed, kept, cut; List<string> moved;
         {
             var o = new RepairOptions
             {
-                DelBadRem = cbDelRem.Checked, ReplaceChars = cbChars.Checked, Shorten = cbShort.Checked,
+                RemoveEmpty = cbEmpty.Checked, DelBadRem = cbDelRem.Checked, ReplaceChars = cbChars.Checked, Shorten = cbShort.Checked,
                 FixCase = cbCase.Checked, NumberLines = cbNumber.Checked, SortLines = cbSort.Checked, DedupLines = cbDedup.Checked
             };
             Cursor.Current = Cursors.WaitCursor;
