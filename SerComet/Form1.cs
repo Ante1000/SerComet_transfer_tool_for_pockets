@@ -558,10 +558,11 @@ namespace UartSlTest
                        "INIT #1,\"COM:\",4800,\"B\" and EXEC &HEE1F (the box EOF sends the line EXEC &HEE33 at the end).\r\n" +
                        "WAV: the tokenized program as a tape recording (CSAVE / CLOAD, 1200 baud FSK); a BASIC text file is converted to a recording and back.";
             if (curModel == 3)
-                return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps (speed codes: 6 = 4800, 5 = 2400, 4 = 1200, 3 = 600, 2 = 300). " +
-                       "Write the COM0 parameters without spaces; XON/XOFF flow control and a line delay of 50 ms or more are recommended at 4800 bps.\r\n" +
-                       "Sending Basic program to PC: start the receiver on the PC, then in the BASIC mode SAVE \"COM0:6,N,8,1\".\r\n" +
-                       "Receiving from PC: LOAD \"COM0:6,N,8,1\" and Send in SerComet (press BRK on the Casio when the transfer is finished). " +
+                return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
+                       "May function with other Casio models as FX-840P, FX-880P, FX-890P (to be further tested).\r\n" +
+                       "Sending Basic program to PC: SAVE \"COM0:6,N,8,1\" (6 means 4800 bps).\r\n" +
+                       "Receiving from PC: LOAD \"COM0:6,N,8,1\". After sending finishes press Break and type LIST.\r\n" +
+                       "Speed codes: 6 = 4800, 5 = 2400, 4 = 1200, 3 = 600, 2 = 300. Write the parameters without spaces; XON/XOFF flow control and a line delay of 50 ms or more are recommended at 4800 bps. " +
                        "Data files: OPEN \"COM0:6,N,8,1,N,N,N,N,N\" AS #1; PRINT #1,..; INPUT #1,A$; LINE INPUT #1,A$; CLOSE.";
             if (curModel == 4)
                 return "TRS-80 Model 100 / NEC PC-8201: DB-25 RS-232C, null-modem cable (in the COM string 8 = 9600, 3 = 300, 9 = 19200).\r\n" +
