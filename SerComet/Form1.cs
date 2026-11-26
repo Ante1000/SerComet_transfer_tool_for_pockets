@@ -1009,13 +1009,14 @@ namespace UartSlTest
         Point dragStart;
 
         // ---- Skip REM: lines of BASIC text that hold only a comment are dropped (a REM line that a GOTO / GOSUB / THEN ... points to is kept)
-        static string StripRemLines(string text, out int removed, out int kept)
+        static string StripRemLines(string text, out int removed, out int kept, bool bang = false)
         {
             removed = 0; kept = 0;
             string[] lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
             var refs = new HashSet<string>();
             var rx = new System.Text.RegularExpressions.Regex(@"(?:GOTO|GOSUB|THEN|ELSE|RESTORE|RUN)\s*(\d+(?:\s*,\s*\d+)*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            var rem = new System.Text.RegularExpressions.Regex(@"^\s*(\d*)\s*(?:REM\b|')", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            // a comment line: REM (also REMTEXT: the PC-1600 listing without the space), an apostrophe, a colon before them; for the other computers also "!"
+            var rem = new System.Text.RegularExpressions.Regex(@"^\s*(\d*)\s*:?\s*(?:REM|'" + (bang ? "|!" : "") + ")", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             foreach (string l in lines)
                 if (!rem.IsMatch(l))
                     foreach (System.Text.RegularExpressions.Match m in rx.Matches(l))
@@ -2517,7 +2518,7 @@ int removed, kept, cut; List<string> moved;
                 if (chkSkipRem.Checked)
                 {
                     int rm, kp;
-                    src = StripRemLines(src, out rm, out kp);
+                    src = StripRemLines(src, out rm, out kp, curModel == 5);
                     data = latin.GetBytes(src);
                     Log("Skip REM: " + rm + " comment lines left out" + (kp > 0 ? ", " + kp + " kept (a GOTO / GOSUB points to them)" : "") + ".");
                 }
@@ -2538,7 +2539,7 @@ int removed, kept, cut; List<string> moved;
                 if (chkSkipRem.Checked)
                 {
                     int rm7, kp7;
-                    src7 = StripRemLines(src7, out rm7, out kp7);
+                    src7 = StripRemLines(src7, out rm7, out kp7, false);
                     Log("Skip REM: " + rm7 + " comment lines left out" + (kp7 > 0 ? ", " + kp7 + " kept (a GOTO / GOSUB points to them)" : "") + ".");
                 }
                 string pr7;
@@ -2562,7 +2563,7 @@ int removed, kept, cut; List<string> moved;
                     if (chkSkipRem.Checked)
                     {
                         int rm, kp;
-                        src = StripRemLines(src, out rm, out kp);
+                        src = StripRemLines(src, out rm, out kp, curModel == 5);
                         Log("Skip REM: " + rm + " comment lines left out" + (kp > 0 ? ", " + kp + " kept (a GOTO / GOSUB points to them)" : "") + ".");
                     }
                     img = Pc1600Basic.Tokenize(src, radio1500.Checked, out problem);
