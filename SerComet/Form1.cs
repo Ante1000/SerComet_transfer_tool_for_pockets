@@ -249,6 +249,7 @@ namespace UartSlTest
             chkSkipRem = new LockCheck { Text = "Skip REM", Left = 402, Top = 562, Width = 82, Checked = false };
             btnAbort = Btn("Abort", Icons.Cross(), 485, 560, 90, 24, TR);
             btnConvert = Btn("Test BASIC", Icons.File(), 104, 560, 90, 24, TL);
+            btnConvert.Padding = new Padding(0, 0, 3, 0);                  // the text of the button 3 px further to the right (the usual right padding is 6 px)
             btnView = Btn("WAV", Icons.Note(), 10, 560, 90, 24, TL);
             btnView.Enabled = false;
             // like the Convert button (note at the left edge, the text at the right), but the caption is centred in the free space beside the note
