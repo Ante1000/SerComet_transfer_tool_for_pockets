@@ -552,7 +552,7 @@ namespace UartSlTest
                 return "Canon X07 has INVERTED TTL-UART logic. To connect it to a PC through USB you need an FT232 converter with inverted logic (set in its EEPROM with FT_Prog) " +
                        "or the Arduino converter described on my GitHub page (folder Arduino_X07_bridge). Auto-token option on and 1200bps are the recommended settings.\r\n" +
                        "Receiving a program in the X07 from SerComet: LOAD \"COM:\",1200 (the mode \"B\" is the default, INIT is not needed).\r\n" +
-                       "Sending from the X07 to the PC: SAVE \"COM:\",1200 (tokenized) or LIST#1 after INIT #1,\"COM:\",1200,\"B\" (a text listing, saved as .bas) or \r\n" +
+                       "Sending from the X07 to the PC: SAVE \"COM:\",1200 (tokenized) or LIST#1 after INIT #1,\"COM:\",1200,\"B\" (a text listing, saved as .bas).\r\n" +
                        "WAV: the tokenized program as a tape recording (CSAVE / CLOAD, 1200 baud FSK); a BASIC text file is converted to a recording and back.";
             if (curModel == 3)
                 return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
@@ -599,9 +599,9 @@ namespace UartSlTest
                        "Into the PC-1500 (SerComet: Send): SETDEV CI, then CLOADa.\r\n" +
                        "Text transfer (.bas).";
             if (radio1500.Checked)
-                return "Software UART: You need to upload first from tape the SAVER-LOADER sl1500.wav file. This machine program enables serial communiaction via 60-pin connector. \r\n" +
-                at 4800 baud (fixed) and binary transfer (.img files). TX = PC7 (pin 10), RX = PB2 (pin 27) of the PC-1500.\r\nSEND: type NEW, then CALL &4100 (LOAD) on the PC-1500 first, then press Send (30 s to start). See the SAVER-LOADER folder on Github to check project details";\r\n" 
-            if (radioRs.Checked)+
+                return "Software UART: you need to upload first from tape the SAVER-LOADER file sl1500.wav. This machine program enables serial communication via the 60-pin connector.\r\n" +
+                       "Serial 8N1 at 4800 baud (fixed) and binary transfer (.img files). TX = PC7 (pin 10), RX = PB2 (pin 27) of the PC-1500.\r\nSEND: type NEW, then CALL &4100 (LOAD) on the PC-1500 first, then press Send (30 s to start). See the SAVER-LOADER folder on GitHub for the project details.";
+            if (radioRs.Checked)
                 return "Into the PC-1600 (Send): INIT\"COM1:\",512 / SETCOM\"COM1:\"," + savedBaud + " / LOAD\"COM1:\" (same baud rate as in SerComet).\r\n" +
                        "Text transfer (.bas).\r\n" +
                        "SETCOM\"COM1:\"," + savedBaud + ",8,N,1,X,N switches XON/XOFF on in the Sharp (the default Flow of SerComet).";
