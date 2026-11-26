@@ -554,7 +554,7 @@ namespace UartSlTest
                 return "Canon X07 has INVERTED TTL-UART logic. To connect it to a PC through USB you need an FT232 converter with inverted logic (set in its EEPROM with FT_Prog) " +
                        "or the Arduino converter described on my GitHub page (folder Arduino_X07_bridge). Auto-token option on and 4800 bps are the recommended settings.\r\n" +
                        "Sending Basic program to PC: SAVE \"COM:\",4800 (tokenized: saved as .bas with Auto token on, otherwise as .img) or LIST#1 after INIT #1,\"COM:\",4800,\"B\" (a text listing, saved as .bas).\r\n" +
-                       "Receiving from PC: LOAD \"COM:\",4800 (Auto token on, the tokenized format, recommended; the mode \"B\" is the default, INIT is not needed).
+                       "Receiving from PC: LOAD \"COM:\",4800 (Auto token on, the tokenized format, recommended; the mode \"B\" is the default, INIT is not needed).\r\n" +
                        "WAV: the tokenized program as a tape recording (CSAVE / CLOAD, 1200 baud FSK); a BASIC text file is converted to a recording and back.";
             if (curModel == 3)
                 return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
@@ -589,7 +589,7 @@ namespace UartSlTest
                        "WAV: the tokenized program as a tape recording (CLOAD / CSAVE, ID 72H); a BASIC text file is converted to a recording and back.";
             if (curModel == 2 && (curProf == 4 || curProf == 5))
                 return "Sharp " + (curProf == 4 ? "PC-E500" : "PC-E500S (structured BASIC: SWITCH, WHILE, REPEAT ...)") + " (15-pin connector, TTL-UART SIO, up to 9600 bps).\r\n" +
-                       "Sending Basic program to PC: OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then SAVE [\"name\"[,A]] (Con COM the program is always sent as ASCII text).\r\n" +
+                       "Sending Basic program to PC: OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then SAVE [\"name\"[,A]] (on COM the program is always sent as ASCII text).\r\n" +
                        "Receiving from PC: OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then LOAD (SerComet: Send). Text transfer (.bas).\r\n" +
                        "WAV: BASIC text is written as an ASCII tape file (SAVE \"CAS:\"); recordings of SAVE \"CAS:\" and CSAVE are read back as BASIC text.";
             if (curModel == 2 && curProf == 6)
