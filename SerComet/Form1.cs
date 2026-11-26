@@ -310,7 +310,7 @@ namespace UartSlTest
                 miEdit.Enabled = ext != ".img" && ext != ".bin" && !wav;          // a program image is edited as BASIC text (Convert first)
                 miDelete.Enabled = !sending;
                 miRenum.Enabled = miNoRem.Enabled = ext == ".bas" || ext == ".txt";       // BASIC text only
-                miConv.Enabled = (!rs232 || curModel == 6) && (ext == ".bas" || ext == ".txt" || ext == ".img" || ext == ".bin");   // Software UART mode and Canon X07: text <-> intermediate code
+                miConv.Enabled = (!rs232 || curModel <= 1 || curModel == 6) && (ext == ".bas" || ext == ".txt" || ext == ".img" || ext == ".bin");   // Software UART mode and Canon X07: text <-> intermediate code
             };
             fileMenu.Opened += delegate { fileMenuOpen = true; tips.Hide(lstFiles); tips.Active = false; };     // no tip while the menu is shown
             fileMenu.Closed += delegate { fileMenuOpen = false; tipIndex = -2; tips.Active = true; };
@@ -1545,8 +1545,19 @@ namespace UartSlTest
         }
 
         // BASIC text <-> program image (.img) for the selected target computer; only for a selected .bas / .txt / .img file
+        string convMsg;
+        void ConvLog(string m) { Log(m); convMsg = m; }
+        // after Convert: a window with the result (like after Renumber)
+        void ConvDone()
+        {
+            if (convMsg == null) return;
+            string m = convMsg; convMsg = null;
+            MessageBox.Show(this, "Convert is done.\r\n\r\n" + m, "Convert", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
         void ConvertSelected()
         {
+            convMsg = null;
             if (lstFiles.SelectedItem == null) return;
             string path = Path.Combine(txtDir.Text, (string)lstFiles.SelectedItem);
             try
@@ -1567,7 +1578,7 @@ namespace UartSlTest
                         outPath = UniquePathIn(Path.GetDirectoryName(path), Path.GetFileNameWithoutExtension(path), ".bas");
                         File.WriteAllBytes(outPath, enc.GetBytes(txt6));
                         ConvWait();
-                        Log("Converted " + Path.GetFileName(path) + " to BASIC text -> " + Path.GetFileName(outPath) + (pr6 != null ? " (warning: " + pr6 + ")" : ""));
+                        ConvLog("Converted " + Path.GetFileName(path) + " to BASIC text -> " + Path.GetFileName(outPath) + (pr6 != null ? " (warning: " + pr6 + ")" : ""));
                     }
                     else
                     {
@@ -1576,9 +1587,10 @@ namespace UartSlTest
                         outPath = UniquePathIn(Path.GetDirectoryName(path), Path.GetFileNameWithoutExtension(path), ".img");
                         File.WriteAllBytes(outPath, img6);
                         ConvWait();
-                        Log("Converted " + Path.GetFileName(path) + " -> " + Path.GetFileName(outPath) + " (" + img6.Length + " B, the stream for LOAD \"COM:\")");
+                        ConvLog("Converted " + Path.GetFileName(path) + " -> " + Path.GetFileName(outPath) + " (" + img6.Length + " B, the stream for LOAD \"COM:\")");
                     }
                     RefreshFiles();
+                    ConvDone();
                     return;
                 }
                 if (ext == ".img" || ext == ".bin")
@@ -1590,7 +1602,7 @@ namespace UartSlTest
                     outPath = UniquePathIn(Path.GetDirectoryName(path), Path.GetFileNameWithoutExtension(path), ".bas");
                     File.WriteAllBytes(outPath, enc.GetBytes(bas));
                     ConvWait();
-                    Log("Converted " + Path.GetFileName(path) + " to BASIC text -> " + Path.GetFileName(outPath) + (problem != null ? " (warning: " + problem + ")" : ""));
+                    ConvLog("Converted " + Path.GetFileName(path) + " to BASIC text -> " + Path.GetFileName(outPath) + (problem != null ? " (warning: " + problem + ")" : ""));
                 }
                 else
                 {
@@ -1600,11 +1612,12 @@ namespace UartSlTest
                     outPath = UniquePathIn(Path.GetDirectoryName(path), Path.GetFileNameWithoutExtension(path), ".img");
                     File.WriteAllBytes(outPath, img);
                     ConvWait();
-                    Log("Converted " + Path.GetFileName(path) + " -> " + Path.GetFileName(outPath) + " (" + img.Length + " B)");
+                    ConvLog("Converted " + Path.GetFileName(path) + " -> " + Path.GetFileName(outPath) + " (" + img.Length + " B)");
                 }
                 RefreshFiles();
             }
             catch (Exception ex) { Log("Conversion error: " + ex.Message); }
+            ConvDone();
         }
 
         // preview of the selected file: text as it is, program images as BASIC text, anything else as a hex dump
@@ -2149,9 +2162,9 @@ namespace UartSlTest
                 string ext = Path.GetExtension(path).ToLowerInvariant();
                 string text, problem;
                 string imgErr = null;
-                if (ext == ".img" || (ext == ".bin" && ProgImage.CheckImage(data, out imgErr)))
+                if (ext == ".img" || (ext == ".bin" && ProgImage.CheckImage(data, out imgErr)) || (curModel == 6 && X07Tok.IsStream(data)))
                 {
-                    text = Pc1600Basic.Detokenize(data, radio1500.Checked, out problem);
+                    text = curModel == 6 && X07Tok.IsStream(data) ? X07Tok.Detokenize(data, out problem) : Pc1600Basic.Detokenize(data, radio1500.Checked, out problem);
                     if (problem != null) text += "\r\n[" + problem + "]";
                     // program image: the user chooses between the original bytes and the detokenized BASIC text
                     new PreviewForm(name + " (" + data.Length + " B)", text, HexDump(data)).Show(this);
