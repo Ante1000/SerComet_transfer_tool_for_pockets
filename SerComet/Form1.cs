@@ -244,11 +244,11 @@ namespace UartSlTest
                     de.DrawFocusRectangle();
                 }
             };
-            chkEof = new LockCheck { Text = "Add EOF marker", Left = 198, Top = 562, Width = 115, Checked = true };
-            chkAuto = new LockCheck { Text = "Auto token", Left = 316, Top = 562, Width = 86, Checked = true };
+            chkEof = new LockCheck { Text = "Add EOF marker", Left = 203, Top = 562, Width = 115, Checked = true };
+            chkAuto = new LockCheck { Text = "Auto token", Left = 319, Top = 562, Width = 86, Checked = true };
             chkSkipRem = new LockCheck { Text = "Skip REM", Left = 402, Top = 562, Width = 82, Checked = false };
             btnAbort = Btn("Abort", Icons.Cross(), 485, 560, 90, 24, TR);
-            btnConvert = Btn("Check BASIC", Icons.File(), 104, 560, 90, 24, TL);
+            btnConvert = Btn("Check Basic", Icons.File(), 104, 560, 94, 24, TL);       // 4 px wider to the right: the text does not touch the icon
             btnConvert.Padding = new Padding(0, 0, 1, 0);                  // the text of the button 3 px further to the right (the usual right padding is 6 px)
             btnView = Btn("WAV", Icons.Note(), 10, 560, 90, 24, TL);
             btnView.Enabled = false;
@@ -286,13 +286,13 @@ namespace UartSlTest
                 if (!File.Exists(p)) return;
                 try { lstFiles.DoDragDrop(new DataObject(DataFormats.FileDrop, new[] { p }), DragDropEffects.Copy); } catch { }
             };
-            // right mouse button: View, Edit, Delete, Rename, Check BASIC
+            // right mouse button: View, Edit, Delete, Rename, Check Basic
             var fileMenu = new ContextMenuStrip();
             var miView = new ToolStripMenuItem("View", null, delegate { ViewSelected(); });
             var miEdit = new ToolStripMenuItem("Edit/Repair", null, delegate { EditSelected(); });
             var miDelete = new ToolStripMenuItem("Delete", null, delegate { DeleteSelected(); });
             var miRename = new ToolStripMenuItem("Rename", null, delegate { RenameSelected(); });
-            var miCheck = new ToolStripMenuItem("Check BASIC", null, delegate { CheckBasicSelected(); });
+            var miCheck = new ToolStripMenuItem("Check Basic", null, delegate { CheckBasicSelected(); });
             var miRenum = new ToolStripMenuItem("Renumber", null, delegate { RenumberSelected(); });
             var miNoRem = new ToolStripMenuItem("Remove REM", null, delegate { RemoveRemSelected(); });
             var miConv = new ToolStripMenuItem("Convert to/from intermed. code", null, delegate { ConvertSelected(); });
@@ -303,9 +303,9 @@ namespace UartSlTest
             {
                 if (lstFiles.SelectedItem == null || lstFiles.IndexFromPoint(lstFiles.PointToClient(Cursor.Position)) < 0) { ce.Cancel = true; return; }
                 string ext = Path.GetExtension((string)lstFiles.SelectedItem).ToLowerInvariant();
-                bool wav = ext == ".wav";                                  // a recording: no View, Edit, Check BASIC, Renumber, Remove REM; Compare and Play work
+                bool wav = ext == ".wav";                                  // a recording: no View, Edit, Check Basic, Renumber, Remove REM; Compare and Play work
                 miView.Enabled = !wav;
-                miCheck.Enabled = !wav;
+                miCheck.Enabled = ext == ".bas" || ext == ".txt";       // only BASIC text
                 miPlay.Enabled = wav;
                 miEdit.Enabled = ext != ".img" && ext != ".bin" && !wav;          // a program image is edited as BASIC text (Convert first)
                 miDelete.Enabled = !sending;
@@ -504,7 +504,7 @@ namespace UartSlTest
             tips.SetToolTip(btnView, "WAV: PC-1500, PC-1600, PC-1350, PC-1360 and PC-E500 (the last three under Sharp (other)). A BASIC text file (.bas / .txt) is converted to a tape recording (.wav; the PC-1600 asks for MODE 0 = CE-1600P or MODE 1 = CE-150), a .wav recording is converted back to BASIC text.");
             tips.SetToolTip(chkEof, "Add the end-of-file marker. Text modes: after the file (and the dummy line) send the end-of-file character 1Ah (Ctrl-Z) so that the Sharp finishes the reception (1Ah is the end-of-file code of an ASCII file). Switch it off if the Sharp reports an error.");
             tips.SetToolTip(btnAbort, "Abort the transmission at once: stops sending the file and discards data waiting to be sent or received.");
-            tips.SetToolTip(btnConvert, "Check BASIC: a basic check of the selected listing (line numbers, targets of GOTO / GOSUB, line length, keywords ...), the same as Check BASIC in the right mouse menu. The conversion of BASIC text to the intermediate code and back is in the right mouse menu (Convert to/from inter. code).");
+            tips.SetToolTip(btnConvert, "Check Basic: a basic check of the selected listing (line numbers, targets of GOTO / GOSUB, line length, keywords ...), the same as Check Basic in the right mouse menu. The conversion of BASIC text to the intermediate code and back is in the right mouse menu (Convert to/from inter. code).");
             tips.SetToolTip(chkSkipRem, "Skip REM: lines that contain only a comment (REM) are not sent to the pocket computer, to save its memory. A REM line that a GOTO / GOSUB points to is kept. Off by default. Not applied to ready program images (.img).");
             tips.SetToolTip(chkAuto, "Software UART. ON: the converter is active. A program received from the Sharp is saved as BASIC text (.bas) and BASIC files are tokenized automatically when sent (the image is not kept). OFF: only program images (.img) are used, no automatic conversion (use the Convert button).");
             tips.SetToolTip(btnLocations, "Set the default folders of the programs for PC-1500, PC-1600 and the other models.");
@@ -2252,7 +2252,7 @@ namespace UartSlTest
             if (btnConvert != null)
             {
                 string ext = sel ? Path.GetExtension((string)lstFiles.SelectedItem).ToLowerInvariant() : "";
-                btnConvert.Enabled = sel && ext != ".wav";                  // Check BASIC (not for a recording)
+                btnConvert.Enabled = sel && (ext == ".bas" || ext == ".txt");                  // Check Basic (not for a recording)
             }
         }
 
@@ -2314,8 +2314,8 @@ namespace UartSlTest
             if (wasOpen) { comboPorts.SelectedItem = name; TogglePort(); }          // the port is open again, as it was before the test
         }
 
-        // the three tests of Check BASIC that matter for Renumber: "All lines have a line number", "No repeated line numbers",
-        // "Line numbers in ascending order" (the same code and the same texts as in Check BASIC); only the failed ones are returned
+        // the three tests of Check Basic that matter for Renumber: "All lines have a line number", "No repeated line numbers",
+        // "Line numbers in ascending order" (the same code and the same texts as in Check Basic); only the failed ones are returned
         // the index of the check profile of the target computer (the models of the Sharp (other) box have their own)
         int CurrentProfileIndex()
         {
@@ -2346,7 +2346,7 @@ namespace UartSlTest
                 int maxLine = BasicCheck.Profiles[CurrentProfileIndex()].MaxLine;
                 int count = BasicTools.CountNumbered(text);
                 if (count == 0) { Log("Renumber " + name + ": the file has no numbered lines."); return; }
-                List<string> warns = RenumberChecks(text);          // the tests of Check BASIC: numbers present, not repeated, ascending
+                List<string> warns = RenumberChecks(text);          // the tests of Check Basic: numbers present, not repeated, ascending
                 int step, start;
                 using (var d = new RenumberForm(name, count, maxLine))
                 {
@@ -2420,7 +2420,7 @@ int removed, kept, cut; List<string> moved;
             catch (Exception ex) { LogWarn("Remove REM error: " + ex.Message); }
         }
 
-        // Check BASIC: a basic check of the listing for the machine of the selected target (another machine can be chosen in the window)
+        // Check Basic: a basic check of the listing for the machine of the selected target (another machine can be chosen in the window)
         void CheckBasicSelected()
         {
             if (lstFiles.SelectedItem == null) return;
@@ -2436,12 +2436,12 @@ int removed, kept, cut; List<string> moved;
                 {
                     string problem;
                     text = Pc1600Basic.Detokenize(data, profile == 0, out problem);
-                    if (problem != null) { LogWarn("Check BASIC: the program image cannot be read (" + problem + ")."); return; }
+                    if (problem != null) { LogWarn("Check Basic: the program image cannot be read (" + problem + ")."); return; }
                 }
                 else text = Encoding.GetEncoding(28591).GetString(data);
                 new CheckBasicForm(name, text, profile, ext == ".img" || ext == ".bin" ? null : path).Show(this);
             }
-            catch (Exception ex) { LogWarn("Check BASIC error: " + ex.Message); }
+            catch (Exception ex) { LogWarn("Check Basic error: " + ex.Message); }
         }
 
         void DeleteSelected()
@@ -3834,7 +3834,7 @@ int removed, kept, cut; List<string> moved;
 
 
     // ====================================================================================================================
-    // Check BASIC: a basic check of a BASIC listing (text) for a chosen machine. The keyword lists of the PC-1500 and PC-1600 are
+    // Check Basic: a basic check of a BASIC listing (text) for a chosen machine. The keyword lists of the PC-1500 and PC-1600 are
     // the token tables of the tokenizer; the lists of the other machines are approximate (an unknown word is only a warning).
     // ====================================================================================================================
     public sealed class CheckItem
@@ -4151,7 +4151,7 @@ int removed, kept, cut; List<string> moved;
         }
     }
 
-    // the result window of Check BASIC: a machine can be chosen and the check repeated
+    // the result window of Check Basic: a machine can be chosen and the check repeated
     public class CheckBasicForm : Form
     {
         string text;
@@ -4161,7 +4161,7 @@ int removed, kept, cut; List<string> moved;
         public CheckBasicForm(string fileName, string text, int defaultProfile, string path)
         {
             this.text = text; this.fileName = fileName; this.path = path;
-            Text = "Check BASIC: " + fileName;
+            Text = "Check Basic: " + fileName;
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(760, 520);
             MinimumSize = new Size(560, 320);
@@ -4653,7 +4653,7 @@ int removed, kept, cut; List<string> moved;
             Cursor.Current = Cursors.Default;
             SetText(r.Text);
             string msg = "Repair for " + prof.Name + " is done. The corrected listing is shown in the window.\r\n\r\n" + string.Join("\r\n", r.Report.ToArray());
-            if (r.FaultsLeft > 0) msg += "\r\n\r\nFaults that remain (see Check BASIC): " + r.FaultsLeft;
+            if (r.FaultsLeft > 0) msg += "\r\n\r\nFaults that remain (see Check Basic): " + r.FaultsLeft;
             MessageBox.Show(this, msg, "Repair", MessageBoxButtons.OK, r.FaultsLeft > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
         }
 
@@ -4888,7 +4888,7 @@ int removed, kept, cut; List<string> moved;
 
     public static class BasicTools
     {
-        // the tests of Check BASIC that matter for Renumber (the numbers present, not repeated, ascending); only the failed ones, in a positive wording
+        // the tests of Check Basic that matter for Renumber (the numbers present, not repeated, ascending); only the failed ones, in a positive wording
         public static List<string> PreChecks(string text, CheckProfile prof)
         {
             var res = new List<string>();
@@ -5654,7 +5654,7 @@ int removed, kept, cut; List<string> moved;
 
         static readonly List<KeyValuePair<string, int>> Kw = Names.Select((n, i) => new KeyValuePair<string, int>(n, 0x80 + i)).Where(k => k.Key != "'").OrderByDescending(k => k.Key.Length).ToList();
 
-        // the keywords made of letters (for the checks of Check BASIC)
+        // the keywords made of letters (for the checks of Check Basic)
         public static List<string> WordKeywords()
         {
             var l = new List<string>();
@@ -6546,7 +6546,7 @@ int removed, kept, cut; List<string> moved;
 
     public static class AppInfo
     {
-        public const string Version = "1.6";      // 1.6: the Canon X07 (TTL-UART with inverted logic, WAV converter), the Terminal button only with an open port; the Sharp (other) radio button has a box with the models PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..75, other (folder, Info text and WAV converter per model); 1.5: port TEST button, Renumber and Remove REM in the Files menu, no changes of the port / target / mode / options while a file is sent, default line delay for every baud rate; 1.1: Software UART speeds 1200 to 19200 (SL V3.0), settings.ini, .img files; 1.2: names of the programs checked for the Sharp; 1.4: file info tip, Skip REM, Check BASIC, Files menu, drag out of the list; 1.3: PC-1500 Software UART (4800 bps), six target computers, Port settings box, Flush and Reset port, wrong baud rate warning
+        public const string Version = "1.6";      // 1.6: the Canon X07 (TTL-UART with inverted logic, WAV converter), the Terminal button only with an open port; the Sharp (other) radio button has a box with the models PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..75, other (folder, Info text and WAV converter per model); 1.5: port TEST button, Renumber and Remove REM in the Files menu, no changes of the port / target / mode / options while a file is sent, default line delay for every baud rate; 1.1: Software UART speeds 1200 to 19200 (SL V3.0), settings.ini, .img files; 1.2: names of the programs checked for the Sharp; 1.4: file info tip, Skip REM, Check Basic, Files menu, drag out of the list; 1.3: PC-1500 Software UART (4800 bps), six target computers, Port settings box, Flush and Reset port, wrong baud rate warning
     }
 
     // Names of programs for the pocket computers: the length and the characters that the Sharp accepts
