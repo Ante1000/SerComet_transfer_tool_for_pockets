@@ -3124,7 +3124,7 @@ int removed, kept, cut; List<string> moved;
         {
             var state = g.Save();
             g.TranslateTransform(kx, top + 60);
-            g.ScaleTransform(0.75F, 0.75F);          // between the Casio (0.7) and the NEC / TRS-80 (0.8)
+            g.ScaleTransform(0.75F * 0.85F, 0.75F);   // between the Casio (0.7) and the NEC / TRS-80 (0.8); 15 % narrower
             g.TranslateTransform(-kx, -(top + 60));
             float bx = kx - 85, by = top + 8, bw = 170, bh = 82;
             Action<float, float, float, float, Color> R = (fx, fy, fw, fh, c) =>
