@@ -295,7 +295,7 @@ namespace UartSlTest
             var miCheck = new ToolStripMenuItem("Check Basic", null, delegate { CheckBasicSelected(); });
             var miRenum = new ToolStripMenuItem("Renumber", null, delegate { RenumberSelected(); });
             var miNoRem = new ToolStripMenuItem("Remove REM", null, delegate { RemoveRemSelected(); });
-            var miConv = new ToolStripMenuItem("Convert to/from inter. code", null, delegate { ConvertSelected(); });
+            var miConv = new ToolStripMenuItem("Convert to/from intermed. code", null, delegate { ConvertSelected(); });
             var miCompare = new ToolStripMenuItem("Compare", null, delegate { CompareSelected(); });
             var miPlay = new ToolStripMenuItem("Play", null, delegate { PlaySelected(); });
             fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck, miRenum, miNoRem, miConv, miCompare, miPlay });
