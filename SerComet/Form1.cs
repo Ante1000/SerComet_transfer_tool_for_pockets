@@ -554,15 +554,13 @@ namespace UartSlTest
                 return "Canon X07 has INVERTED TTL-UART logic. To connect it to a PC through USB you need an FT232 converter with inverted logic (set in its EEPROM with FT_Prog) " +
                        "or the Arduino converter described on my GitHub page (folder Arduino_X07_bridge). Auto-token option on and 4800 bps are the recommended settings.\r\n" +
                        "Sending Basic program to PC: SAVE \"COM:\",4800 (tokenized: saved as .bas with Auto token on, otherwise as .img) or LIST#1 after INIT #1,\"COM:\",4800,\"B\" (a text listing, saved as .bas).\r\n" +
-                       "Receiving from PC: LOAD \"COM:\",4800 (Auto token on, the tokenized format, recommended; the mode \"B\" is the default, INIT is not needed) or, with Auto token off, " +
-                       "INIT #1,\"COM:\",4800,\"B\" and EXEC &HEE1F (the box EOF sends the line EXEC &HEE33 at the end).\r\n" +
+                       "Receiving from PC: LOAD \"COM:\",4800 (Auto token on, the tokenized format, recommended; the mode \"B\" is the default, INIT is not needed).
                        "WAV: the tokenized program as a tape recording (CSAVE / CLOAD, 1200 baud FSK); a BASIC text file is converted to a recording and back.";
             if (curModel == 3)
                 return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
                        "May function with other Casio models as FX-840P, FX-880P, FX-890P (to be further tested).\r\n" +
                        "Sending Basic program to PC: SAVE \"COM0:6,N,8,1\" (6 means 4800 bps).\r\n" +
-                       "Receiving from PC: LOAD \"COM0:6,N,8,1\". After sending finishes press Break and type LIST.\r\n" +
-                       "Speed codes: 6 = 4800, 5 = 2400, 4 = 1200, 3 = 600, 2 = 300. Write the parameters without spaces; XON/XOFF flow control and a line delay of 50 ms or more are recommended at 4800 bps. " +
+                       "Receiving from PC: LOAD \"COM0:6,N,8,1\". XON/XOFF should be enabled. After sending finishes press Break and type LIST.\r\n" +
                        "Data files: OPEN \"COM0:6,N,8,1,N,N,N,N,N\" AS #1; PRINT #1,..; INPUT #1,A$; LINE INPUT #1,A$; CLOSE.";
             if (curModel == 4)
                 return "TRS-80 Model 100 / NEC PC-8201: DB-25 RS-232C, null-modem cable (in the COM string 8 = 9600, 3 = 300, 9 = 19200).\r\n" +
@@ -588,10 +586,10 @@ namespace UartSlTest
                 return "Sharp PC-1360 (15-pin connector, TTL-UART SIO via a USB/COM adapter, 1200 bps). After MERGE of several programs the transmission by SAVE / LOAD may not work correctly (see the manual).\r\n" +
                        "Sending Basic program to PC: OPEN \"1200,N,8,1,A,C,&1A\", then SAVE.\r\n" +
                        "Receiving from PC: OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send). Text transfer (.bas).\r\n" +
-                       "WAV: the tokenized program as a tape recording (CLOAD / CSAVE, ID 72H, two byte tokens); a BASIC text file is converted to a recording and back.";
+                       "WAV: the tokenized program as a tape recording (CLOAD / CSAVE, ID 72H); a BASIC text file is converted to a recording and back.";
             if (curModel == 2 && (curProf == 4 || curProf == 5))
                 return "Sharp " + (curProf == 4 ? "PC-E500" : "PC-E500S (structured BASIC: SWITCH, WHILE, REPEAT ...)") + " (15-pin connector, TTL-UART SIO, up to 9600 bps).\r\n" +
-                       "Sending Basic program to PC: OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then SAVE [\"name\"[,A]] (COM is the default device; on COM the program is always sent as ASCII text).\r\n" +
+                       "Sending Basic program to PC: OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then SAVE [\"name\"[,A]] (Con COM the program is always sent as ASCII text).\r\n" +
                        "Receiving from PC: OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then LOAD (SerComet: Send). Text transfer (.bas).\r\n" +
                        "WAV: BASIC text is written as an ASCII tape file (SAVE \"CAS:\"); recordings of SAVE \"CAS:\" and CSAVE are read back as BASIC text.";
             if (curModel == 2 && curProf == 6)
