@@ -289,15 +289,16 @@ namespace UartSlTest
             // right mouse button: View, Edit, Delete, Rename, Check Basic
             var fileMenu = new ContextMenuStrip();
             var miView = new ToolStripMenuItem("View", null, delegate { ViewSelected(); });
-            var miEdit = new ToolStripMenuItem("Edit/Renumber/Repair", null, delegate { EditSelected(); });
+            var miEdit = new ToolStripMenuItem("Edit/Repair", null, delegate { EditSelected(); });
             var miDelete = new ToolStripMenuItem("Delete", null, delegate { DeleteSelected(); });
             var miRename = new ToolStripMenuItem("Rename", null, delegate { RenameSelected(); });
             var miCheck = new ToolStripMenuItem("Check Basic", null, delegate { CheckBasicSelected(); });
+            var miRenum = new ToolStripMenuItem("Renumber", null, delegate { RenumberSelected(); });
             var miNoRem = new ToolStripMenuItem("Remove REM", null, delegate { RemoveRemSelected(); });
             var miConv = new ToolStripMenuItem("Convert to/from intermed. code", null, delegate { ConvertSelected(); });
             var miCompare = new ToolStripMenuItem("Compare", null, delegate { CompareSelected(); });
             var miPlay = new ToolStripMenuItem("Play", null, delegate { PlaySelected(); });
-            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck, miNoRem, miConv, miCompare, miPlay });
+            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck, miRenum, miNoRem, miConv, miCompare, miPlay });
             fileMenu.Opening += delegate (object sn, System.ComponentModel.CancelEventArgs ce)
             {
                 if (lstFiles.SelectedItem == null || lstFiles.IndexFromPoint(lstFiles.PointToClient(Cursor.Position)) < 0) { ce.Cancel = true; return; }
@@ -308,7 +309,7 @@ namespace UartSlTest
                 miPlay.Enabled = wav;
                 miEdit.Enabled = ext != ".img" && ext != ".bin" && !wav;          // a program image is edited as BASIC text (Convert first)
                 miDelete.Enabled = !sending;
-                miNoRem.Enabled = ext == ".bas" || ext == ".txt";       // BASIC text only
+                miRenum.Enabled = miNoRem.Enabled = ext == ".bas" || ext == ".txt";       // BASIC text only
                 miConv.Enabled = (!rs232 || curModel <= 1 || curModel == 6) && (ext == ".bas" || ext == ".txt" || ext == ".img" || ext == ".bin");   // Software UART mode and Canon X07: text <-> intermediate code
             };
             fileMenu.Opened += delegate { fileMenuOpen = true; tips.Hide(lstFiles); tips.Active = false; };     // no tip while the menu is shown
@@ -4203,11 +4204,10 @@ int removed, kept, cut; List<string> moved;
         }
     }
 
-    // ---- Repair of a BASIC listing for the rules of the chosen machine (the editor window: Edit/Renumber/Repair)
+    // ---- Repair of a BASIC listing for the rules of the chosen machine (the editor window: Edit/Repair)
     public sealed class RepairOptions
     {
-        public bool Renumber, DelBadRem, ReplaceChars, Shorten, FixCase, NumberLines, SortLines, DedupLines;
-        public int Start = 10, Step = 10;
+        public bool DelBadRem, ReplaceChars, Shorten, FixCase, NumberLines, SortLines, DedupLines;
     }
 
     public sealed class RepairResult
@@ -4493,26 +4493,7 @@ int removed, kept, cut; List<string> moved;
                 else if (unsorted) { ls = ls.OrderBy(x => x.Num).ToList(); res.Report.Add("Lines sorted by their numbers"); }
             }
 
-            // 7. renumbering
-            if (o.Renumber)
-            {
-                bool allNumbered = true; foreach (L l in ls) if (l.Num < 0) allNumbered = false;
-                if (!allNumbered) res.Report.Add("Renumber was not done: some lines have no number");
-                else
-                {
-                    RenumberResult r = BasicTools.Renumber(Join(ls), o.Start, o.Step, p.MaxLine);
-                    if (r.Error != null) res.Report.Add("Renumber was not done: " + r.Error);
-                    else if (r.Overflow) res.Report.Add("Renumber was not done: the lines do not fit below " + p.MaxLine + " with the step " + o.Step);
-                    else
-                    {
-                        int e2;
-                        ls = Parse(r.Text, out e2);
-                        res.Report.Add("Renumbered: " + r.Count + " lines, now " + r.NewFirst + " to " + r.NewLast + " (start " + o.Start + ", step " + o.Step + ")");
-                    }
-                }
-            }
-
-            // 8. too long lines: unneeded spaces out, REM text cut, DATA and statements split into two or more lines (when the numbers are free)
+            // 7. too long lines: unneeded spaces out, REM text cut, DATA and statements split into two or more lines (when the numbers are free)
             if (o.Shorten && p.MaxLen > 0)
             {
                 int cutRem = 0, compact = 0, split = 0, left = 0;
@@ -4534,7 +4515,7 @@ int removed, kept, cut; List<string> moved;
                 if (compact > 0) res.Report.Add("Lines shortened by removing spaces: " + compact);
                 if (cutRem > 0) res.Report.Add("REM lines cut to the maximum length: " + cutRem);
                 if (split > 0) res.Report.Add("Lines split into two or more lines: " + split);
-                if (left > 0) res.Report.Add("Lines that stay too long (no place to cut at a colon before an IF, or no free line number: Renumber first): " + left);
+                if (left > 0) res.Report.Add("Lines that stay too long (no place to cut at a colon before an IF, or no free line number: use Renumber in the right mouse menu first): " + left);
             }
 
             res.Text = Join(ls);
@@ -4546,16 +4527,16 @@ int removed, kept, cut; List<string> moved;
         }
     }
 
-    // an editor (like Notepad) for BASIC text files with Renumber and Repair for the rules of the chosen machine; the bytes are kept as they are (Latin-1)
+    // an editor (like Notepad) for BASIC text files with Repair for the rules of the chosen machine; the bytes are kept as they are (Latin-1)
     public class EditorForm : Form
     {
         readonly string path;
         readonly TextBox txt;
         readonly CheckProfile prof;
         bool modified;
-        CheckBox cbRenum, cbDelRem, cbChars, cbShort, cbCase, cbNumber, cbSort, cbDedup;
+        CheckBox cbDelRem, cbChars, cbShort, cbCase, cbNumber, cbSort, cbDedup;
         static readonly Encoding Latin = Encoding.GetEncoding(28591);
-        string Title { get { return "Edit/Renumber/Repair: " + Path.GetFileName(path) + " (" + prof.Name + ")"; } }
+        string Title { get { return "Edit/Repair: " + Path.GetFileName(path) + " (" + prof.Name + ")"; } }
 
         public EditorForm(string path, CheckProfile prof)
         {
@@ -4586,7 +4567,6 @@ int removed, kept, cut; List<string> moved;
                 bar.Controls.Add(c);
                 return c;
             };
-            cbRenum = cb("Renumber", false, "Renumber the lines (the start and the step are asked) and the targets of GOTO, GOSUB, THEN, ELSE, RESTORE, RUN.");
             cbDelRem = cb("Delete bad REM lines", false, "Delete the REM (or ') lines that are too long for the machine or have characters that are not allowed. A REM line that a GOTO / GOSUB points to stays.");
             cbChars = cb("Replace non allowed characters", true, "Accented letters become letters (a, e, l ...), a tab becomes a space, the other characters become a question mark.");
             cbShort = cb("Shorten lines", true, "Try to shorten the lines that are longer than the machine accepts: remove unneeded spaces, cut a REM text, split DATA and statements (at a colon, never after an IF) into two or more lines when the line numbers are free.");
@@ -4595,12 +4575,9 @@ int removed, kept, cut; List<string> moved;
             cbSort = cb("Sort lines by number", true, "Put the lines in the order of the line numbers (as the computer does).");
             cbDedup = cb("Remove repeated line numbers", true, "Of lines with the same number only the last one is kept (as the computer does when they are entered).");
             var repair = new Button { Text = "Repair", AutoSize = true, Margin = new Padding(14, 1, 3, 1), Padding = new Padding(8, 1, 8, 1) };
-            var renum = new Button { Text = "Renumber", AutoSize = true, Margin = new Padding(3, 1, 3, 1), Padding = new Padding(8, 1, 8, 1) };
             tt.SetToolTip(repair, "Repair the listing according to the checked rules and the syntax of the chosen machine.");
-            tt.SetToolTip(renum, "Renumber the lines only (the options above are not used).");
             repair.Click += delegate { DoRepair(); };
-            renum.Click += delegate { DoRenumber(); };
-            bar.Controls.Add(repair); bar.Controls.Add(renum);
+            bar.Controls.Add(repair);
 
             Controls.Add(txt); Controls.Add(bar); Controls.Add(menu); MainMenuStrip = menu;
             txt.Select(0, 0);
@@ -4624,19 +4601,9 @@ int removed, kept, cut; List<string> moved;
         {
             var o = new RepairOptions
             {
-                Renumber = cbRenum.Checked, DelBadRem = cbDelRem.Checked, ReplaceChars = cbChars.Checked, Shorten = cbShort.Checked,
+                DelBadRem = cbDelRem.Checked, ReplaceChars = cbChars.Checked, Shorten = cbShort.Checked,
                 FixCase = cbCase.Checked, NumberLines = cbNumber.Checked, SortLines = cbSort.Checked, DedupLines = cbDedup.Checked
             };
-            if (o.Renumber)
-            {
-                int count = BasicTools.CountNumbered(txt.Text);
-                if (count == 0) { MessageBox.Show(this, "The listing has no numbered lines: Renumber is not possible.", "Repair", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
-                using (var d = new RenumberForm(Path.GetFileName(path), count, prof.MaxLine))
-                {
-                    if (d.ShowDialog(this) != DialogResult.OK) return;
-                    o.Start = d.Start; o.Step = d.Step;
-                }
-            }
             Cursor.Current = Cursors.WaitCursor;
             System.Threading.Thread.Sleep(1000);                  // the repair is artificially prolonged by 1 s
             RepairResult r = BasicRepair.Repair(txt.Text, prof, o);
@@ -4645,49 +4612,6 @@ int removed, kept, cut; List<string> moved;
             string msg = "Repair for " + prof.Name + " is done. The corrected listing is shown in the window.\r\n\r\n" + string.Join("\r\n", r.Report.ToArray());
             if (r.FaultsLeft > 0) msg += "\r\n\r\nFaults that remain (see Check Basic): " + r.FaultsLeft;
             MessageBox.Show(this, msg, "Repair", MessageBoxButtons.OK, r.FaultsLeft > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
-        }
-
-        void DoRenumber()
-        {
-            string name = Path.GetFileName(path);
-            string text = txt.Text;
-            int count = BasicTools.CountNumbered(text);
-            if (count == 0) { MessageBox.Show(this, "The listing has no numbered lines.", "Renumber", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
-            List<string> warns = BasicTools.PreChecks(text, prof);
-            int step, start;
-            using (var d = new RenumberForm(name, count, prof.MaxLine))
-            {
-                if (d.ShowDialog(this) != DialogResult.OK) return;
-                step = d.Step; start = d.Start;
-            }
-            RenumberResult r = BasicTools.Renumber(text, start, step, prof.MaxLine);
-            if (r.Error != null) { MessageBox.Show(this, "Renumber " + name + ": " + r.Error, "Renumber", MessageBoxButtons.OK, MessageBoxIcon.Warning); Warn(name, warns, false); return; }
-            if (r.Overflow)
-            {
-                int alt = 0;
-                foreach (int a in new[] { 5, 2, 1 })
-                    if (a < step && start + (long)(r.Count - 1) * a <= prof.MaxLine) { alt = a; break; }
-                if (alt == 0) { MessageBox.Show(this, "The " + r.Count + " lines from " + start + " do not fit below " + prof.MaxLine + " even with the step 1; nothing changed.", "Renumber", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
-                if (MessageBox.Show(this, "With the step " + step + " the last line would be " + r.NewLast + " (the highest allowed line number is " + prof.MaxLine + ").\r\n\r\nUse the step " + alt + " instead?",
-                    "Renumber", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-                step = alt;
-                r = BasicTools.Renumber(text, start, step, prof.MaxLine);
-                if (r.Error != null || r.Overflow) { MessageBox.Show(this, "Renumber failed.", "Renumber", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
-            }
-            Cursor.Current = Cursors.WaitCursor;
-            System.Threading.Thread.Sleep(1000);
-            Cursor.Current = Cursors.Default;
-            SetText(r.Text);
-            MessageBox.Show(this, "Renumber " + name + " is done.\r\n\r\nNew line numbers: " + r.NewFirst + " to " + r.NewLast + "\r\nNumber of lines: " + r.Count + " (unchanged)\r\nLine references changed: " + r.RefsChanged,
-                "Renumber", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            if (r.Missing.Count > 0) MessageBox.Show(this, "References to lines that do not exist were left as they are: " + string.Join(", ", r.Missing.ToArray()) + ".", "Renumber: warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            Warn(name, warns, true);
-        }
-
-        void Warn(string name, List<string> warns, bool done)
-        {
-            string msg = BasicTools.WarnText(name, warns, done);
-            if (msg != null) MessageBox.Show(this, msg, "Renumber: warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         bool Save()
@@ -4778,6 +4702,10 @@ int removed, kept, cut; List<string> moved;
                 int row = i;
                 Controls.Add(new Label { Text = names[i] + ":", Left = 12, Top = 17 + i * 32, Width = 85 });
                 boxes[i] = new TextBox { Left = 100, Top = 13 + i * 32, Width = 365, Text = current[i] };
+                var box = boxes[i];
+                Action grey = () => { string t = box.Text.Trim(); box.BackColor = t.Length > 0 && !Directory.Exists(t) ? Color.FromArgb(220, 220, 220) : SystemColors.Window; };       // grey = the folder does not exist
+                box.TextChanged += delegate { grey(); };
+                grey();
                 var browse = new Button { Text = "Browse...", Left = 472, Top = 12 + i * 32, Width = 78, Height = 24 };
                 browse.Click += delegate
                 {
