@@ -547,66 +547,81 @@ namespace UartSlTest
 
         static readonly string[] ModelCaptions = { "Sharp PC-1500", "Sharp PC-1600", "Sharp PC-1350", "Sharp PC-1360", "Sharp PC-E500", "Sharp PC-E500S", "Sharp PC-1450..75", "Sharp with UART I/F", "Casio FX-850P / FX-870P", "TRS-80 mod.100 / NEC PC-8201", "Other computer with UART", "Canon X-07" };
 
+        // the Info text: the same template for every computer: a description, "Sending Basic program to PC: ..." and "Receiving from PC: ..."
         string HintText()
         {
             if (curModel == 6)
                 return "Canon X07 has INVERTED TTL-UART logic. To connect it to a PC through USB you need an FT232 converter with inverted logic (set in its EEPROM with FT_Prog) " +
                        "or the Arduino converter described on my GitHub page (folder Arduino_X07_bridge). Auto-token option on and 4800 bps are the recommended settings.\r\n" +
-                       "Receiving a program in the X07 from SerComet: LOAD \"COM:\",4800 (the mode \"B\" is the default, INIT is not needed).\r\n" +
-                       "Sending from the X07 to the PC: SAVE \"COM:\",4800 (tokenized) or LIST#1 after INIT #1,\"COM:\",4800,\"B\" (a text listing, saved as .bas).\r\n" +
+                       "Sending Basic program to PC: SAVE \"COM:\",4800 (tokenized: saved as .bas with Auto token on, otherwise as .img) or LIST#1 after INIT #1,\"COM:\",4800,\"B\" (a text listing, saved as .bas).\r\n" +
+                       "Receiving from PC: LOAD \"COM:\",4800 (Auto token on, the tokenized format, recommended; the mode \"B\" is the default, INIT is not needed) or, with Auto token off, " +
+                       "INIT #1,\"COM:\",4800,\"B\" and EXEC &HEE1F (the box EOF sends the line EXEC &HEE33 at the end).\r\n" +
                        "WAV: the tokenized program as a tape recording (CSAVE / CLOAD, 1200 baud FSK); a BASIC text file is converted to a recording and back.";
             if (curModel == 3)
-                return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
-                       "OPEN \"COM0:6,N,8,1,N,N,N,N,N\" AS #1 (6 = 4800, 5 = 2400, 4 = 1200, 3 = 600, 2 = 300); PRINT #1,..; INPUT #1,A$; LINE INPUT #1,A$; CLOSE.\r\n" +
-                       "Program (text): LOAD \"COM0:6,N,8,1,N,N,N,N,N\" = Send.";
+                return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps (speed codes: 6 = 4800, 5 = 2400, 4 = 1200, 3 = 600, 2 = 300). " +
+                       "Write the COM0 parameters without spaces; XON/XOFF flow control and a line delay of 50 ms or more are recommended at 4800 bps.\r\n" +
+                       "Sending Basic program to PC: start the receiver on the PC, then in the BASIC mode SAVE \"COM0:6,N,8,1\".\r\n" +
+                       "Receiving from PC: LOAD \"COM0:6,N,8,1\" and Send in SerComet (press BRK on the Casio when the transfer is finished). " +
+                       "Data files: OPEN \"COM0:6,N,8,1,N,N,N,N,N\" AS #1; PRINT #1,..; INPUT #1,A$; LINE INPUT #1,A$; CLOSE.";
             if (curModel == 4)
-                return "TRS-80 Model 100 / NEC PC-8201: DB-25 RS-232C, null-modem cable. OPEN \"COM:88N1E\" FOR OUTPUT AS 1 / FOR INPUT AS 2 (8 = 9600, 3 = 300, 9 = 19200).\r\n" +
-                       "PRINT #1,..; LINE INPUT #2,A$; A$=INPUT$(n,2); CLOSE 1,2. Program (ASCII): LOAD \"COM:48N1E\" = Send.\r\n" +
-                       "LOAD tokenizes while receiving: use 600 to 1200 bps; SAVE is stable up to 19200.";
+                return "TRS-80 Model 100 / NEC PC-8201: DB-25 RS-232C, null-modem cable (in the COM string 8 = 9600, 3 = 300, 9 = 19200).\r\n" +
+                       "Sending Basic program to PC: SAVE \"COM:48N1E\" (ASCII; stable up to 19200 bps).\r\n" +
+                       "Receiving from PC: LOAD \"COM:48N1E\" and Send in SerComet (LOAD tokenizes while receiving: use 600 to 1200 bps).\r\n" +
+                       "Data: OPEN \"COM:88N1E\" FOR OUTPUT AS 1 / FOR INPUT AS 2; PRINT #1,..; LINE INPUT #2,A$; A$=INPUT$(n,2); CLOSE 1,2.";
             if (curModel == 5 && radioSio.Checked)
-                return "Other computer with UART, TTL: logic levels 0 / +5 V; 3.3 V CMOS devices work too, and so do Arduino and similar boards. Connect through a USB-TTL adapter and match its voltage (3.3 V or 5 V) to the device.\r\n" +
+                return "Other computer with UART, TTL: logic levels 0 / +5 V; 3.3 V CMOS devices work too, and so do Arduino and similar boards. Connect through a USB-TTL adapter and match its voltage (3.3 V or 5 V) to the device. " +
                        "TX of one side goes to RX of the other, and the grounds are joined. Never connect RS-232 levels to a TTL input.\r\n" +
-                       "Text transfer (.bas) with the baud rate (up to 115200), flow control, line end and line delay set here (8N1). Use the Terminal for tests.";
+                       "Sending Basic program to PC: the command of the computer that writes a program to its serial device (the received text is saved as .bas).\r\n" +
+                       "Receiving from PC: the command of the computer that reads a program from its serial device, then Send in SerComet. Text transfer (.bas) with the baud rate (up to 115200), flow control, line end and line delay set here (8N1). Use the Terminal for tests.";
             if (curModel == 5)
-                return "Other computer with UART, RS-232: the signal swings between a negative and a positive voltage (about -5 to -15 V and +5 to +15 V). A device with 0 / +5 V logic needs a level converter (for example MAX232 / MAX3232) between it and the RS-232 adapter.\r\n" +
+                return "Other computer with UART, RS-232: the signal swings between a negative and a positive voltage (about -5 to -15 V and +5 to +15 V). A device with 0 / +5 V logic needs a level converter (for example MAX232 / MAX3232) between it and the RS-232 adapter. " +
                        "Connect through a USB-RS232 adapter with a null-modem cable (TX and RX crossed).\r\n" +
-                       "Text transfer (.bas) with the baud rate (up to 115200), flow control, line end and line delay set here (8N1). Use the Terminal for tests.";
+                       "Sending Basic program to PC: the command of the computer that writes a program to its serial device (the received text is saved as .bas).\r\n" +
+                       "Receiving from PC: the command of the computer that reads a program from its serial device, then Send in SerComet. Text transfer (.bas) with the baud rate (up to 115200), flow control, line end and line delay set here (8N1). Use the Terminal for tests.";
             if (curModel == 2 && curProf == 2)
                 return "Sharp PC-1350 (compatible: the PC-2500, the version with a printer; 15-pin connector, TTL-UART SIO via a USB/COM adapter, 1200 bps).\r\n" +
-                       "OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send). Text transfer (.bas).\r\n" +
+                       "Sending Basic program to PC: OPEN \"1200,N,8,1,A,C,&1A\", then SAVE.\r\n" +
+                       "Receiving from PC: OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send). Text transfer (.bas).\r\n" +
                        "WAV: the tokenized program as a tape recording (CLOAD / CSAVE, ID 70H); a BASIC text file is converted to a recording and back.";
             if (curModel == 2 && curProf == 3)
-                return "Sharp PC-1360 (15-pin connector, TTL-UART SIO via a USB/COM adapter, 1200 bps).\r\n" +
-                       "OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send). After MERGE of several programs the transmission by SAVE / LOAD may not work correctly (see the manual).\r\n" +
+                return "Sharp PC-1360 (15-pin connector, TTL-UART SIO via a USB/COM adapter, 1200 bps). After MERGE of several programs the transmission by SAVE / LOAD may not work correctly (see the manual).\r\n" +
+                       "Sending Basic program to PC: OPEN \"1200,N,8,1,A,C,&1A\", then SAVE.\r\n" +
+                       "Receiving from PC: OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send). Text transfer (.bas).\r\n" +
                        "WAV: the tokenized program as a tape recording (CLOAD / CSAVE, ID 72H, two byte tokens); a BASIC text file is converted to a recording and back.";
             if (curModel == 2 && (curProf == 4 || curProf == 5))
                 return "Sharp " + (curProf == 4 ? "PC-E500" : "PC-E500S (structured BASIC: SWITCH, WHILE, REPEAT ...)") + " (15-pin connector, TTL-UART SIO, up to 9600 bps).\r\n" +
-                       "OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then LOAD / SAVE (COM is the default device); SAVE [\"name\"[,A]]: on COM the program is always sent as ASCII text transfer (.bas).\r\n" +
+                       "Sending Basic program to PC: OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then SAVE [\"name\"[,A]] (COM is the default device; on COM the program is always sent as ASCII text).\r\n" +
+                       "Receiving from PC: OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then LOAD (SerComet: Send). Text transfer (.bas).\r\n" +
                        "WAV: BASIC text is written as an ASCII tape file (SAVE \"CAS:\"); recordings of SAVE \"CAS:\" and CSAVE are read back as BASIC text.";
             if (curModel == 2 && curProf == 6)
-                return "Sharp PC-1450 to PC-1475 (15-pin connector, TTL-UART SIO via a USB/COM adapter).\r\n" +
-                       "Tokenization and tape format is not supported. You can use the usual UART transfer of Basic programs.";
+                return "Sharp PC-1450 to PC-1475 (15-pin connector, TTL-UART SIO via a USB/COM adapter). Tokenization and tape format is not supported.\r\n" +
+                       "Sending Basic program to PC: SAVE to the serial device of the computer (see its manual); the received text is saved as .bas.\r\n" +
+                       "Receiving from PC: LOAD from the serial device (SerComet: Send). Text transfer (.bas).";
             if (curModel == 2)
-                return "Other Sharp pocket computer with the 15-pin connector (TTL-UART SIO via a USB/COM adapter).\r\n" +
-                       "Tokenization and tape format is not supported. You can use the usual UART transfer of Basic programs.";
+                return "Other Sharp pocket computer with the 15-pin connector (TTL-UART SIO via a USB/COM adapter). Tokenization and tape format is not supported.\r\n" +
+                       "Sending Basic program to PC: SAVE to the serial device of the computer (see its manual); the received text is saved as .bas.\r\n" +
+                       "Receiving from PC: LOAD from the serial device (SerComet: Send). Text transfer (.bas).";
             if (radioSio.Checked)
                 return "Compatible: PC-1350, PC-1360, PC-1450..75, PC-E500..650, PC-U6000, PC-2500 (15-pin, TTL-UART SIO via a USB/COM adapter).\r\n" +
-                       "PC-1350 / PC-1360: OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send).\r\n" +
-                       "PC-E500(S): OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then LOAD / SAVE (COM is the default device).\r\n" +
-                       "SAVE [\"name\"[,A]]: the name (up to 8 characters) is optional; on COM the program is always sent as ASCII text.\r\n" +
-                       "Text transfer (.bas).";
+                       "Sending Basic program to PC: PC-1350 / PC-1360: OPEN \"1200,N,8,1,A,C,&1A\", then SAVE. PC-E500(S): OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then SAVE [\"name\"[,A]] (on COM the program is always sent as ASCII text).\r\n" +
+                       "Receiving from PC: the same OPEN, then LOAD (SerComet: Send). Text transfer (.bas).";
             if (radio1500.Checked && radioRs.Checked)
-                return "PC-1500 with CE-158(X): SETCOM 2400,8,N,1 (set same baud rate in SerComet).\r\n" +
-                       "Into the PC-1500 (SerComet: Send): SETDEV CI, then CLOADa.\r\n" +
-                       "Text transfer (.bas).";
+                return "PC-1500 with CE-158(X): SETCOM 2400,8,N,1 (set the same baud rate in SerComet).\r\n" +
+                       "Sending Basic program to PC: see the manual of the CE-158(X) (the output device and CSAVE a); the received text is saved as .bas.\r\n" +
+                       "Receiving from PC: SETDEV CI, then CLOADa (SerComet: Send). Text transfer (.bas).";
             if (radio1500.Checked)
-                return "Software UART: you need to upload first from tape the SAVER-LOADER file sl1500.wav. This machine program enables serial communication via the 60-pin connector.\r\n" +
-                       "Serial 8N1 at 4800 baud (fixed) and binary transfer (.img files). TX = PC7 (pin 10), RX = PB2 (pin 27) of the PC-1500.\r\nSEND: type NEW, then CALL &4100 (LOAD) on the PC-1500 first, then press Send (30 s to start). See the SAVER-LOADER folder on GitHub for the project details.";
+                return "Software UART: you need to upload first from tape the SAVER-LOADER file sl1500.wav. This machine program enables serial communication via the 60-pin connector. " +
+                       "Serial 8N1 at 4800 baud (fixed) and binary transfer (.img files). TX = PC7 (pin 10), RX = PB2 (pin 27) of the PC-1500.\r\n" +
+                       "Sending Basic program to PC: CALL &4200 in the RUN mode.\r\n" +
+                       "Receiving from PC: NEW, then CALL &4100 and press Send within 30 s. See the SAVER-LOADER folder on GitHub for the project details.";
             if (radioRs.Checked)
-                return "Into the PC-1600 (Send): INIT\"COM1:\",512 / SETCOM\"COM1:\"," + savedBaud + " / LOAD\"COM1:\" (same baud rate as in SerComet).\r\n" +
-                       "Text transfer (.bas).\r\n" +
+                return "PC-1600 serial port (RS-232), text transfer (.bas); use the same baud rate in SerComet.\r\n" +
+                       "Sending Basic program to PC: SETCOM\"COM1:\"," + savedBaud + ", then SAVE \"COM1:\",A (BASIC text).\r\n" +
+                       "Receiving from PC: INIT\"COM1:\",512 / SETCOM\"COM1:\"," + savedBaud + " / LOAD\"COM1:\" and Send in SerComet. " +
                        "SETCOM\"COM1:\"," + savedBaud + ",8,N,1,X,N switches XON/XOFF on in the Sharp (the default Flow of SerComet).";
-            return "Software UART: 8N1 at the speed chosen here and in the SL installer (9600 recommended), binary transfer (.img files).\r\nSEND: type CALL &C100 (LOAD) on the PC-1600 first, then press Send (30 s to start).";
+            return "PC-1600 Software UART: 8N1 at the speed chosen here and in the SL installer (9600 recommended), binary transfer (.img files).\r\n" +
+                   "Sending Basic program to PC: CALL &xxxx (the SAVE address shown by the installer).\r\n" +
+                   "Receiving from PC: CALL &C100 (LOAD) on the PC-1600 first, then press Send (30 s to start).";
         }
 
         static string DefaultLocation(int i)
