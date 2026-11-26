@@ -21,12 +21,14 @@ class Cpu:
         self.m = mem; self.a = 0; self.x = 0x1234; self.y = 0x5678; self.u = 0x9ABC; self.c = 0; self.z = 0; self.ie = 1
         self.s = 0x7BF0; self.p = 0; self.now = 0; self.tx = []; self.txl = 1; self.rx = list(rx); self.ri = 0; self.lvl = 1
         self.rxmask = rxmask; self.io = [0] * 16; self.io[8] = 0x80
+        self.wranges = [(0x4000, 0x4800), (0x7600, 0x8000)]      # writable memory (a PC-1500A with CE-161: 0000-57FF)
 
     # --- memory (ME0: RAM 4000-47FF, 7600-7FFF; ME1: LH5811 ports F000-F00F)
     def rd(self, a): return self.m[a & 0xFFFF]
     def wr(self, a, v):
         a &= 0xFFFF
-        if 0x4000 <= a < 0x4800 or 0x7600 <= a < 0x8000: self.m[a] = v & 0xFF
+        for lo_, hi_ in self.wranges:
+            if lo_ <= a < hi_: self.m[a] = v & 0xFF
     def rd1(self, a):
         a &= 15
         if a == 15:
@@ -80,6 +82,7 @@ class Cpu:
             i = self.fetch(); r = {0x4: X, 0x5: Y, 0x6: U}[o >> 4]
             (setlo if o & 2 else sethi)(r, i); return 6 if o & 2 else 5
         if o == 0xB5: ld(self.fetch()); return 6
+        if o == 0xB7: cmp(self.fetch()); return 7                  # CPI A
         if o == 0xBF: self.z = 1 if (self.a & self.fetch()) == 0 else 0; return 7
         if o in (0xA5, 0xA7, 0xAE):
             ad = (self.fetch() << 8) | self.fetch()
@@ -126,8 +129,13 @@ class Cpu:
         return self.now
 
 
-def assemble(consts=None):
-    code, lab, _ = A.assemble(open(SRC).read(), consts)
+import build_sl1500 as B
+
+
+def assemble(consts=None, ce161=False):
+    k = dict(consts or {})
+    if ce161: k['LIMH'] = B.CE_LIMH
+    code, lab, _ = A.assemble(B.source(ce161), k)
     return code, lab
 
 
@@ -181,6 +189,54 @@ FAILS = []
 def check(name, ok, info=''):
     print('%-48s %s %s' % (name, 'ok' if ok else 'FAIL', info))
     if not ok: FAILS.append(name)
+
+
+def ce161_tests():
+    """CE-161 version: the code at &3E00 (LOAD) / &3F00 (SAVE); RAM &0000-&57FF; a program must never reach the code"""
+    code, lab = assemble(ce161=True)
+    LA, SA = B.CE_LOAD, B.CE_SAVE
+    wr = [(0x0000, 0x5800), (0x7600, 0x8000)]
+
+    def mem(start, content=b'\xff', end=None, ramh=0x58):
+        m = memory(start, content, start if end is None else end, ramh)
+        m[LA:LA + lab['SAVE']] = code[:lab['SAVE']]; m[SA:SA + len(code) - lab['SAVE']] = code[lab['SAVE']:]
+        return m
+    sl = lambda m: bytes(m[LA:LA + lab['SAVE']]) + bytes(m[SA:SA + len(code) - lab['SAVE']])
+    for st in (0x00C5, 0x0100, 0x0300, 0x4000):
+        p = prog(700, 3)
+        m = mem(st, p + b'\xff', st + len(p)); c = Cpu(m); c.wranges = wr; c.run(SA)
+        got, iss = decode(c.tx)
+        check('CE-161 SAVE from &%04X' % st, got == p + bytes([sum(p) & 255]) and not iss and c.x == 1 and sl(m) == code[:lab['SAVE']] + code[lab['SAVE']:])
+    def load(st, p, f=None):
+        f = f if f is not None else p + bytes([sum(p) & 255])
+        m = mem(st); c = Cpu(m, edges(f)); c.wranges = wr; c.run(LA)
+        return c, m
+    for st in (0x00C5, 0x0300, 0x4000):
+        p = prog(500, 4)
+        c, m = load(st, p)
+        check('CE-161 LOAD to &%04X' % st, c.x == 1 and bytes(m[st:st + len(p)]) == p and m[st + len(p)] == 0xFF and sl(m) == code[:lab['SAVE']] + code[lab['SAVE']:], 'X=%d' % c.x)
+    # a program that would reach the code of the SL: error 4, memory empty, the SL is not touched
+    for st, n in ((0x3D00, 600), (0x3A00, 1700), (0x3C00, 600)):
+        p = prog(n, 5)
+        c, m = load(st, p)
+        check('CE-161 LOAD would reach &3E00 (start &%04X, %d B) -> 4' % (st, len(p)), c.x == 4 and m[st] == 0xFF and m[0x7867:0x7869] == st.to_bytes(2, 'big') and sl(m) == code, 'X=%d' % c.x)
+    # exact fit: the last byte (checksum) at &3DFF
+    st = 0x3D00; p = bytearray(prog(300, 6)); p = bytes(p[:0xFF - 1] if len(p) > 0xFF - 1 else p)
+    while len(p) < 0xFF - 1: p += b'\x01'
+    # file = p + checksum = 0xFF bytes: &3D00..&3DFE ; one byte more: &3DFF
+    p = p + b'\x01'
+    c, m = load(st, p); check('CE-161 LOAD exact fit (last byte at &3DFF)', c.x == 1 and m[0x3DFF] == 0xFF and m[0x7867:0x7869] == (0x3DFF).to_bytes(2, 'big') and sl(m) == code, 'X=%d' % c.x)
+    p = p + b'\x01'
+    c, m = load(st, p); check('CE-161 LOAD one byte too long -> 4', c.x == 4 and m[st] == 0xFF and sl(m) == code, 'X=%d' % c.x)
+    # the installer text
+    txt = open(os.path.join(ROOT, 'Basic', 'sl1500_ce161.txt')).read().splitlines()
+    data = []
+    for ln in txt:
+        m_ = re.match(r'^(\d+) (.*)$', ln)
+        if int(m_.group(1)) >= 1000 and m_.group(2).startswith('DATA '): data += [int(v) for v in m_.group(2)[5:].split(',')]
+    check('CE-161 installer: DATA = assembled code + checksum', bytes(data[:-1]) == code and data[-1] == sum(code))
+    check('CE-161 installer: every line <= 80 characters', max(len(l) for l in txt) <= 80, '(longest %d)' % max(len(l) for l in txt))
+    print('CE-161 code %d bytes (LOAD %d + SAVE %d): LOAD &%04X, SAVE &%04X; the code ends at &%04X' % (len(code), lab['SAVE'], len(code) - lab['SAVE'], LA, SA, SA + len(code) - lab['SAVE'] - 1))
 
 
 def main():
@@ -242,6 +298,7 @@ def main():
     diff = [i for i in range(len(c0)) if c0[i] != c1[i]]
     pk = re.findall(r'POKE L\+(\d+),', '\n'.join(txt))
     check('installer: the PB0 patches are exactly the bytes that differ', sorted(int(v) for v in pk) == diff, '(%s)' % diff)
+    ce161_tests()
     print('\ncode %d bytes (LOAD %d + SAVE %d); LOAD at RAM start + &100, SAVE at RAM start + &200 (NEW = RAM start + &300)' % (len(code), lab['SAVE'], len(code) - lab['SAVE']))
     print('ALL OK' if not FAILS else 'FAILED: ' + ', '.join(FAILS))
     return 1 if FAILS else 0
