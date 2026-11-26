@@ -298,7 +298,7 @@ namespace UartSlTest
             var miConv = new ToolStripMenuItem("Convert to/from intermed. code", null, delegate { ConvertSelected(); });
             var miCompare = new ToolStripMenuItem("Compare", null, delegate { CompareSelected(); });
             var miPlay = new ToolStripMenuItem("Play", null, delegate { PlaySelected(); });
-            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck, miRenum, miNoRem, miConv, miCompare, miPlay });
+            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miDelete, miRename, new ToolStripSeparator(), miCheck, miEdit, miRenum, miNoRem, miConv, miCompare, miPlay });
             fileMenu.Opening += delegate (object sn, System.ComponentModel.CancelEventArgs ce)
             {
                 if (lstFiles.SelectedItem == null || lstFiles.IndexFromPoint(lstFiles.PointToClient(Cursor.Position)) < 0) { ce.Cancel = true; return; }
@@ -425,10 +425,11 @@ namespace UartSlTest
             };
             btnOpenDir.Click += delegate
             {
-                try { Directory.CreateDirectory(txtDir.Text); System.Diagnostics.Process.Start(txtDir.Text); }
+                try { Directory.CreateDirectory(txtDir.Text); System.Diagnostics.Process.Start(txtDir.Text); RefreshFiles(); }
                 catch (Exception ex) { LogWarn("Error: " + ex.Message); }
             };
             btnRefreshFiles.Click += delegate { RefreshFiles(); };
+            txtDir.TextChanged += delegate { UpdateDirColor(); };
             btnTerminal.Click += delegate { OpenTerminal(); };
             btnAbort.Click += delegate { Abort(); };
             btnConvert.Click += delegate { CheckBasicSelected(); };
@@ -1135,8 +1136,15 @@ namespace UartSlTest
             if (n > 0) RefreshFiles();
         }
 
+        // the list of files is grey inside when the folder of the chosen computer does not exist (not created yet, or deleted)
+        void UpdateDirColor()
+        {
+            try { lstFiles.BackColor = Directory.Exists(txtDir.Text) ? SystemColors.Window : Color.FromArgb(220, 220, 220); } catch { }
+        }
+
         void RefreshFiles()
         {
+            UpdateDirColor();
             lstFiles.Items.Clear();
             try
             {
@@ -4400,7 +4408,9 @@ int removed, kept, cut; List<string> moved;
         {
             empty = 0;
             var ls = new List<L>();
-            foreach (string raw0 in text.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\u001A", "").Split('\n'))
+            var parts = new List<string>(text.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\u001A", "").Split('\n'));
+            if (parts.Count > 0 && parts[parts.Count - 1].Length == 0) parts.RemoveAt(parts.Count - 1);          // the text ends with a line end: no empty line after it
+            foreach (string raw0 in parts)
             {
                 string raw = removeEmpty ? raw0.TrimEnd() : raw0;
                 if (raw.Trim().Length == 0)
