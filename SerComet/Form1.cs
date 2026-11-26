@@ -557,8 +557,10 @@ namespace UartSlTest
                        "WAV: the tokenized program as a tape recording (CSAVE / CLOAD, 1200 baud FSK); a BASIC text file is converted to a recording and back.";
             if (curModel == 3)
                 return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
-                       "OPEN \"COM0:6,N,8,1,N,N,N,N,N\" AS #1 (6 = 4800, 5 = 2400, 4 = 1200, 3 = 600, 2 = 300); PRINT #1,..; INPUT #1,A$; LINE INPUT #1,A$; CLOSE.\r\n" +
-                       "Program (text): LOAD \"COM0:6,N,8,1,N,N,N,N,N\" = Send.";
+                       "May function with other Casio models as FX-840P, FXX-880P, FX-890P (to be further tested)\r\n" +
+                       "Sending Basic program to PC: SAVE "COM0:6,N,8,1" (6 means 4800bps)\r\n"+
+                       "Receiving from PC: LOAD "COM0:6,N,8,1". After sending finishes press Break and type LIST." +
+            
             if (curModel == 4)
                 return "TRS-80 Model 100 / NEC PC-8201: DB-25 RS-232C, null-modem cable. OPEN \"COM:88N1E\" FOR OUTPUT AS 1 / FOR INPUT AS 2 (8 = 9600, 3 = 300, 9 = 19200).\r\n" +
                        "PRINT #1,..; LINE INPUT #2,A$; A$=INPUT$(n,2); CLOSE 1,2. Program (ASCII): LOAD \"COM:48N1E\" = Send.\r\n" +
