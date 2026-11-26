@@ -3118,28 +3118,47 @@ int removed, kept, cut; List<string> moved;
         }
 
         // a generic pocket computer (for any computer with a UART): a one-line display, a key matrix and a cable on the side
-        // Canon X-07: a small dark grey body, a four line LCD at the top and rows of small keys
+        // Canon X-07 (as on the photo): a beige body, a dark grey strip with the LCD on its left half, the name and 4+1 direction keys, a row of small
+        // function keys, light keys of the keyboard and a blue ENTER (the size of SHIFT) at the right end of the last row
         static void DrawX07(Graphics g, int kx, int top)
         {
             var state = g.Save();
             g.TranslateTransform(kx, top + 60);
-            g.ScaleTransform(0.7F, 0.7F);
+            g.ScaleTransform(0.75F, 0.75F);          // between the Casio (0.7) and the NEC / TRS-80 (0.8)
             g.TranslateTransform(-kx, -(top + 60));
             float bx = kx - 85, by = top + 8, bw = 170, bh = 82;
             Action<float, float, float, float, Color> R = (fx, fy, fw, fh, c) =>
             {
                 using (var b = new SolidBrush(c)) g.FillRectangle(b, bx + fx * bw, by + fy * bh, fw * bw, fh * bh);
             };
-            FillRound(g, Color.FromArgb(25, 25, 28), kx - 86, top + 10, 172, 82, 6);
-            FillRound(g, Color.FromArgb(92, 96, 104), bx, by, bw, bh, 6);
-            FillRound(g, Color.FromArgb(40, 42, 46), bx + .08F * bw, by + .06F * bh, .84F * bw, .32F * bh, 2);
-            R(.10F, .10F, .80F, .24F, Color.FromArgb(172, 182, 160));
+            Action<float, float, float, float, Color> K = (fx, fy, fw, fh, c) => FillRound(g, c, bx + fx * bw, by + fy * bh, fw * bw, fh * bh, 1);
+            FillRound(g, Color.FromArgb(30, 30, 32), kx - 86, top + 10, 172, 82, 5);
+            FillRound(g, Color.FromArgb(214, 206, 186), bx, by, bw, bh, 5);                                        // beige body
+            FillRound(g, Color.FromArgb(70, 72, 78), bx + .02F * bw, by + .04F * bh, .96F * bw, .36F * bh, 3);      // dark grey strip
+            R(.05F, .085F, .46F, .27F, Color.FromArgb(176, 186, 166));                                           // the LCD (left half of the strip)
             for (int row = 0; row < 4; row++)
-                for (int c = 0; c < 20; c++) R(.11F + c * .038F, .12F + row * .055F, .028F, .035F, Color.FromArgb(70, 80, 64));
-            using (var f = new Font("Arial", 5F, FontStyle.Bold)) Text(g, "CANON  X-07", f, Color.FromArgb(235, 235, 235), bx + .5F * bw, by + .39F * bh);
-            for (int row = 0; row < 4; row++)
-                for (int c = 0; c < (row == 3 ? 8 : 12); c++)
-                    R(.08F + c * .072F + (row == 3 ? .12F : 0), .50F + row * .115F, .058F, .08F, row == 0 ? Color.FromArgb(205, 130, 40) : Color.FromArgb(40, 42, 48));
+                for (int c = 0; c < 20; c++) R(.062F + c * .0222F, .10F + row * .055F, .016F, .035F, Color.FromArgb(84, 96, 78));
+            using (var f = new Font("Arial", 3.5F, FontStyle.Bold))
+            {
+                Text(g, "Canon", f, Color.FromArgb(235, 235, 235), bx + .62F * bw, by + .09F * bh);
+                Text(g, "X-07", f, Color.FromArgb(235, 235, 235), bx + .60F * bw, by + .19F * bh);
+            }
+            Color kd = Color.FromArgb(226, 224, 216);                                                            // 4 + 1 direction keys
+            K(.813F, .065F, .054F, .09F, kd); K(.813F, .285F, .054F, .09F, kd);
+            K(.738F, .175F, .054F, .09F, kd); K(.888F, .175F, .054F, .09F, kd);
+            K(.813F, .175F, .054F, .09F, Color.FromArgb(190, 188, 180));
+            Color[] fk = { Color.FromArgb(70, 110, 190), Color.FromArgb(70, 110, 190), Color.FromArgb(210, 210, 205), Color.FromArgb(210, 210, 205),
+                           Color.FromArgb(70, 110, 190), Color.FromArgb(70, 110, 190), Color.FromArgb(215, 150, 50), Color.FromArgb(215, 150, 50) };
+            for (int i = 0; i < 8; i++) R(.06F + i * .075F, .43F, .055F, .04F, fk[i]);                           // small function keys
+            Color kc = Color.FromArgb(246, 244, 236);
+            float[] ry = { .50F, .62F, .74F }, ro = { .07F, .09F, .12F };
+            int[] rn = { 10, 10, 9 };
+            for (int row = 0; row < 3; row++)
+                for (int c = 0; c < rn[row]; c++) K(.05F + ro[row] + c * .078F, ry[row], .062F, .095F, kc);          // keyboard
+            K(.05F, .86F, .11F, .09F, kc);                                                                       // SHIFT
+            K(.18F, .86F, .07F, .09F, kc); K(.27F, .86F, .07F, .09F, kc);
+            K(.36F, .86F, .36F, .09F, kc);                                                                       // space
+            K(.84F, .86F, .11F, .09F, Color.FromArgb(52, 92, 176));                                              // blue ENTER: the size of SHIFT, the same row
             g.Restore(state);
         }
 
