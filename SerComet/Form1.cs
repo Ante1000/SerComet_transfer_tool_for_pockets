@@ -2512,6 +2512,9 @@ int removed, kept, cut; List<string> moved;
             }
         }
 
+        // TEST version: with Add EOF marker on, the Casio FX-870 gets the bytes 00h..FFh (one every 0.5 s) instead of 1Ah. Set to false to return to the normal behaviour.
+        const bool FxByteTest = true;
+
         async void SendFile(string path)
         {
             if (port == null || !port.IsOpen) { LogWarn("Open the port first."); return; }
@@ -2689,6 +2692,18 @@ int removed, kept, cut; List<string> moved;
                             // Canon X07: the end of the input of EXEC &HEE1F is the line EXEC &HEE33 (as in the Arduino gist of the X07); 1Ah is not used
                             byte[] last = new List<byte>(Encoding.ASCII.GetBytes("EXEC &HEE33")).Concat(eol).ToArray();
                             p.Write(last, 0, last.Length);
+                        }
+                        else if (curModel == 3 && FxByteTest)
+                        {
+                            // TEST (Casio FX-870): instead of 1Ah send the bytes 00h .. FFh, one every 0.5 s, and write every one in the Log
+                            try { BeginInvoke(new Action(() => Log("TEST: after the program the bytes 00h..FFh follow, one every 0.5 s (Abort stops it)."))); } catch { }
+                            for (int b = 0; b <= 255 && !abortRequested; b++)
+                            {
+                                p.Write(new byte[] { (byte)b }, 0, 1);
+                                int sb = b;
+                                try { BeginInvoke(new Action(() => Log("TEST: sent " + sb.ToString("X2") + "h  (" + sb + ")"))); } catch { }
+                                for (int w = 0; w < 500 && !abortRequested; w += 10) System.Threading.Thread.Sleep(10);
+                            }
                         }
                         else p.Write(new byte[] { 0x1A }, 0, 1);
                     }
