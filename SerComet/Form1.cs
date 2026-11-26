@@ -248,7 +248,7 @@ namespace UartSlTest
             chkAuto = new LockCheck { Text = "Auto token", Left = 316, Top = 562, Width = 86, Checked = true };
             chkSkipRem = new LockCheck { Text = "Skip REM", Left = 402, Top = 562, Width = 82, Checked = false };
             btnAbort = Btn("Abort", Icons.Cross(), 485, 560, 90, 24, TR);
-            btnConvert = Btn("Convert", Icons.File(), 104, 560, 90, 24, TL);
+            btnConvert = Btn("Test BASIC", Icons.File(), 104, 560, 90, 24, TL);
             btnView = Btn("WAV", Icons.Note(), 10, 560, 90, 24, TL);
             btnView.Enabled = false;
             // like the Convert button (note at the left edge, the text at the right), but the caption is centred in the free space beside the note
@@ -294,9 +294,10 @@ namespace UartSlTest
             var miCheck = new ToolStripMenuItem("Check Basic", null, delegate { CheckBasicSelected(); });
             var miRenum = new ToolStripMenuItem("Renumber", null, delegate { RenumberSelected(); });
             var miNoRem = new ToolStripMenuItem("Remove REM", null, delegate { RemoveRemSelected(); });
+            var miConv = new ToolStripMenuItem("Convert to/from inter. code", null, delegate { ConvertSelected(); });
             var miCompare = new ToolStripMenuItem("Compare", null, delegate { CompareSelected(); });
             var miPlay = new ToolStripMenuItem("Play", null, delegate { PlaySelected(); });
-            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck, miRenum, miNoRem, miCompare, miPlay });
+            fileMenu.Items.AddRange(new ToolStripItem[] { miView, miEdit, miDelete, miRename, new ToolStripSeparator(), miCheck, miRenum, miNoRem, miConv, miCompare, miPlay });
             fileMenu.Opening += delegate (object sn, System.ComponentModel.CancelEventArgs ce)
             {
                 if (lstFiles.SelectedItem == null || lstFiles.IndexFromPoint(lstFiles.PointToClient(Cursor.Position)) < 0) { ce.Cancel = true; return; }
@@ -308,6 +309,7 @@ namespace UartSlTest
                 miEdit.Enabled = ext != ".img" && ext != ".bin" && !wav;          // a program image is edited as BASIC text (Convert first)
                 miDelete.Enabled = !sending;
                 miRenum.Enabled = miNoRem.Enabled = ext == ".bas" || ext == ".txt";       // BASIC text only
+                miConv.Enabled = (!rs232 || curModel == 6) && (ext == ".bas" || ext == ".txt" || ext == ".img" || ext == ".bin");   // Software UART mode and Canon X07: text <-> intermediate code
             };
             fileMenu.Opened += delegate { fileMenuOpen = true; tips.Hide(lstFiles); tips.Active = false; };     // no tip while the menu is shown
             fileMenu.Closed += delegate { fileMenuOpen = false; tipIndex = -2; tips.Active = true; };
@@ -428,7 +430,7 @@ namespace UartSlTest
             btnRefreshFiles.Click += delegate { RefreshFiles(); };
             btnTerminal.Click += delegate { OpenTerminal(); };
             btnAbort.Click += delegate { Abort(); };
-            btnConvert.Click += delegate { ConvertSelected(); };
+            btnConvert.Click += delegate { CheckBasicSelected(); };
             btnView.Click += delegate { WavSelected(); };
             lstFiles.MouseDoubleClick += delegate (object sn, MouseEventArgs me)      // double click on a file name = View
             {
@@ -500,7 +502,7 @@ namespace UartSlTest
             tips.SetToolTip(btnView, "WAV: PC-1500, PC-1600, PC-1350, PC-1360 and PC-E500 (the last three under Sharp (other)). A BASIC text file (.bas / .txt) is converted to a tape recording (.wav; the PC-1600 asks for MODE 0 = CE-1600P or MODE 1 = CE-150), a .wav recording is converted back to BASIC text.");
             tips.SetToolTip(chkEof, "Add the end-of-file marker. Text modes: after the file (and the dummy line) send the end-of-file character 1Ah (Ctrl-Z) so that the Sharp finishes the reception (1Ah is the end-of-file code of an ASCII file). Switch it off if the Sharp reports an error.");
             tips.SetToolTip(btnAbort, "Abort the transmission at once: stops sending the file and discards data waiting to be sent or received.");
-            tips.SetToolTip(btnConvert, "Software UART mode and Canon X07 only. Convert the selected file: BASIC text (.bas, .txt) to a program image (.img), or a program image (.img, or a .bin that is a BASIC program) to BASIC text (.bas).");
+            tips.SetToolTip(btnConvert, "Test BASIC: a basic check of the selected listing (line numbers, targets of GOTO / GOSUB, line length, keywords ...), the same as Check Basic in the right mouse menu. The conversion of BASIC text to the intermediate code and back is in the right mouse menu (Convert to/from inter. code).");
             tips.SetToolTip(chkSkipRem, "Skip REM: lines that contain only a comment (REM) are not sent to the pocket computer, to save its memory. A REM line that a GOTO / GOSUB points to is kept. Off by default. Not applied to ready program images (.img).");
             tips.SetToolTip(chkAuto, "Software UART. ON: the converter is active. A program received from the Sharp is saved as BASIC text (.bas) and BASIC files are tokenized automatically when sent (the image is not kept). OFF: only program images (.img) are used, no automatic conversion (use the Convert button).");
             tips.SetToolTip(btnLocations, "Set the default folders of the programs for PC-1500, PC-1600 and the other models.");
@@ -2210,7 +2212,7 @@ namespace UartSlTest
             if (btnConvert != null)
             {
                 string ext = sel ? Path.GetExtension((string)lstFiles.SelectedItem).ToLowerInvariant() : "";
-                btnConvert.Enabled = sel && (!rs232 || curModel == 6) && (ext == ".bas" || ext == ".txt" || ext == ".img" || ext == ".bin");   // Software UART mode only
+                btnConvert.Enabled = sel && ext != ".wav";                  // Test BASIC (not for a recording)
             }
         }
 
@@ -2345,6 +2347,8 @@ namespace UartSlTest
                 File.WriteAllBytes(path, Encoding.GetEncoding(28591).GetBytes(r.Text));
                 Log("Renumber " + name + ": " + r.Count + " lines, was " + r.OldFirst + " to " + r.OldLast + ", now " + r.NewFirst + " to " + r.NewLast + " (start " + start + ", step " + step + "); " + r.RefsChanged + " line references changed.");
                 if (r.Missing.Count > 0) Log("Renumber " + name + ": references to lines that do not exist were left as they are: " + string.Join(", ", r.Missing.ToArray()) + ".");
+                MessageBox.Show(this, "Renumber " + name + " is done.\r\n\r\nNew line numbers: " + r.NewFirst + " to " + r.NewLast + "\r\nNumber of lines: " + r.Count + " (unchanged)",
+                    "Renumber", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 RenumberWarn(name, warns, true);                    // at the end of Renumber: a warning window with the faults of the file
             }
             catch (Exception ex) { Log("Renumber error: " + ex.Message); }
