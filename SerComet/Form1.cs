@@ -549,11 +549,10 @@ namespace UartSlTest
         string HintText()
         {
             if (curModel == 6)
-                return "Canon X07 has INVERTED TTL-UART logic. To connect it to a PC through USB you need an FTDI converter with inverted logic (set in its EEPROM with FT_Prog) " +
-                       "or the Arduino converter described on the GitHub page of SerComet (folder Arduino_X07_bridge). TTL-UART only, 300 to 4800 bps (1200 is the default).\r\n" +
-                       "Receiving a program in the X07 from SerComet (Auto token on, the tokenized format, recommended): LOAD \"COM:\",1200 (the mode \"B\" is the default, INIT is not needed).\r\n" +
-                       "Receiving a text listing (Auto token off): INIT #1,\"COM:\",1200,\"B\" and EXEC &HEE1F (the box EOF sends the line EXEC &HEE33 at the end).\r\n" +
-                       "Sending from the X07 to the PC: LIST#1 after INIT #1,\"COM:\",1200,\"B\" (a text listing, saved as .bas) or SAVE \"COM:\",1200 (tokenized; with Auto token on it is converted to a .bas listing, otherwise it is saved as .img and Convert makes the text of it).\r\n" +
+                return "Canon X07 has INVERTED TTL-UART logic. To connect it to a PC through USB you need an FT232 converter with inverted logic (set in its EEPROM with FT_Prog) " +
+                       "or the Arduino converter described on my GitHub page (folder Arduino_X07_bridge). Auto-token option on and 1200bps are the recommended settings.\r\n" +
+                       "Receiving a program in the X07 from SerComet: LOAD \"COM:\",1200 (the mode \"B\" is the default, INIT is not needed).\r\n" +
+                       "Sending from the X07 to the PC: SAVE \"COM:\",1200 (tokenized) or LIST#1 after INIT #1,\"COM:\",1200,\"B\" (a text listing, saved as .bas) or \r\n" +
                        "WAV: the tokenized program as a tape recording (CSAVE / CLOAD, 1200 baud FSK); a BASIC text file is converted to a recording and back.";
             if (curModel == 3)
                 return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
@@ -581,7 +580,7 @@ namespace UartSlTest
                        "WAV: the tokenized program as a tape recording (CLOAD / CSAVE, ID 72H, two byte tokens); a BASIC text file is converted to a recording and back.";
             if (curModel == 2 && (curProf == 4 || curProf == 5))
                 return "Sharp " + (curProf == 4 ? "PC-E500" : "PC-E500S (structured BASIC: SWITCH, WHILE, REPEAT ...)") + " (15-pin connector, TTL-UART SIO, up to 9600 bps).\r\n" +
-                       "OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then LOAD / SAVE (COM is the default device); SAVE [\"name\"[,A]]: on COM the program is always sent as ASCII text. Text transfer (.bas).\r\n" +
+                       "OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then LOAD / SAVE (COM is the default device); SAVE [\"name\"[,A]]: on COM the program is always sent as ASCII text transfer (.bas).\r\n" +
                        "WAV: BASIC text is written as an ASCII tape file (SAVE \"CAS:\"); recordings of SAVE \"CAS:\" and CSAVE are read back as BASIC text.";
             if (curModel == 2 && curProf == 6)
                 return "Sharp PC-1450 to PC-1475 (15-pin connector, TTL-UART SIO via a USB/COM adapter).\r\n" +
@@ -596,12 +595,13 @@ namespace UartSlTest
                        "SAVE [\"name\"[,A]]: the name (up to 8 characters) is optional; on COM the program is always sent as ASCII text.\r\n" +
                        "Text transfer (.bas).";
             if (radio1500.Checked && radioRs.Checked)
-                return "PC-1500 with CE-158(X): SETCOM 2400,8,N,1 (the same baud rate as in SerComet).\r\n" +
+                return "PC-1500 with CE-158(X): SETCOM 2400,8,N,1 (set same baud rate in SerComet).\r\n" +
                        "Into the PC-1500 (SerComet: Send): SETDEV CI, then CLOADa.\r\n" +
                        "Text transfer (.bas).";
             if (radio1500.Checked)
-                return "Software UART: 8N1 at 4800 baud (fixed), binary transfer (.img files). TX = PC7 (pin 10), RX = PB2 (pin 27) of the PC-1500.\r\nSEND: type NEW, then CALL &4100 (LOAD) on the PC-1500 first, then press Send (30 s to start). Addresses for a RAM starting at &4000 (the SL installer shows the others).";
-            if (radioRs.Checked)
+                return "Software UART: You need to upload first from tape the SAVER-LOADER sl1500.wav file. This machine program enables serial communiaction via 60-pin connector. \r\n" +
+                at 4800 baud (fixed) and binary transfer (.img files). TX = PC7 (pin 10), RX = PB2 (pin 27) of the PC-1500.\r\nSEND: type NEW, then CALL &4100 (LOAD) on the PC-1500 first, then press Send (30 s to start). See the SAVER-LOADER folder on Github to check project details";\r\n" 
+            if (radioRs.Checked)+
                 return "Into the PC-1600 (Send): INIT\"COM1:\",512 / SETCOM\"COM1:\"," + savedBaud + " / LOAD\"COM1:\" (same baud rate as in SerComet).\r\n" +
                        "Text transfer (.bas).\r\n" +
                        "SETCOM\"COM1:\"," + savedBaud + ",8,N,1,X,N switches XON/XOFF on in the Sharp (the default Flow of SerComet).";
