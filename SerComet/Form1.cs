@@ -4615,7 +4615,7 @@ int removed, kept, cut; List<string> moved;
             cbNumber = cb("Number lines without a number", true, "A line without a number gets the next free number after the previous line.");
             cbSort = cb("Sort lines by number", true, "Put the lines in the order of the line numbers (as the computer does).");
             cbDedup = cb("Remove repeated line numbers", true, "Of lines with the same number only the last one is kept (as the computer does when they are entered).");
-            var repair = new Button { Text = "Repair", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right, Margin = new Padding(3, 6, 8, 3), Padding = new Padding(8, 1, 8, 1) };       // at the right edge of the window
+            var repair = new Button { Text = "Repair", AutoSize = true, Anchor = AnchorStyles.Right, Margin = new Padding(3, 3, 20, 3), Padding = new Padding(8, 1, 8, 1) };       // at the right edge of the window (20 px from it), centred vertically in the grey bar
             tt.SetToolTip(repair, "Repair the listing according to the checked rules and the syntax of the chosen machine.");
             repair.Click += delegate { DoRepair(); };
             bar.Controls.Add(flow, 0, 0); bar.Controls.Add(repair, 1, 0);
