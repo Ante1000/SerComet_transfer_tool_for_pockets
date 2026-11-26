@@ -34,7 +34,7 @@ If SerComet saves you time, click the picture to buy the author a coffee (the sa
 | Sharp PC-1600 | Software Serial through the Saver/Loader (1200 to 19200 baud), or its RS-232 port |
 | Other Sharp | pocket computers with the 15-pin connector (PC-1350, PC-1360, PC-E500 ...), TTL-UART text transfer |
 | Casio FX-850P / FX-870P | TTL-UART, 300 to 4800 baud |
-| Canon X07 | TTL-UART with INVERTED logic, 300 to 4800 baud (1200 default), flow None / XON/XOFF / RTS/CTS; needs an inverting converter (FTDI with inverted logic set with FT_Prog, or the Arduino bridge in `Arduino_X07_bridge/`). Receiving on the X07: `INIT #1,"COM:",1200,"B"` and `EXEC &HEE1F`; sending to the PC: `INIT #1,"COM:",1200,"B"` and `LIST#1`. WAV converter (CSAVE / CLOAD, 1200 baud FSK) |
+| Canon X07 | TTL-UART with INVERTED logic, 300 to 4800 baud (4800 default), flow None / XON/XOFF / RTS/CTS; needs an inverting converter (FTDI with inverted logic set with FT_Prog, or the Arduino bridge in `Arduino_X07_bridge/`). Receiving on the X07: `INIT #1,"COM:",4800,"B"` and `EXEC &HEE1F`; sending to the PC: `INIT #1,"COM:",4800,"B"` and `LIST#1`. WAV converter (CSAVE / CLOAD, 4800 baud FSK) |
 | TRS-80 Model 100 / NEC PC-8201 | RS-232, 300 to 19200 baud |
 | UART Other | any computer with a UART interface, TTL or RS-232 |
 

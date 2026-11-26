@@ -551,9 +551,9 @@ namespace UartSlTest
         {
             if (curModel == 6)
                 return "Canon X07 has INVERTED TTL-UART logic. To connect it to a PC through USB you need an FT232 converter with inverted logic (set in its EEPROM with FT_Prog) " +
-                       "or the Arduino converter described on my GitHub page (folder Arduino_X07_bridge). Auto-token option on and 1200bps are the recommended settings.\r\n" +
-                       "Receiving a program in the X07 from SerComet: LOAD \"COM:\",1200 (the mode \"B\" is the default, INIT is not needed).\r\n" +
-                       "Sending from the X07 to the PC: SAVE \"COM:\",1200 (tokenized) or LIST#1 after INIT #1,\"COM:\",1200,\"B\" (a text listing, saved as .bas).\r\n" +
+                       "or the Arduino converter described on my GitHub page (folder Arduino_X07_bridge). Auto-token option on and 4800 bps are the recommended settings.\r\n" +
+                       "Receiving a program in the X07 from SerComet: LOAD \"COM:\",4800 (the mode \"B\" is the default, INIT is not needed).\r\n" +
+                       "Sending from the X07 to the PC: SAVE \"COM:\",4800 (tokenized) or LIST#1 after INIT #1,\"COM:\",4800,\"B\" (a text listing, saved as .bas).\r\n" +
                        "WAV: the tokenized program as a tape recording (CSAVE / CLOAD, 1200 baud FSK); a BASIC text file is converted to a recording and back.";
             if (curModel == 3)
                 return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
@@ -655,7 +655,7 @@ namespace UartSlTest
             new ModelCfg { Mode = 2, Baud = "4800", Delay = DefaultDelay(4800, 3) },                         // Casio
             new ModelCfg { Mode = 1, Baud = "1200", Delay = DefaultDelay(1200, 4), Eol = 0 },                // TRS-80 / NEC
             new ModelCfg { Mode = 1, Delay = DefaultDelay(9600, 5) },                                        // other UART
-            new ModelCfg { Mode = 2, Baud = "1200", Delay = 100, Eol = 0, Eof = true } };                   // Canon X07: CR only (CR+LF made two line ends), 100 ms after a line, "EOF" = the line EXEC &HEE33
+            new ModelCfg { Mode = 2, Baud = "4800", Delay = 100, Eol = 0, Eof = true } };                   // Canon X07: CR only (CR+LF made two line ends), 100 ms after a line, "EOF" = the line EXEC &HEE33
         int curModel = -1, startModel = 1;
         string startPort;
         static readonly string[] ModelNames = { "PC-1500", "PC-1600", "PC-1350", "PC-1360", "PC-E500", "PC-E500S", "PC-1450", "Sharp other", "FX-850/870", "TRS-80", "UART Other", "Canon X07" };
@@ -701,7 +701,7 @@ namespace UartSlTest
             if (m == 2 || m == 3 || m == 6 || (m == 5 && c.Mode == 2)) radioSio.Checked = true;
             else if (m == 4 || m == 5 || c.Mode == 1) radioRs.Checked = true;
             else radioSoft.Checked = true;
-            savedBaud = Array.IndexOf(TextBaudsFor(m), c.Baud) >= 0 ? c.Baud : (m == 3 ? "4800" : m == 6 ? "1200" : "9600");
+            savedBaud = Array.IndexOf(TextBaudsFor(m), c.Baud) >= 0 ? c.Baud : (m == 3 ? "4800" : m == 6 ? "4800" : "9600");
             savedSoftBaud = Array.IndexOf(SoftBauds, c.SoftBaud) >= 0 ? c.SoftBaud : "9600";
             numDelay.Value = Math.Max(numDelay.Minimum, Math.Min(numDelay.Maximum, c.Delay));
             comboEol.SelectedIndex = c.Eol >= 0 && c.Eol < 3 ? c.Eol : 1;
@@ -883,7 +883,7 @@ namespace UartSlTest
         static readonly string[] SoftBauds = { "1200", "2400", "4800", "9600", "19200" };
         static readonly string[] FxBauds = { "300", "600", "1200", "2400", "4800" };      // Casio FX-850P / 870P: BASIC offers 150 to 4800 bps
         static readonly string[] UartBauds = { "300", "600", "1200", "2400", "4800", "9600", "19200", "38400", "57600", "115200" };   // UART Other: up to 115200
-        static readonly string[] X07Bauds = { "300", "600", "1200", "2400", "4800" };      // Canon X07: 300 to 4800 bps, 1200 is the default
+        static readonly string[] X07Bauds = { "300", "600", "1200", "2400", "4800" };      // Canon X07: 300 to 4800 bps, 4800 is the default
         static string[] TextBaudsFor(int m) { return m == 3 ? FxBauds : m == 5 ? UartBauds : m == 6 ? X07Bauds : TextBauds; }
 
         // the combo has all the speeds for the text modes and the five speeds of the SL installer for the Software UART
@@ -2545,7 +2545,7 @@ int removed, kept, cut; List<string> moved;
             if (x07img)
             {
                 if (!X07Tok.IsStream(data)) { Log("File rejected: it is not a tokenized Canon X07 program (the stream of SAVE \"COM:\")."); return; }
-                Log("Canon X07: " + data.Length + " B tokenized program (for LOAD \"COM:\",1200).");
+                Log("Canon X07: " + data.Length + " B tokenized program (for LOAD \"COM:\",4800).");
             }
             else if (x07bin)
             {
@@ -2560,7 +2560,7 @@ int removed, kept, cut; List<string> moved;
                 byte[] img7 = X07Tok.Tokenize(src7, out pr7);
                 if (img7 == null) { Log("Tokenizer error: " + pr7); return; }
                 data = img7;
-                Log("Canon X07: tokenized " + Regex.Matches(src7, @"(?m)^\s*\d+").Count + " lines, " + img7.Length + " B (the stream of SAVE \"COM:\", for LOAD \"COM:\",1200,\"B\").");
+                Log("Canon X07: tokenized " + Regex.Matches(src7, @"(?m)^\s*\d+").Count + " lines, " + img7.Length + " B (the stream of SAVE \"COM:\", for LOAD \"COM:\",4800,\"B\").");
             }
             else if (!text)
             {
