@@ -244,8 +244,8 @@ namespace UartSlTest
                     de.DrawFocusRectangle();
                 }
             };
-            chkEof = new LockCheck { Text = "Add EOF marker", Left = 203, Top = 562, Width = 115, Checked = true };
-            chkAuto = new LockCheck { Text = "Auto token", Left = 319, Top = 562, Width = 86, Checked = true };
+            chkEof = new LockCheck { Text = "Add EOF marker", Left = 206, Top = 562, Width = 115, Checked = true };
+            chkAuto = new LockCheck { Text = "Auto token", Left = 320, Top = 562, Width = 86, Checked = true };
             chkSkipRem = new LockCheck { Text = "Skip REM", Left = 402, Top = 562, Width = 82, Checked = false };
             btnAbort = Btn("Abort", Icons.Cross(), 485, 560, 90, 24, TR);
             btnConvert = Btn("Check Basic", Icons.File(), 104, 560, 94, 24, TL);       // 4 px wider to the right: the text does not touch the icon
@@ -4189,9 +4189,9 @@ int removed, kept, cut; List<string> moved;
             };
             repair.Click += delegate
             {
-                var ed = new EditorForm(path, (CheckProfile)combo.SelectedItem);          // the repair window of the machine chosen here, the repair starts at once
-                ed.Shown += delegate { ed.RunRepair(); };
-                ed.Show(this);
+                var ed = new EditorForm(path, (CheckProfile)combo.SelectedItem);          // only the Edit/Repair window of the machine chosen here (no repair is started); this window closes
+                ed.Show(Owner);
+                Close();
             };
             copy.Click += delegate { try { Clipboard.SetText(box.Text); } catch { } };
             Shown += delegate { Run(); };
