@@ -3781,7 +3781,11 @@ int removed, kept, cut; List<string> moved;
                 int no = int.Parse(s.Substring(start, i - start));
                 if (no < 1 || no > 65279) { problem = "text line " + ln + ": line number out of range"; return null; }
                 var body = new List<byte>();
-                string err = TokenizeBody(t, !pc1500, s.Substring(i), body);
+                // a colon after the line number (10 :A=1 as in the printer listing of the CE-150 and in many listings, also 10: A=1) is not a part of the program:
+                // the computer shows it by itself, so it is not stored (a stored 3Ah would be an extra empty statement at the start of every line)
+                string rest = s.Substring(i), restTrim = rest.TrimStart(' ', '\t');
+                if (restTrim.StartsWith(":")) rest = restTrim.Substring(1);
+                string err = TokenizeBody(t, !pc1500, rest, body);
                 if (err != null) { problem = "line " + no + ": " + err; return null; }
                 body.Add(0x0D);
                 if (body.Count > 255) { problem = "line " + no + ": too long (" + body.Count + " bytes)"; return null; }
@@ -4239,7 +4243,12 @@ int removed, kept, cut; List<string> moved;
             foreach (Line l in lines) if (l.IsRem) { remCount++; remBytes += l.Raw.Length + 1; }
             if (remCount > 0) add(3, "REM lines: " + remCount + " (about " + remBytes + " B); Skip REM leaves them out when the program is sent.");
             if (p.Tokenizer1500 || p.Tokenizer1600)
+            {
                 add(3, "Spaces in DATA statements outside quotation marks are removed by the machine (DATA 1, 2 is stored as 1,2); SerComet does the same.");
+                int colonLines = 0;
+                foreach (Line l in lines) if (l.Number >= 0 && l.Body.TrimStart().StartsWith(":")) colonLines++;
+                if (colonLines > 0) add(3, colonLines + " lines have a colon after the line number (10 :A=1, as in the printer listing): the converter does not store it, the computer shows it by itself.");
+            }
             if (p.Tokenizer1500 || p.Name.StartsWith("Sharp PC-13") || p.Name.StartsWith("Sharp PC-14")) add(3, p.Name + ": the IF statement may have no THEN (IF A=1 GOTO 100 or IF A=1 PRINT 1).");
             if (p.Name.StartsWith("Sharp PC-1360")) add(3, "PC-1360: the PC-1350 statements plus the file and disk statements (OPEN, SAVE, LOAD ...).");
             if (p.Name.StartsWith("Sharp PC-1350") || p.Name.StartsWith("Sharp PC-1360") || p.Name.StartsWith("Sharp PC-E500"))

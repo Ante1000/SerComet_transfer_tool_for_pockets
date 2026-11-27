@@ -32,7 +32,8 @@ TOK = {'AND':'f150','ASC':'f160','BEEP':'f182','CALL':'f18a','CHR$':'f163','CLEA
  'OR':'f151','PEEK':'f16f','PEEK#':'f16e','POKE':'f1a1','POKE#':'f1a0','PRINT':'f097','RANDOM':'f1a8',
  'REM':'f1ab','RETURN':'f199','RND':'f17c','STR$':'f161','THEN':'f1ae','TIME':'f15b','TO':'f1b1',
  'VAL':'f162','WAIT':'f1b3','TEXT':'e686','CSIZE':'e680',
- 'CLS':'f088','DATA':'f18d','READ':'f1a6','RESTORE':'f1a7','STEP':'f1ad'}   # the last five: from the SerComet token table, checked against wav/sl1500.wav (old installer)
+ 'CLS':'f088','DATA':'f18d','READ':'f1a6','RESTORE':'f1a7','STEP':'f1ad',
+ 'CURSOR':'f084','GCURSOR':'f093','GPRINT':'f09f','POINT':'f168'}   # the last five: from the SerComet token table, checked against wav/sl1500.wav (old installer)
 FS = 44100
 BIT = 141.12   # samples per bit (8 cycles of 2500 Hz)
 
@@ -62,7 +63,10 @@ def program_bytes(path):
     lines = []
     for l in open(path, encoding='latin1').read().splitlines():
         m = re.match(r'\s*(\d+)\s?(.*)$', l)
-        if m: lines.append((int(m.group(1)), m.group(2).rstrip()))
+        if m:
+            body = m.group(2).rstrip()
+            if body.lstrip().startswith(':'): body = body.lstrip()[1:]      # 10 :A=1 / 10: A=1 - the colon after the line number is not stored (the computer shows it)
+            lines.append((int(m.group(1)), body))
     nums = [n for n, _ in lines]
     if nums != sorted(set(nums)): raise ValueError('line numbers must be ascending')
     return b''.join(tokenize_line(n, t) for n, t in lines) + b'\xff'
