@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds Basic/sl1500.txt (the BASIC installer of the PC-1500 Saver/Loader) from asm/uart1500_sl.asm.
+"""Builds Basic/sl1500_pc1500.txt (the BASIC installer of the PC-1500 Saver/Loader; python3 build_sl1500.py [pc1500|pc1500a|ce161]) from asm/uart1500_sl.asm.
 The code is assembled with tools/lh5801asm.py. The installer POKEs it from DATA lines (RX port PB2 by default) and then patches
 the 5 bytes that depend on the RX port (PB0 / PB2)."""
 import os, sys
@@ -52,8 +52,9 @@ def build():
 
     def add(num, text):
         L.append((num, text))
-    add(10, 'REM SL1500 4800 BPS')
-    add(20, 'A=(PEEK &7863)*256:L=A+%d:S=A+%d' % (LOAD_OFF, SAVE_OFF))
+    add(10, 'REM SL1500 PC-1500 4800')
+    add(20, 'A=(PEEK &7863)*256:T=(PEEK &7864)*256:L=A+%d:S=A+%d' % (LOAD_OFF, SAVE_OFF))
+    add(25, 'IF T-A<4096 PRINT "NEED RAM MODULE":BEEP 3:END')
     add(30, 'B=(PEEK &7865)*256+PEEK &7866')
     add(40, 'N=A+%d:IF B<N GOSUB 200:PRINT "NEW &";H$;" IN PRO!":BEEP 3:END' % NEW_OFF)
     add(50, 'P=2:INPUT "RX PORT (DEFAULT PB2) ";P')
@@ -69,7 +70,7 @@ def build():
     pk = ':'.join('POKE L+%d,M' % p for p in bm_pos)
     add(130, pk)
     add(135, 'P$="PB2":IF M=1 LET P$="PB0"')
-    add(140, 'CLS:WAIT 100:PRINT "SL1500 READY 4800 ";P$')
+    add(140, 'CLS:WAIT 250:PRINT "SL1500 READY 4800 ";P$')
     add(150, 'N=L:GOSUB 200:PRINT "LOAD CALL &";H$;" NEW 1ST"')
     add(160, 'N=S:GOSUB 200:PRINT "SAVE CALL &";H$')
     add(165, 'N=A+%d:GOSUB 200:PRINT "AFTER NEW0: NEW &";H$' % NEW_OFF)
@@ -116,7 +117,7 @@ def build_ce161():
     pk = ':'.join('POKE L+%d,M' % p for p in bm_pos)
     add(130, pk)
     add(135, 'P$="PB2":IF M=1 LET P$="PB0"')
-    add(140, 'CLS:WAIT 100:PRINT "SL1500 READY 4800 ";P$')
+    add(140, 'CLS:WAIT 250:PRINT "SL1500 READY 4800 ";P$')
     add(150, 'PRINT "LOAD CALL &3E00 NEW 1ST"')
     add(160, 'PRINT "SAVE CALL &3F00"')
     add(165, 'PRINT "KEEP MEM ABOVE 6700"')
@@ -142,7 +143,7 @@ def build_ml():
 
     def add(num, text):
         L.append((num, text))
-    add(10, 'REM SL1500 PC-1500A &7C10')
+    add(10, 'REM SL1500A PC-1500A &7C10')
     add(20, 'L=&7C10:S=&7D00')
     add(30, 'A=PEEK &7BFF:B=PEEK &7FFF:C=255-B')
     add(40, 'POKE &7FFF,C:Q=PEEK &7FFF:R=PEEK &7BFF')
@@ -165,7 +166,7 @@ def build_ml():
     pk = ':'.join('POKE L+%d,M' % p for p in bm_pos)
     add(135, pk)
     add(140, 'P$="PB2":IF M=1 LET P$="PB0"')
-    add(150, 'CLS:WAIT 100:PRINT "SL1500 READY 4800 ";P$')
+    add(150, 'CLS:WAIT 250:PRINT "SL1500 READY 4800 ";P$')
     add(160, 'PRINT "LOAD CALL &7C10 NEW 1ST"')
     add(165, 'PRINT "SAVE CALL &7D00"')
     add(170, 'PRINT "SURVIVES NEW AND NEW0"')
@@ -183,10 +184,11 @@ def build_ml():
 
 
 def main():
-    kind = sys.argv[1] if len(sys.argv) > 1 else ''
-    L, code, lab, db_pos, bm_pos = {'ce161': build_ce161, '7c00': build_ml}.get(kind, build)()
+    kind = sys.argv[1] if len(sys.argv) > 1 else 'pc1500'
+    L, code, lab, db_pos, bm_pos = {'ce161': build_ce161, 'pc1500a': build_ml, 'pc1500': build}[kind]()
     text = ''.join('%d %s\n' % (n, t) for n, t in L)
-    open(os.path.join(ROOT, 'Basic', {'ce161': 'sl1500_ce161.txt', '7c00': 'sl1500_7c00.txt'}.get(kind, 'sl1500.txt')), 'w').write(text)
+    out = {'ce161': 'archive/sl1500_ce161.txt', 'pc1500a': 'Basic/sl1500_pc1500a.txt', 'pc1500': 'Basic/sl1500_pc1500.txt'}[kind]
+    open(os.path.join(ROOT, out), 'w').write(text)
     print('code %d bytes: LOAD %d, SAVE %d; DB at %s, BM at %s; %d lines, %d characters' % (
         len(code), lab['SAVE'], len(code) - lab['SAVE'], db_pos, bm_pos, len(L), len(text)))
     print('longest line: %d' % max(len('%d %s' % (n, t)) for n, t in L))

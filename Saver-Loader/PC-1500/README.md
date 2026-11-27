@@ -1,4 +1,4 @@
-# Saver/Loader for the Sharp PC-1500(A), 4800 bps
+# Saver/Loader for the Sharp PC-1500 and PC-1500A, 4800 bps
 
 LOAD and SAVE of BASIC programs through the software UART (8N1, fixed 4800 bps; TX = PC7 pin 10, RX = PB2 pin 27 or PB0 pin 9, TTL levels),
 for SerComet (target PC-1500, Software Serial). The routines work directly in the program memory; the bit routines are those of
@@ -6,72 +6,65 @@ for SerComet (target PC-1500, Software Serial). The routines work directly in th
 
 | File | Contents |
 |---|---|
-| `Basic/sl1500.txt` | the BASIC installer (39 lines; asks for the RX port, shows INSTALLING..., POKEs 312 bytes with a checksum) |
-| `Basic/sl1500_7c00.txt` | the installer for the **PC-1500A**: the code goes to the machine language RAM `&7C10` / `&7D00` (see below; no `NEW &n` needed at all) |
-| `Basic/sl1500_ce161.txt` | the installer for the CE-161 (code at the top of the module, `&3E00` / `&3F00`) |
-| `wav/sl1500.wav` | the installer as a tape recording for `CLOAD` (CE-150; name `SL1500`, 6 s leader tone, about 2 minutes) |
+| `Basic/sl1500_pc1500a.txt`, `wav/sl1500_pc1500a.wav` | installer for the **PC-1500A**: the code goes to the machine language RAM `&7C10` / `&7D00`; **no `NEW &nnnn` needed**, survives `NEW` and `NEW0`. Tape name `SL1500A` |
+| `Basic/sl1500_pc1500.txt`, `wav/sl1500_pc1500.wav` | installer for the **PC-1500** with a RAM module (CE-151, CE-155, CE-159, CE-161, 32 KB...; the RAM is read from the machine, nothing to choose): the code goes to the program RAM, **`NEW &nnnn` after every `NEW0`**. Tape name `SL1500` |
 | `asm/uart1500_sl.asm` | the source (LH5801) of LOAD and SAVE |
-| `tools/lh5801asm.py`, `tools/build_sl1500.py` | a small LH5801 assembler and the installer builder |
-| `tools/verify_sl1500.py` | simulator test of SAVE, LOAD and the installer (about 90 s, Python 3 only) |
+| `tools/lh5801asm.py`, `tools/build_sl1500.py` | a small LH5801 assembler and the installer builder (`python3 tools/build_sl1500.py pc1500` / `pc1500a`) |
+| `tools/pc1500_bas2wav.py` | BASIC text to a tape recording (WAV) for `CLOAD`: `python3 tools/pc1500_bas2wav.py Basic/sl1500_pc1500a.txt wav/sl1500_pc1500a.wav SL1500A` (44.1 kHz, 8 bit, 8 s leader tone, about 2.5 minutes). The tokens CLS, DATA, READ, RESTORE and STEP were added to the tool; the tokenizer reproduces the program of the earlier `sl1500.wav` byte for byte |
+| `tools/verify_sl1500.py` | simulator test of SAVE, LOAD and the installers (about 90 s, Python 3 only) |
 
-## Use
+Tested in a simulator (cycle counts of the [pc1500emu](https://github.com/pchambre/pc1500emu) opcode table); **not yet tried on a real PC-1500**
+(the CALL of a small test routine in `&7C00` and in the CE-161 worked on a real PC-1500A).
 
-1. PRO mode: `NEW0`, `NEW &4300` (RAM start + `&300`; other RAM: `PEEK &7863` is the high byte of the RAM start; with the RAM from `&0000`: `NEW &300`), `CLOAD` the tape (or type `sl1500.txt`), `RUN`;
-   ENTER for RX on PB2 (`0` for PB0); it shows INSTALLING... and then `SL1500 READY 4800 PB2` (or `PB0`, the chosen port) and the two calls.in hex (`LOAD CALL &0100`, `SAVE CALL &0200`) and, for this machine, the command to give after `NEW0` (`AFTER NEW0: NEW &4300`, `NEW &300` with the RAM from `&0000`; it is RAM start + `&300`). Then `NEW`: the routines stay.
-   The WAV `wav/sl1500.wav` is of the earlier text of the installer (without these messages): make it again from `Basic/sl1500.txt` with SerComet when needed.
-2. **Save** (PC-1500 to SerComet): `CALL &4200` (RUN mode). `X=0 : CALL &4200,X` gives X = 1 when done.
-3. **Load** (SerComet to the PC-1500): `NEW`, `CALL &4100`, then Send in SerComet within 30 s. `X=0 : CALL &4100,X`: 1 = loaded, 2 = checksum error,
-   3 = nothing received, 4 = does not fit; after 2 or 4 the memory is left empty.
-
-Addresses are for a RAM that starts at `&4000`: **LOAD at RAM start + `&100` (`&4100`), SAVE at RAM start + `&200` (`&4200`)**, BASIC from RAM start + `&300`; with the RAM from `&0000`: `CALL 256` (LOAD) and `CALL 512` (SAVE). The installer prints them for any configuration.
-Tested in a simulator (cycle counts of the [pc1500emu](https://github.com/pchambre/pc1500emu) opcode table); **not yet tried on a real PC-1500**.
-
-## PC-1500A: the code in the machine language RAM (`&7C01`-`&7FFF`), no `NEW &n` needed
+## PC-1500A: `Basic/sl1500_pc1500a.txt`
 
 The PC-1500A has 1 KB of RAM for machine language programs at `&7C00`-`&7FFF` (the PC-1500 without A has only a mirror of `&7800`-`&7BFF` there).
 Measured on a real PC-1500A (bare machine and with a CE-161): it is a separate RAM, not a mirror (`&7FFF` is not `&7BFF`); `&7C00` itself cannot be
 written (it always reads 13), `&7C01` upwards can; the check sum of `&7C01`-`&7FFF` did not change after errors, a program with GOSUB, RESERVE keys,
 CSAVE / CLOAD, LPRINT (CE-150), `NEW0`, `NEW &n`, switching off and on, nor after fitting and removing a working CE-161. The BASIC variables grow downwards
 from the top of the RAM (`&7899/9A`, `&5800` after `NEW0`), so the top of the program RAM is not a safe place; this area is outside of the BASIC memory.
+A **faulty memory module** changed this area once during the tests.
 
-| | |
-|---|---|
-| LOAD | `CALL &7C10` (`NEW` first) |
-| SAVE | `CALL &7D00` |
-| code | 312 bytes, `&7C10`-`&7CCE` and `&7D00`-`&7D78` |
-| installer | `Basic/sl1500_7c00.txt` (built with `python3 tools/build_sl1500.py 7c00`) |
+1. `NEW0`, enter (or `CLOAD` the tape `SL1500A`) the installer, `RUN`. The RAM expansion does not matter (bare, CE-155, CE-161, 32 KB): the installer needs nothing of it.
+2. ENTER for RX on PB2 (`0` for PB0). It checks that `&7FFF` is a RAM of its own (writes the complement and checks that `&7BFF` does not change; on a PC-1500 without A it stops with
+   `NO ML RAM AT &7C00`), POKEs 312 bytes, reads back every byte (`ML RAM WRITE ERROR`) and checks the sum of the DATA. Then it shows `SL1500 READY 4800 PB2` (or PB0),
+   `LOAD CALL &7C10 NEW 1ST`, `SAVE CALL &7D00` and `SURVIVES NEW AND NEW0`.
+3. **Save** (PC-1500A to SerComet): `CALL &7D00` (RUN mode). `X=0 : CALL &7D00,X` gives X = 1 when done.
+4. **Load** (SerComet to the PC-1500A): `NEW`, `CALL &7C10`, then Send in SerComet within 30 s. `X=0 : CALL &7C10,X`: 1 = loaded, 2 = checksum error,
+   3 = nothing received, 4 = does not fit; after 2 or 4 the memory is left empty.
 
-Install with any `NEW0`, enter / `CLOAD` the installer, `RUN`. It refuses (`NO ML RAM AT &7C00`) on a machine without this RAM (it writes `&7FFF` and checks that `&7BFF` does not change)
-and reads back every POKEd byte (`ML RAM WRITE ERROR`). The routines stay after `NEW`, `NEW0`, `NEW &n` and after switching the machine off (they are lost with `ALL RESET`
-or when the batteries are out): the same two calls in every PC-1500A configuration (bare, CE-155, CE-161, 32 KB). The BASIC memory is not reduced.
-A **faulty memory module** changed this area once during the tests: a module that gives rubbish with `CLOAD` is not a good test partner.
-Tested in the simulator only (the SL code is the same as for the other layouts); the CALL of a test routine at `&7C00` worked on a real PC-1500A.
+The code stays after `NEW`, `NEW0`, `NEW &n` and after switching the machine off (it is lost with `ALL RESET` or when the batteries are out; keep the tape).
+The BASIC memory is not reduced.
 
-## CE-161 version: the SL in the memory module (survives `NEW0`)
+## PC-1500 with a RAM module: `Basic/sl1500_pc1500.txt`
 
-For a PC-1500(A) with the 16 KB RAM module **CE-161** (RAM from `&0000`, `PEEK &7863` = 0). Measured on a real CE-161: `NEW0`, `NEW 256` and
-`NEW &n` write only **one byte** (the end marker `FFH` at the start of the BASIC program, `&00C5` / `&0100` / `&n`) and change the pointers; they erase
-nothing. `MEM` after `NEW0` is 22330 (the BASIC memory is one block from the program start to `&57FF`). The code is therefore placed at the **top of the
-module**, where the BASIC does not come unless the program is longer than about 15.5 KB:
+The PC-1500 needs a RAM module (CE-151 4 KB, CE-155 / CE-159 8 KB, CE-161 / CE-163 16 KB or 32 KB): the installer reads the start and the top of the RAM from the machine
+(`PEEK &7863`, `PEEK &7864`) and stops with `NEED RAM MODULE` when the RAM is smaller than 4 KB. The code goes to the program RAM:
+**LOAD at RAM start + `&100`, SAVE at RAM start + `&200`, the BASIC from RAM start + `&300`**. `NEW0` puts the start of the BASIC to RAM start + `&C5`, where it would
+overwrite the code with the first lines, so **after every `NEW0` the command `NEW &nnnn` (nnnn = RAM start + `&300`) is needed** (and not the `NEW 256` of the CE-161 manual). `NEW0`,
+`NEW 256` and `NEW &n` write only one byte (the end marker `FFH` at the start of the BASIC program) and change the pointers (measured on a CE-161); they erase nothing.
 
-| | |
-|---|---|
-| LOAD | `CALL &3E00` (`NEW` first) |
-| SAVE | `CALL &3F00` |
-| code | 316 bytes, `&3E00`-`&3F78` |
-| installer | `Basic/sl1500_ce161.txt` (built with `python3 tools/build_sl1500.py ce161`) |
+| RAM | RAM start | `NEW` after `NEW0` | LOAD | SAVE |
+|---|---|---|---|---|
+| PC-1500A without a module (6 KB) | `&4000` | `NEW &4300` | `CALL &4100` | `CALL &4200` |
+| 16 KB CE-161 / 32 KB RAM from `&0000` | `&0000` | `NEW &300` | `CALL &0100` | `CALL &0200` |
+| other modules | `PEEK &7863` * 256 | RAM start + `&300` | + `&100` | + `&200` |
 
-1. Switch of the CE-161: **write enabled** (protection off). `NEW0`, enter / `CLOAD` the installer, `RUN`. It stops with `WRITE PROTECT ON?` when the POKEs do not stay.
-2. The routines stay after `NEW0`, `NEW 256` (the initial setting of the CE-161 manual), `NEW &300` and after switching the machine off.
-3. **Keep `MEM` above about 6700**: below it the BASIC program reaches `&3E00` and overwrites the code (nothing protects it with the switch off). `LOAD` itself
-   cannot overwrite the code: when the received program would reach `&3E00` it stops with `X = 4` and leaves the memory empty (this check is new in this version;
-   tested in the simulator, `tools/verify_sl1500.py`).
-4. A faulty `POKE` into `&3E00`-`&3F78`, or a program that is too long, destroys the code: install it again (keep the installer on tape).
-   Alternatively switch the protection on (then the BASIC must start in the internal RAM: `NEW0`, `NEW &4000`; 6 KB program memory).
+The installer prints the values for your machine.
 
-Not yet tried on a real PC-1500: the installer and the guard were tested only in the simulator; the CALL of a test routine at `&3E00` (returns `X = 1`) worked on a real CE-161.
+1. PRO mode: `NEW0`, `NEW &nnnn` from the table (if you do not know it, load the installer and `RUN` it: it stops with `NEW &nnnn IN PRO!`; give that `NEW &nnnn` and load the installer again).
+2. Enter (or `CLOAD` the tape `SL1500`) the installer, `RUN`. ENTER for RX on PB2 (`0` for PB0). It shows INSTALLING..., then `SL1500 READY 4800 PB2` (or PB0), the two calls and `AFTER NEW0: NEW &nnnn`.
+   Then `NEW`: the routines stay (a plain `NEW` keeps the start of the BASIC).
+3. **Save**: `CALL` SAVE (RUN mode). `X=0 : CALL &4200,X` gives X = 1 when done.
+4. **Load**: `NEW`, `CALL` LOAD, then Send in SerComet within 30 s. `X=0 : CALL &4100,X`: 1 = loaded, 2 = checksum error, 3 = nothing received, 4 = does not fit; after 2 or 4 the memory is left empty.
+
+The BASIC variables are allocated from the top of the RAM downwards; the code is at the bottom, below the BASIC program, so neither the program nor the variables can reach it.
+It is lost by `NEW0` followed by a program (without `NEW &nnnn`), by `NEW 256`, by a faulty `POKE` and when the batteries are out.
 
 ## Archive
 
-`archive/` keeps the earlier versions: `sl1500_v1.txt` / `sl1500_v1.wav` (installer with LOAD at RAM start + `&C5`, SAVE at + `&184`) and `sl1500_ml_pb2.*`, `sl1500_ml_pb0.*`
-(the 312 bytes of LOAD + SAVE as a machine-language file, with tape recordings, for loading with `CALL &BCE8` / `&BD3C`; **not working yet**, the header handling was not finished).
+`archive/` keeps earlier versions: `sl1500_v1.txt` / `sl1500_v1.wav` (installer with LOAD at RAM start + `&C5`, SAVE at + `&184`), `sl1500_ml_pb2.*`, `sl1500_ml_pb0.*`
+(the 312 bytes of LOAD + SAVE as a machine-language file, with tape recordings, for loading with `CALL &BCE8` / `&BD3C`; **not working yet**, the header handling was not finished)
+and `sl1500_ce161.txt`: an installer that put the code at the top of the 16 KB module (LOAD `&3E00`, SAVE `&3F00`, with a guard in LOAD that stops at `&3E00`; kept for the case
+that the protection switch of the CE-161 is used). The measured facts about it: with the switch on the module cannot be written (then the BASIC must start in the internal RAM: `NEW0`, `NEW &4000`);
+`MEM` after `NEW0` is 22330 with a CE-161.

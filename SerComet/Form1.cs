@@ -610,10 +610,10 @@ namespace UartSlTest
                        "Sending Basic program to PC: see the manual of the CE-158(X) (the output device and CSAVE a); the received text is saved as .bas.\r\n" +
                        "Receiving from PC: SETDEV CI, then CLOADa (SerComet: Send). Text transfer (.bas).";
             if (radio1500.Checked)
-                return "Software UART: you need to upload first from tape the SAVER-LOADER file sl1500.wav. This machine program enables serial communication via the 60-pin connector. " +
+                return "Software UART: you need to upload first from tape the SAVER-LOADER file: sl1500_pc1500a.wav (PC-1500A) or sl1500_pc1500.wav (PC-1500 with a RAM module). This machine program enables serial communication via the 60-pin connector. " +
                        "Serial 8N1 at 4800 baud (fixed) and binary transfer (.img files). TX = PC7 (pin 10), RX = PB2 (pin 27) of the PC-1500.\r\n" +
-                       "Sending Basic program to PC: CALL &4200 in the RUN mode.\r\n" +
-                       "Receiving from PC: NEW, then CALL &4100 and press Send within 30 s. See the SAVER-LOADER folder on GitHub for the project details.";
+                       "Sending Basic program to PC: CALL &7D00 in the RUN mode (PC-1500: CALL RAM start + &200, for example &4200; the installer shows it).\r\n" +
+                       "Receiving from PC: NEW, then CALL &7C10 (PC-1500: RAM start + &100, for example &4100) and press Send within 30 s. See the SAVER-LOADER folder on GitHub for the project details.";
             if (radioRs.Checked)
                 return "PC-1600 serial port (RS-232), text transfer (.bas); use the same baud rate in SerComet.\r\n" +
                        "Sending Basic program to PC: SETCOM\"COM1:\"," + savedBaud + ", then SAVE \"COM1:\",A (BASIC text).\r\n" +

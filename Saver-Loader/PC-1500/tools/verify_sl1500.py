@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Tests of the PC-1500 Saver/Loader (asm/uart1500_sl.asm, Basic/sl1500.txt) without a PC-1500.
+"""Tests of the PC-1500 Saver/Loader (asm/uart1500_sl.asm, Basic/sl1500_pc1500.txt) without a PC-1500.
 
 A small LH5801 simulator (only the instructions the SL uses, with the cycle counts of the pc1500emu opcode table: 1.3 MHz) runs
 the routines with a memory laid out like the BASIC of the PC-1500 (pointers &7864..&7868), records the PC7 output with the cycle
 count of every edge (decoded as 8N1 at 4800 bps) and feeds PB2 / PB0 with a bit stream. Tests: SAVE of programs of different
 lengths, LOAD (also with +-3 % baud error, gaps, a glitch, PB0), checksum error, nothing received, does not fit, exact fit.
-The installer text Basic/sl1500.txt is parsed too: its DATA must give exactly the assembled code (and the patched PB0 bytes)."""
+The installer text Basic/sl1500_pc1500.txt is parsed too: its DATA must give exactly the assembled code (and the patched PB0 bytes)."""
 import os, random, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -229,7 +229,7 @@ def ce161_tests():
     p = p + b'\x01'
     c, m = load(st, p); check('CE-161 LOAD one byte too long -> 4', c.x == 4 and m[st] == 0xFF and sl(m) == code, 'X=%d' % c.x)
     # the installer text
-    txt = open(os.path.join(ROOT, 'Basic', 'sl1500_ce161.txt')).read().splitlines()
+    txt = open(os.path.join(ROOT, 'archive', 'sl1500_ce161.txt')).read().splitlines()
     data = []
     for ln in txt:
         m_ = re.match(r'^(\d+) (.*)$', ln)
@@ -263,7 +263,7 @@ def ml_tests():
     p = prog(700, 9)
     m = mem(ramh=0x42); c = Cpu(m, edges(p + bytes([sum(p) & 255]))); c.wranges = wr; c.run(LA)
     check('PC-1500A LOAD too long -> 4, memory empty', c.x == 4 and m[start] == 0xFF and m[0x7867:0x7869] == start.to_bytes(2, 'big') and sl(m) == code, 'X=%d' % c.x)
-    txt = open(os.path.join(ROOT, 'Basic', 'sl1500_7c00.txt')).read().splitlines()
+    txt = open(os.path.join(ROOT, 'Basic', 'sl1500_pc1500a.txt')).read().splitlines()
     data = []
     for ln in txt:
         m_ = re.match(r'^(\d+) (.*)$', ln)
@@ -325,7 +325,7 @@ def main():
         check('LOAD baud error tolerance %+d%%' % sign, last >= 30, '(up to %+.1f %%)' % (sign * last / 10))
     c, m = load(b'', f=b''); check('LOAD nothing received -> 3 after about 30 s', c.x == 3 and 25 < c.now / CLK < 35, '(%.1f s)' % (c.now / CLK))
     # ---------------- installer
-    txt = open(os.path.join(ROOT, 'Basic', 'sl1500.txt')).read().splitlines()
+    txt = open(os.path.join(ROOT, 'Basic', 'sl1500_pc1500.txt')).read().splitlines()
     data = []
     for ln in txt:
         m_ = re.match(r'^(\d+) (.*)$', ln)
