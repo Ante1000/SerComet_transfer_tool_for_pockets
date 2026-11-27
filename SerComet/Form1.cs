@@ -3926,7 +3926,7 @@ int removed, kept, cut; List<string> moved;
             Add("Sharp PC-1600", 1, 65279, 80, 2, true, false, false, true, k1600);
             Add("Sharp PC-1350", 1, 65279, 79, 2, false, false, false, false, Core + Sharp1350 + " " + t1350);
             Add("Sharp PC-1360 and 1360K", 1, 65279, 79, 2, false, false, false, false, Core + Sharp1350 + Sharp1360 + " " + t1360);
-            Add("Sharp PC-1450..75", 1, 999, 79, 2, false, false, false, false, Core + Sharp1450);
+            Add("Sharp PC-1450..75", 1, 65279, 79, 2, false, false, false, false, Core + Sharp1450);
             Add("Sharp PC-E500", 1, 65279, 255, 0, true, true, false, false, Core + SharpE500 + " " + tE500);
             Add("Sharp PC-E500S", 1, 65279, 255, 0, true, true, false, false, Core + SharpE500 + " " + tE500 + " CLS LOCATE FRE");
             Add("Casio FX-850P / FX-870P", 1, 65535, 255, 15, true, true, false, false, Core + Casio);
@@ -4244,7 +4244,7 @@ int removed, kept, cut; List<string> moved;
             if (p.Name.StartsWith("Sharp PC-1360")) add(3, "PC-1360: the PC-1350 statements plus the file and disk statements (OPEN, SAVE, LOAD ...).");
             if (p.Name.StartsWith("Sharp PC-1350") || p.Name.StartsWith("Sharp PC-1360") || p.Name.StartsWith("Sharp PC-E500"))
                 add(3, "The keyword list of this machine is made from the token table of its ROM (and the older approximate list); an unknown word is only a warning.");
-            if (p.Name.StartsWith("Sharp PC-1450")) add(3, "PC-1450..75: line numbers 1 to 999 and the statements of the PC-14xx family (no files, no RENUM); the list is approximate, check the manual of your model.");
+            if (p.Name.StartsWith("Sharp PC-1450")) add(3, "PC-1450..75: line numbers 1 to 65279 and the statements of the PC-14xx family (no files, no RENUM); the keyword list is approximate, check the manual of your model.");
             if (p.Name.StartsWith("Casio")) add(3, "Casio: variable names up to 15 characters (FX-850P; longer ones are reported), small and capital letters are different variables, a name must not begin with a reserved word.");
             if (p.Name.StartsWith("NEC PC-8201"))
             {
