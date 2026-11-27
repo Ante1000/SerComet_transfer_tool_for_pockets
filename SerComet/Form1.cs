@@ -584,7 +584,7 @@ namespace UartSlTest
                        "Receiving from PC: OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send). Text transfer (.bas).\r\n" +
                        "WAV: the tokenized program as a tape recording (CLOAD / CSAVE, ID 70H); a BASIC text file is converted to a recording and back.";
             if (curModel == 2 && curProf == 3)
-                return "Sharp PC-1360 (15-pin connector, TTL-UART SIO via a USB/COM adapter, 1200 bps). After MERGE of several programs the transmission by SAVE / LOAD may not work correctly (see the manual).\r\n" +
+                return "Sharp PC-1360 (15-pin connector, TTL-UART SIO via a USB/COM adapter, 1200 bps).\r\n" +
                        "Sending Basic program to PC: OPEN \"1200,N,8,1,A,C,&1A\", then SAVE.\r\n" +
                        "Receiving from PC: OPEN \"1200,N,8,1,A,C,&1A\", then LOAD (SerComet: Send). Text transfer (.bas).\r\n" +
                        "WAV: the tokenized program as a tape recording (CLOAD / CSAVE, ID 72H); a BASIC text file is converted to a recording and back.";
