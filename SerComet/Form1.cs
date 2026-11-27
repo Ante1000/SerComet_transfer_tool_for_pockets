@@ -1350,8 +1350,9 @@ namespace UartSlTest
             if (started) Log("Start receiving program data");
             receiving |= unchecked(Environment.TickCount - lastRxAny) < 300;
             bool tx = sending || unchecked(Environment.TickCount - lastTxAny) < 300;
-            string abortText = sending || receiving || tx ? "Abort" : "Clear Log";      // Abort during a transmission, otherwise Clear (the log)
-            if (btnAbort.Text != abortText) btnAbort.Text = abortText;
+            // Abort during a transmission; the caption Clear Log (empties the log) comes back 300 ms after the transmission has ended or was aborted
+            if (sending || receiving || tx) { lastAbortActive = Environment.TickCount; if (btnAbort.Text != "Abort") btnAbort.Text = "Abort"; }
+            else if (btnAbort.Text != "Clear Log" && unchecked(Environment.TickCount - lastAbortActive) >= 300) btnAbort.Text = "Clear Log";
             bool changed = banner.Receiving != receiving || banner.Sending != tx;
             banner.Receiving = receiving;
             banner.Sending = tx;
@@ -2491,9 +2492,11 @@ int removed, kept, cut; List<string> moved;
         }
 
         // forced stop of a transfer
+        int lastAbortActive;
         void Abort()
         {
             abortRequested = true;
+            lastAbortActive = Environment.TickCount;
             MarkSending(null);
             try { if (port != null && port.IsOpen) { port.DiscardOutBuffer(); port.DiscardInBuffer(); } } catch { }
             lock (rxLock) { rx.Clear(); }
