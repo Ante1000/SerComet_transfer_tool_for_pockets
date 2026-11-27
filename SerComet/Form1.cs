@@ -247,7 +247,7 @@ namespace UartSlTest
             chkEof = new LockCheck { Text = "Add EOF marker", Left = 208, Top = 562, Width = 105, Checked = true };
             chkAuto = new LockCheck { Text = "Auto token", Left = 320, Top = 562, Width = 82, Checked = true };
             chkSkipRem = new LockCheck { Text = "Skip REM", Left = 402, Top = 562, Width = 82, Checked = false };
-            btnAbort = Btn("Abort", Icons.Cross(), 485, 560, 90, 24, TR);
+            btnAbort = Btn("Clear", Icons.Cross(), 485, 560, 90, 24, TR);
             btnConvert = Btn("Check Basic", Icons.File(), 104, 560, 94, 24, TL);       // 4 px wider to the right: the text does not touch the icon
             btnConvert.Padding = new Padding(0, 0, 1, 0);                  // the text of the button 3 px further to the right (the usual right padding is 6 px)
             btnView = Btn("WAV", Icons.Note(), 10, 560, 90, 24, TL);
@@ -431,7 +431,7 @@ namespace UartSlTest
             btnRefreshFiles.Click += delegate { RefreshFiles(); };
             txtDir.TextChanged += delegate { UpdateDirColor(); };
             btnTerminal.Click += delegate { OpenTerminal(); };
-            btnAbort.Click += delegate { Abort(); };
+            btnAbort.Click += delegate { if (btnAbort.Text == "Abort") Abort(); else { txtLog.Clear(); progStart = 0; progEnd = -1; } };
             btnConvert.Click += delegate { CheckBasicSelected(); };
             btnView.Click += delegate { WavSelected(); };
             lstFiles.MouseDoubleClick += delegate (object sn, MouseEventArgs me)      // double click on a file name = View
@@ -503,7 +503,7 @@ namespace UartSlTest
             tips.SetToolTip(comboEol, "Line end sent after every line of a text file: CR, CR+LF (TeraTerm style) or LF. Red = CR alone or LF alone is probably a wrong choice for the Sharp and Casio computers (they expect CR+LF); TRS-80 / NEC and other UART computers can use any of them.");
             tips.SetToolTip(btnView, "WAV: PC-1500, PC-1600, PC-1350, PC-1360 and PC-E500 (the last three under Sharp (other)). A BASIC text file (.bas / .txt) is converted to a tape recording (.wav; the PC-1600 asks for MODE 0 = CE-1600P or MODE 1 = CE-150), a .wav recording is converted back to BASIC text.");
             tips.SetToolTip(chkEof, "Add the end-of-file marker. Text modes: after the file (and the dummy line) send the end-of-file character 1Ah (Ctrl-Z) so that the Sharp finishes the reception (1Ah is the end-of-file code of an ASCII file). Switch it off if the Sharp reports an error.");
-            tips.SetToolTip(btnAbort, "Abort the transmission at once: stops sending the file and discards data waiting to be sent or received.");
+            tips.SetToolTip(btnAbort, "Clear: empties the log window. While a file is being sent or received the button is Abort: it stops the transmission at once and discards data waiting to be sent or received.");
             tips.SetToolTip(btnConvert, "Check Basic: a basic check of the selected listing (line numbers, targets of GOTO / GOSUB, line length, keywords ...), the same as Check Basic in the right mouse menu. The conversion of BASIC text to the intermediate code and back is in the right mouse menu (Convert to/from inter. code).");
             tips.SetToolTip(chkSkipRem, "Skip REM: lines that contain only a comment (REM) are not sent to the pocket computer, to save its memory. A REM line that a GOTO / GOSUB points to is kept. Off by default. Not applied to ready program images (.img).");
             tips.SetToolTip(chkAuto, "Software UART. ON: the converter is active. A program received from the Sharp is saved as BASIC text (.bas) and BASIC files are tokenized automatically when sent (the image is not kept). OFF: only program images (.img) are used, no automatic conversion (use the Convert button).");
@@ -564,10 +564,10 @@ namespace UartSlTest
                        "Receiving from PC: LOAD \"COM0:6,N,8,1\". XON/XOFF should be enabled. After sending finishes press Break and type LIST.\r\n" +
                        "Data files: OPEN \"COM0:6,N,8,1,N,N,N,N,N\" AS #1; PRINT #1,..; INPUT #1,A$; LINE INPUT #1,A$; CLOSE.";
             if (curModel == 4)
-                return "TRS-80 Model 100 / NEC PC-8201: DB-25 RS-232C, null-modem cable (in the COM string 8 = 9600, 3 = 300, 9 = 19200).\r\n" +
-                       "Sending Basic program to PC: SAVE \"COM:48N1E\" (ASCII; stable up to 19200 bps).\r\n" +
-                       "Receiving from PC: LOAD \"COM:48N1E\" and Send in SerComet (LOAD tokenizes while receiving: use 600 to 1200 bps).\r\n" +
-                       "Data: OPEN \"COM:88N1E\" FOR OUTPUT AS 1 / FOR INPUT AS 2; PRINT #1,..; LINE INPUT #2,A$; A$=INPUT$(n,2); CLOSE 1,2.";
+                return "TRS-80 Model 100 / NEC PC-8201: DB-25 connector, RS-232C levels - use COM cable or RS232 to USB converter\r\n" +
+                       "Sending Basic program to PC: SAVE \"COM:78N1E\" (TRS-80) or SAVE \"COM:7N81XN\" (PC-8201).\r\n" +
+                       "Receiving from PC: LOAD \"COM:78N1E\" (TRS-80) or LOAD \"COM:7N81XN\" (PC-8201) and Send in SerComet.\r\n" +
+                       "This configures the transmission to 4800 bps and flow control XON/XOFF enabled.";
             if (curModel == 5 && radioSio.Checked)
                 return "Other computer with UART, TTL: logic levels 0 / +5 V; 3.3 V CMOS devices work too, and so do Arduino and similar boards. Connect through a USB-TTL adapter and match its voltage (3.3 V or 5 V) to the device. " +
                        "TX of one side goes to RX of the other, and the grounds are joined. Never connect RS-232 levels to a TTL input.\r\n" +
@@ -668,7 +668,7 @@ namespace UartSlTest
             new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) },                                        // PC-1450..75
             new ModelCfg { Mode = 2, Delay = DefaultDelay(9600, 2) },                                        // Sharp other
             new ModelCfg { Mode = 2, Baud = "4800", Delay = DefaultDelay(4800, 3) },                         // Casio
-            new ModelCfg { Mode = 1, Baud = "1200", Delay = DefaultDelay(1200, 4), Eol = 0 },                // TRS-80 / NEC
+            new ModelCfg { Mode = 1, Baud = "4800", Delay = DefaultDelay(4800, 4), Eol = 0 },                // TRS-80 / NEC (4800 bps, XON/XOFF: COM:78N1E / COM:7N81XN)
             new ModelCfg { Mode = 1, Delay = DefaultDelay(9600, 5) },                                        // other UART
             new ModelCfg { Mode = 2, Baud = "4800", Delay = 100, Eol = 0, Eof = true } };                   // Canon X07: CR only (CR+LF made two line ends), 100 ms after a line, "EOF" = the line EXEC &HEE33
         int curModel = -1, startModel = 1;
@@ -1350,12 +1350,36 @@ namespace UartSlTest
             if (started) Log("Start receiving program data");
             receiving |= unchecked(Environment.TickCount - lastRxAny) < 300;
             bool tx = sending || unchecked(Environment.TickCount - lastTxAny) < 300;
+            string abortText = sending || receiving || tx ? "Abort" : "Clear";      // Abort during a transmission, otherwise Clear (the log)
+            if (btnAbort.Text != abortText) btnAbort.Text = abortText;
             bool changed = banner.Receiving != receiving || banner.Sending != tx;
             banner.Receiving = receiving;
             banner.Sending = tx;
             if (!(receiving || tx)) { if (changed || banner.Blink) { banner.Blink = false; banner.Invalidate(); } }
             else if (changed) banner.Invalidate();
-            if (data != null) Received(data);
+            if (data != null)
+            {
+                DateTime t0 = DateTime.Now.AddSeconds(-2);
+                Received(data);
+                SelectNewestFile(t0);
+            }
+        }
+
+        // after a successful reception the blue selection bar of the Files list goes to the newly received file
+        void SelectNewestFile(DateTime since)
+        {
+            try
+            {
+                if (!Directory.Exists(txtDir.Text)) return;
+                string best = null; DateTime bt = since;
+                foreach (string n in lstFiles.Items)
+                {
+                    DateTime w = File.GetLastWriteTime(Path.Combine(txtDir.Text, n));
+                    if (w >= bt) { bt = w; best = n; }
+                }
+                if (best != null) lstFiles.SelectedItem = best;
+            }
+            catch { }
         }
 
         // text mode: the Sharp sent the program in its internal (intermediate / tokenized) format, e.g. SAVE "COM1:" without ,A.
