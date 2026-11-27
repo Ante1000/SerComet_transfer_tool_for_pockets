@@ -239,6 +239,44 @@ def ce161_tests():
     print('CE-161 code %d bytes (LOAD %d + SAVE %d): LOAD &%04X, SAVE &%04X; the code ends at &%04X' % (len(code), lab['SAVE'], len(code) - lab['SAVE'], LA, SA, SA + len(code) - lab['SAVE'] - 1))
 
 
+def ml_tests():
+    """PC-1500A version: the code in the machine language RAM (LOAD &7C10, SAVE &7D00), the BASIC from &40C5 (after NEW0), RAM to &57FF"""
+    code, lab = assemble()
+    LA, SA = B.ML_LOAD, B.ML_SAVE
+    wr = [(0x4000, 0x5800), (0x7600, 0x8000)]
+    start = 0x40C5
+
+    def mem(content=b'\xff', end=None, ramh=0x58):
+        m = memory(start, content, start if end is None else end, ramh)
+        m[LA:LA + lab['SAVE']] = code[:lab['SAVE']]; m[SA:SA + len(code) - lab['SAVE']] = code[lab['SAVE']:]
+        return m
+    sl = lambda m: bytes(m[LA:LA + lab['SAVE']]) + bytes(m[SA:SA + len(code) - lab['SAVE']])
+    for n in (0, 60, 700, 3000):
+        p = prog(n, 7) if n else b''
+        m = mem(p + b'\xff', start + len(p)); c = Cpu(m); c.wranges = wr; c.run(SA)
+        got, iss = decode(c.tx)
+        check('PC-1500A (&7D00) SAVE %d bytes' % len(p), got == p + bytes([sum(p) & 255]) and not iss and c.x == 1 and c.c == 1 and c.ie == 1)
+    for n in (0, 80, 900):
+        p = prog(n, 8) if n else b''
+        m = mem(); c = Cpu(m, edges(p + bytes([sum(p) & 255]))); c.wranges = wr; c.run(LA)
+        check('PC-1500A (&7C10) LOAD %d bytes' % len(p), c.x == 1 and bytes(m[start:start + len(p)]) == p and m[start + len(p)] == 0xFF and m[0x7867:0x7869] == (start + len(p)).to_bytes(2, 'big') and sl(m) == code, 'X=%d' % c.x)
+    p = prog(700, 9)
+    m = mem(ramh=0x42); c = Cpu(m, edges(p + bytes([sum(p) & 255]))); c.wranges = wr; c.run(LA)
+    check('PC-1500A LOAD too long -> 4, memory empty', c.x == 4 and m[start] == 0xFF and m[0x7867:0x7869] == start.to_bytes(2, 'big') and sl(m) == code, 'X=%d' % c.x)
+    txt = open(os.path.join(ROOT, 'Basic', 'sl1500_7c00.txt')).read().splitlines()
+    data = []
+    for ln in txt:
+        m_ = re.match(r'^(\d+) (.*)$', ln)
+        if int(m_.group(1)) >= 1000 and m_.group(2).startswith('DATA '): data += [int(v) for v in m_.group(2)[5:].split(',')]
+    check('PC-1500A installer: DATA = assembled code + checksum', bytes(data[:-1]) == code and data[-1] == sum(code))
+    check('PC-1500A installer: every line <= 80 characters', max(len(l) for l in txt) <= 80, '(longest %d)' % max(len(l) for l in txt))
+    pk = re.findall(r'POKE L\+(\d+),', '\n'.join(txt))
+    c0, _ = assemble(); c1, _ = assemble({'DB': 0xFE, 'BM': 1})
+    diff = [i for i in range(len(c0)) if c0[i] != c1[i]]
+    check('PC-1500A installer: the PB0 patches are the bytes that differ', sorted(int(v) for v in pk) == diff, '(%s)' % diff)
+    print('PC-1500A code %d bytes: LOAD &%04X-&%04X, SAVE &%04X-&%04X (&7C00 itself cannot be written)' % (len(code), LA, LA + lab['SAVE'] - 1, SA, SA + len(code) - lab['SAVE'] - 1))
+
+
 def main():
     code, lab = assemble()
     LOADA, SAVEA = 0x4100, 0x4200
@@ -299,6 +337,7 @@ def main():
     pk = re.findall(r'POKE L\+(\d+),', '\n'.join(txt))
     check('installer: the PB0 patches are exactly the bytes that differ', sorted(int(v) for v in pk) == diff, '(%s)' % diff)
     ce161_tests()
+    ml_tests()
     print('\ncode %d bytes (LOAD %d + SAVE %d); LOAD at RAM start + &100, SAVE at RAM start + &200 (NEW = RAM start + &300)' % (len(code), lab['SAVE'], len(code) - lab['SAVE']))
     print('ALL OK' if not FAILS else 'FAILED: ' + ', '.join(FAILS))
     return 1 if FAILS else 0
