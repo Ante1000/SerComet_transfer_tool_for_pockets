@@ -2344,7 +2344,8 @@ namespace UartSlTest
         // the index of the check profile of the target computer (the models of the Sharp (other) box have their own)
         int CurrentProfileIndex()
         {
-            if (curModel == 2) return curProf == 2 ? 2 : curProf == 3 ? 3 : curProf == 4 ? 4 : curProf == 5 ? 5 : 3;
+            // the profiles: 0 PC-1500, 1 PC-1600, 2 PC-1350, 3 PC-1360, 4 PC-1450..75, 5 PC-E500, 6 PC-E500S, 7 Casio, 8 NEC / TRS-80, 9 other, 10 Canon X07
+            if (curModel == 2) return curProf == 2 ? 2 : curProf == 3 ? 3 : curProf == 4 ? 5 : curProf == 5 ? 6 : curProf == 6 ? 4 : curProf == 7 ? 9 : 3;
             return BasicCheck.ProfileOfTarget(curModel < 0 ? 1 : curModel);
         }
 
@@ -3894,9 +3895,15 @@ int removed, kept, cut; List<string> moved;
         const string SharpE500 = " DEF FN ELSE SWITCH CIRCLE PAINT LINE PSET PRESET POINT GPRINT GCURSOR CURSOR LOCATE KEY INSTR HEX$ BIN$ DATE$ TIME$ OPEN CLOSE INPUT# PRINT# SAVE LOAD FILES KILL NAME " +
             "COPY INIT RENUM AUTO DELETE MODE ON ERROR RESUME OUT INP BSAVE BLOAD VERIFY CHAIN APPEND OUTPUT AS SET USING BEEP ARUN STR$ FRAC CLEAR TITLE PASS LF MID$ LEFT$ RIGHT$ DMS DEG " +
             "ERN ERL UBOUND RESTORE LOCK UNLOCK EOF LOC LOF ROTATE DEGREE RADIAN GRAD";
-        const string Casio = " LOCATE SCREEN OPEN CLOSE INPUT# PRINT# LINE KEY ON COM OFF INSTR HEX$ BIN$ DATE$ TIME$ TIME LOF EOF LOC SAVE LOAD FILES KILL NAME ERASE INIT FRAC SET OUT INP OUTPUT APPEND AS PEN";
+        // Casio FX-850P / FX-870P: the reserved words of the Casio BASIC (FX-850P/880P and FX-870P/VX-4) and the words of the data files and the clock
+        const string Casio = " ALL ANGLE APPEND AS CALC CLOSE CNT COM COR CSR CUR DEF DEFCHR$ DEFM DEFSEG DEGR DELETE DMS$ DSKF EDIT EOF EOX EOY ERASE ERL ERR FACT FILES FIX FORMAT FRAC FRE HYP INIT INP INPUT$ INSTR KEY KILL LINE LOAD LOC LOCATE LOF LRA LRB " +
+            "MEANX MEANY MID MODE NAME NCR NPR OFF OPEN OUT OUTPUT PASS PBGET PBLOAD PEN POL PUT RAN REC RENUM RESUME ROUND SAVE SCREEN SDX SDXN SDY SDYN SET STAT SUMX SUMX2 SUMXY SUMY SUMY2 SYSTEM TAB TIME TIME$ DATE$ BIN$ HEX$ VAC VALF VAR VERIFY WRITE";
+        // TRS-80 Model 100 / NEC PC-8201 (the same Microsoft BASIC: the profile accepts the words of both)
         const string Model100 = " CALL CLS CLOSE COM CSAVE CLOAD CSRLIN DATE$ DAY$ DSKI$ DSKO$ EOF FILES FRE HEX$ INSTR IPL KEY KILL LINE LOF LPOS MAXFILES MENU MOTOR NAME OCT$ OPEN OUT INP POS PRESET " +
-            "PSET RENUM RESUME RUN SAVE LOAD SCREEN SOUND SPACE$ STRING$ TIME$ TAB USING VARPTR WIDTH ERL ERR ERROR LPRINT LLIST POINT SGN CINT CSNG CDBL FIX LOG INPUT$ LINE";
+            "PSET RENUM RESUME RUN SAVE LOAD SCREEN SOUND SPACE$ STRING$ TIME$ TAB USING VARPTR WIDTH ERL ERR ERROR LPRINT LLIST POINT SGN CINT CSNG CDBL FIX LOG INPUT$ LINE " +
+            "DEFDBL DEFINT DEFSNG DEFSTR EQV IMP LCOPY LFILES EDIT DELETE RANDOMIZE OFF XOR";
+        // PC-1450 .. PC-1475 (the PC-14xx family): the common words and a few graphics words
+        const string Sharp1450 = " CURSOR GCURSOR GPRINT POINT PSET PRESET LINE";
 
         static readonly List<CheckProfile> profiles = new List<CheckProfile>();
         public static List<CheckProfile> Profiles { get { return profiles; } }
@@ -3913,13 +3920,16 @@ int removed, kept, cut; List<string> moved;
         static BasicCheck()
         {
             string k1500 = string.Join(" ", Pc1600Basic.Keywords(true)), k1600 = string.Join(" ", Pc1600Basic.Keywords(false));
+            // PC-1350, PC-1360 and PC-E500(S): the words of the token tables (the ROM) and the older approximate lists (so that a word that exists is never reported)
+            string t1350 = string.Join(" ", SharpTok.Keywords(1350)), t1360 = string.Join(" ", SharpTok.Keywords(1360)), tE500 = string.Join(" ", SharpTok.Keywords(500));
             Add("Sharp PC-1500(A)", 1, 65279, 79, 2, false, false, true, false, k1500);
             Add("Sharp PC-1600", 1, 65279, 80, 2, true, false, false, true, k1600);
-            Add("Sharp PC-1350", 1, 65279, 79, 2, false, true, false, false, Core + Sharp1350);
-            Add("Sharp PC-1360 and 1360K", 1, 65279, 79, 2, false, true, false, false, Core + Sharp1350 + Sharp1360);
-            Add("Sharp PC-E500", 1, 65279, 255, 0, true, true, false, false, Core + SharpE500);
-            Add("Sharp PC-E500S", 1, 65279, 255, 0, true, true, false, false, Core + SharpE500 + " CLS LOCATE FRE");
-            Add("Casio FX-850P / FX-870P", 1, 65535, 255, 0, true, true, false, false, Core + Casio);
+            Add("Sharp PC-1350", 1, 65279, 79, 2, false, false, false, false, Core + Sharp1350 + " " + t1350);
+            Add("Sharp PC-1360 and 1360K", 1, 65279, 79, 2, false, false, false, false, Core + Sharp1350 + Sharp1360 + " " + t1360);
+            Add("Sharp PC-1450..75", 1, 999, 79, 2, false, false, false, false, Core + Sharp1450);
+            Add("Sharp PC-E500", 1, 65279, 255, 0, true, true, false, false, Core + SharpE500 + " " + tE500);
+            Add("Sharp PC-E500S", 1, 65279, 255, 0, true, true, false, false, Core + SharpE500 + " " + tE500 + " CLS LOCATE FRE");
+            Add("Casio FX-850P / FX-870P", 1, 65535, 255, 15, true, true, false, false, Core + Casio);
             Add("NEC PC-8201 / TRS-80 Model 100", 0, 65529, 255, 0, true, true, false, false, Core + Model100);
             Add("Other computer (general check)", 0, 65535, 0, 0, true, false, false, false, Core + Sharp1350 + Sharp1360 + SharpE500 + Casio + Model100);
             Add("Canon X07", 0, 9999, 255, 0, true, false, false, false, Core + " " + string.Join(" ", X07Tok.WordKeywords()));
@@ -3928,11 +3938,11 @@ int removed, kept, cut; List<string> moved;
         // profile of the target computer of SerComet: 0 PC-1500, 1 PC-1600, 2 other Sharp, 3 Casio, 4 TRS-80 / NEC, 5 other UART
         public static int ProfileOfTarget(int model)
         {
-            return model == 0 ? 0 : model == 1 ? 1 : model == 2 ? 3 : model == 3 ? 6 : model == 4 ? 7 : model == 6 ? 9 : 8;
+            return model == 0 ? 0 : model == 1 ? 1 : model == 2 ? 3 : model == 3 ? 7 : model == 4 ? 8 : model == 6 ? 10 : 9;
         }
 
         static readonly Regex RxStr = new Regex("\"[^\"]*\"?", RegexOptions.Compiled);
-        static readonly Regex RxHex = new Regex("&[0-9A-Fa-f]+", RegexOptions.Compiled);
+        static readonly Regex RxHex = new Regex("&(?:[Hh][0-9A-Fa-f]*|[Oo][0-7]+|[0-9A-Fa-f]+)", RegexOptions.Compiled);         // &1F (Sharp), &H1F, &O17, &B101 (Microsoft BASIC, Casio)
         static readonly Regex RxWord = new Regex("[A-Za-z][A-Za-z0-9]*\\$?", RegexOptions.Compiled);
         static readonly Regex RxTarget = new Regex("(?:GOTO|GOSUB|THEN|ELSE|RESTORE|RUN)\\s*(\\d+(?:\\s*,\\s*\\d+)*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         static readonly Regex RxNumbered = new Regex("^\\s*(\\d+)\\s?(.*)$", RegexOptions.Compiled);
@@ -3952,8 +3962,28 @@ int removed, kept, cut; List<string> moved;
         }
 
         // can the word be split into keywords and variable names? (the keywords found are collected)
+        // Microsoft style names (long variable names: PC-E500, Casio, TRS-80 / NEC, Canon X07): at every position the longest keyword wins, the rest are variable names and numbers
+        // (FORI=1TO5, QTHEN80, TO30STEP2); a variable name longer than MaxVar (when there is a limit) makes the word unknown
+        static bool SplitMs(string w, CheckProfile p, List<string> found)
+        {
+            int pos = 0, varLen = 0;
+            while (pos < w.Length)
+            {
+                string kw = null;
+                foreach (string k in p.KwSorted)
+                    if (pos + k.Length <= w.Length && string.CompareOrdinal(w, pos, k, 0, k.Length) == 0) { kw = k; break; }
+                if (kw != null) { found.Add(kw); pos += kw.Length; varLen = 0; continue; }
+                char c = w[pos];
+                if (c != '$' && !char.IsDigit(c)) varLen++; else if (char.IsDigit(c) && varLen > 0) varLen++;
+                if (p.MaxVar > 0 && varLen > p.MaxVar) return false;
+                pos++;
+            }
+            return true;
+        }
+
         static bool Split(string w, int pos, CheckProfile p, List<string> found, Dictionary<int, bool> failed, bool lastVar)
         {
+            if (pos == 0 && !lastVar && (p.MaxVar == 0 || p.MaxVar > 2)) return SplitMs(w, p, found);
             if (pos >= w.Length) return true;
             int key = pos * 2 + (lastVar ? 1 : 0);
             if (failed.ContainsKey(key)) return false;
@@ -3985,6 +4015,33 @@ int removed, kept, cut; List<string> moved;
             }
             failed[key] = true;
             return false;
+        }
+
+        static readonly Regex RxFirstWord = new Regex("^\\s*([A-Za-z][A-Za-z0-9]*\\$?)\\s*(.?)", RegexOptions.Compiled);
+        static readonly Regex RxAfterThen = new Regex("(?:THEN|ELSE)\\s*([A-Za-z][A-Za-z0-9]*\\$?)\\s*(.?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        static readonly Regex RxNextList = new Regex("NEXT\\s*[A-Za-z][A-Za-z0-9]*\\$?(?:\\s*,\\s*[A-Za-z][A-Za-z0-9]*\\$?)+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        // the first word of a statement (and the word after THEN / ELSE) must be a keyword, the beginning of one (PRINTA$, FORI=1TO5) or a variable that is assigned (COUNT=, A(1)=).
+        // Machines with long variable names would accept every misspelled word as a variable name: this is how PRNIT is found there.
+        static void CheckStatements(Line l, CheckProfile p, List<string> unknown)
+        {
+            foreach (string seg in l.Code.Split(':'))
+            {
+                var cand = new List<Match>();
+                Match f = RxFirstWord.Match(seg);
+                if (f.Success) cand.Add(f);
+                foreach (Match m in RxAfterThen.Matches(seg)) cand.Add(m);
+                foreach (Match m in cand)
+                {
+                    string w = m.Groups[1].Value.ToUpperInvariant();
+                    if (w.Length <= 2 || p.Kw.Contains(w)) continue;
+                    bool ok = m.Groups[2].Value == "=" || m.Groups[2].Value == "(";
+                    foreach (string k in p.KwSorted) if (!ok && w.StartsWith(k, StringComparison.Ordinal)) ok = true;
+                    if (ok) continue;
+                    string item = w + " (" + (l.Number >= 0 ? l.Number.ToString() : "?") + ")";
+                    if (!unknown.Contains(item) && unknown.Count < 200) unknown.Add(item);
+                }
+            }
         }
 
         static string Lines(List<int> n, int max)
@@ -4114,6 +4171,7 @@ int removed, kept, cut; List<string> moved;
                     { foreach (string k in found) { int c; counts.TryGetValue(k, out c); counts[k] = c + 1; } }
                     else if (!unknown.Contains(w + " (" + (l.Number >= 0 ? l.Number.ToString() : "?") + ")") && unknown.Count < 200) unknown.Add(w + " (" + (l.Number >= 0 ? l.Number.ToString() : "?") + ")");
                 }
+                if (p.MaxVar == 0 || p.MaxVar > 2) CheckStatements(l, p, unknown);       // long variable names: any word could be a variable, so look at the statement words
             }
             if (unknown.Count == 0) add(0, "All statements and functions are known on this machine: OK");
             else
@@ -4123,30 +4181,40 @@ int removed, kept, cut; List<string> moved;
                 if (p.Tokenizer1500 || p.Tokenizer1600) faults++; else warnings++;
             }
 
-            // 10. structure: FOR / NEXT, GOSUB / RETURN, READ / DATA, IF without THEN
-            int nFor = 0, nNext = 0, nGosub = 0, nReturn = 0, nRead = 0, nData = 0, nIf = 0, nThen = 0;
+            // 10. structure: FOR / NEXT, GOSUB / RETURN, READ / DATA, IF without THEN (every statement is looked at separately)
+            int nFor = 0, nNext = 0, nGosub = 0, nReturn = 0, nRead = 0, nData = 0;
+            var ifBad = new List<int>();
             foreach (Line l in lines)
             {
-                foreach (Match m in RxWord.Matches(l.Code))
+                foreach (string seg in l.Code.Split(':'))
                 {
-                    var found = new List<string>();
-                    if (!Split(m.Value.ToUpperInvariant(), 0, p, found, new Dictionary<int, bool>(), false)) continue;
-                    foreach (string k in found)
+                    int sIf = 0, sThen = 0;
+                    foreach (Match m in RxWord.Matches(seg))
                     {
-                        if (k == "FOR") nFor++; else if (k == "NEXT") nNext++; else if (k == "GOSUB") nGosub++; else if (k == "RETURN") nReturn++;
-                        else if (k == "READ") nRead++; else if (k == "IF") nIf++; else if (k == "THEN" || k == "GOTO") nThen++;
+                        var found = new List<string>();
+                        if (!Split(m.Value.ToUpperInvariant(), 0, p, found, new Dictionary<int, bool>(), false)) continue;
+                        foreach (string k in found)
+                        {
+                            if (k == "FOR") nFor++; else if (k == "NEXT") nNext++; else if (k == "GOSUB") nGosub++; else if (k == "RETURN") nReturn++;
+                            else if (k == "READ") nRead++; else if (k == "IF") sIf++; else if (k == "THEN" || k == "GOTO") sThen++;
+                        }
                     }
+                    foreach (Match m in RxNextList.Matches(seg)) nNext += m.Value.Split(',').Length - 1;        // NEXT I,J closes two loops
+                    if (sIf > sThen) { int ln = l.Number >= 0 ? l.Number : -l.Index; if (!ifBad.Contains(ln)) ifBad.Add(ln); }
                 }
                 if (Regex.IsMatch(l.Body, "(?:^|:)\\s*DATA", RegexOptions.IgnoreCase)) nData++;
             }
-            if (nFor == nNext || (nNext > nFor && false)) add(0, "FOR and NEXT match (" + nFor + " / " + nNext + "): OK");
+            if (nFor == nNext) add(0, "FOR and NEXT match (" + nFor + " / " + nNext + "): OK");
             else { add(1, "FOR and NEXT match (" + nFor + " FOR / " + nNext + " NEXT): Fail (a NEXT can serve several FORs; check the loops)"); warnings++; }
             if ((nGosub > 0) == (nReturn > 0)) add(0, "GOSUB and RETURN present together: OK");
             else { add(1, "GOSUB and RETURN present together: Fail (" + nGosub + " GOSUB / " + nReturn + " RETURN)"); warnings++; }
             if (nRead > 0 && nData == 0) { add(2, "READ has DATA to read: Fail (no DATA statement)"); faults++; }
             else add(0, "READ has DATA to read: OK");
-            if (p.NeedThen && nIf > nThen) { add(2, "Every IF has a THEN or GOTO: Fail (" + nIf + " IF / " + nThen + " THEN or GOTO)"); faults++; }
-            else if (p.NeedThen) add(0, "Every IF has a THEN or GOTO: OK");
+            if (p.NeedThen)
+            {
+                if (ifBad.Count > 0) { add(2, "Every IF has a THEN or GOTO: Fail (IF without THEN or GOTO in lines " + Lines(ifBad, 8) + ")"); faults++; }
+                else add(0, "Every IF has a THEN or GOTO: OK");
+            }
 
             // 11. the tokenizer of SerComet (PC-1500 / PC-1600): the program as the machine will store it
             if (p.Tokenizer1500 || p.Tokenizer1600)
@@ -4172,8 +4240,30 @@ int removed, kept, cut; List<string> moved;
             if (remCount > 0) add(3, "REM lines: " + remCount + " (about " + remBytes + " B); Skip REM leaves them out when the program is sent.");
             if (p.Tokenizer1500 || p.Tokenizer1600)
                 add(3, "Spaces in DATA statements outside quotation marks are removed by the machine (DATA 1, 2 is stored as 1,2); SerComet does the same.");
-            if (p.Tokenizer1500) add(3, "PC-1500(A): the IF statement may have no THEN (IF A=1 GOTO 100 or IF A=1 PRINT 1).");
+            if (p.Tokenizer1500 || p.Name.StartsWith("Sharp PC-13") || p.Name.StartsWith("Sharp PC-14")) add(3, p.Name + ": the IF statement may have no THEN (IF A=1 GOTO 100 or IF A=1 PRINT 1).");
             if (p.Name.StartsWith("Sharp PC-1360")) add(3, "PC-1360: the PC-1350 statements plus the file and disk statements (OPEN, SAVE, LOAD ...).");
+            if (p.Name.StartsWith("Sharp PC-1350") || p.Name.StartsWith("Sharp PC-1360") || p.Name.StartsWith("Sharp PC-E500"))
+                add(3, "The keyword list of this machine is made from the token table of its ROM (and the older approximate list); an unknown word is only a warning.");
+            if (p.Name.StartsWith("Sharp PC-1450")) add(3, "PC-1450..75: line numbers 1 to 999 and the statements of the PC-14xx family (no files, no RENUM); the list is approximate, check the manual of your model.");
+            if (p.Name.StartsWith("Casio")) add(3, "Casio: variable names up to 15 characters (FX-850P; longer ones are reported), small and capital letters are different variables, a name must not begin with a reserved word.");
+            if (p.Name.StartsWith("NEC PC-8201"))
+            {
+                add(3, "NEC PC-8201 / TRS-80 Model 100: the same Microsoft BASIC, the profile accepts the words of both; the serial strings of OPEN / SAVE / LOAD differ (TRS-80 COM:78N1E, NEC COM:7N81XN).");
+                int nTrs = 0, nNec = 0; var comBad = new List<string>();
+                foreach (Line l in lines)
+                    foreach (Match m in Regex.Matches(l.Body, "\"COM:([^\"]*)\"", RegexOptions.IgnoreCase))
+                    {
+                        string c = m.Groups[1].Value.ToUpperInvariant();
+                        if (c.Length == 0) continue;
+                        if (Regex.IsMatch(c, "^[1-9][5-8][NEOI][12][ED]?$")) nTrs++;
+                        else if (Regex.IsMatch(c, "^[1-9][NEOI][5-8][12][XN][XN]?$")) nNec++;
+                        else comBad.Add("COM:" + c + " (" + (l.Number >= 0 ? l.Number.ToString() : "?") + ")");
+                    }
+                if (comBad.Count > 0) { add(1, "Serial strings COM:...: Fail (not a TRS-80 form COM:78N1E and not a NEC form COM:7N81XN: " + string.Join(", ", comBad.GetRange(0, Math.Min(5, comBad.Count)).ToArray()) + ")"); warnings++; }
+                if (nTrs > 0 && nNec > 0) { add(1, "Serial strings COM:...: the program uses the strings of both computers (" + nTrs + " TRS-80 form, " + nNec + " NEC form): it can run on one of them only"); warnings++; }
+                else if (nTrs > 0) add(3, "The serial strings COM:... are in the TRS-80 Model 100 form: the NEC PC-8201 needs the form COM:7N81XN.");
+                else if (nNec > 0) add(3, "The serial strings COM:... are in the NEC PC-8201 form: the TRS-80 Model 100 needs the form COM:78N1E.");
+            }
             return res;
         }
     }
@@ -5433,6 +5523,14 @@ int removed, kept, cut; List<string> moved;
             if (pc == 1350) return t1350 ?? (t1350 = new Table(S1350));
             if (pc == 1360) return t1360 ?? (t1360 = new Table(S1360));
             return tE500 ?? (tE500 = new Table(SE500, "LOCATE"));
+        }
+
+        // the words of the token table of the machine (pc = 1350, 1360 or 500), for Check Basic; a trailing # (MEM#, PEEK#) is dropped: the listing text has MEM and PEEK
+        public static string[] Keywords(int pc)
+        {
+            var l = new List<string>();
+            foreach (string w in Get(pc).Words) l.Add(w.TrimEnd('#'));
+            return l.ToArray();
         }
 
         // codes after which a line number may follow (PC-1360 / PC-E500): GOSUB GOTO LIST RESTORE RESUME RUN THEN ARUN AUTO AUTOGOTO ELSE
