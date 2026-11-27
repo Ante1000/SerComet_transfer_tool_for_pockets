@@ -4685,7 +4685,7 @@ int removed, kept, cut; List<string> moved;
     public class EditorForm : Form
     {
         readonly string path;
-        readonly TextBox txt;
+        readonly RichTextBox txt;          // a rich text box: after a repair the corrected lines have a light green background
         readonly CheckProfile prof;
         bool modified;
         CheckBox cbEmpty, cbDelRem, cbChars, cbShort, cbCase, cbNumber, cbSort, cbDedup;
@@ -4703,7 +4703,7 @@ int removed, kept, cut; List<string> moved;
             try { Icon = Icons.AppIcon(); } catch { }
             string content = Latin.GetString(File.ReadAllBytes(path)).Replace("\u001A", "");
             content = content.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n");
-            txt = new TextBox { Dock = DockStyle.Fill, Multiline = true, ScrollBars = ScrollBars.Both, WordWrap = false, Font = new Font("Consolas", 10F), AcceptsTab = true, Text = content, MaxLength = 0 };
+            txt = new RichTextBox { Dock = DockStyle.Fill, Multiline = true, ScrollBars = RichTextBoxScrollBars.Both, WordWrap = false, Font = new Font("Consolas", 10F), AcceptsTab = true, DetectUrls = false, HideSelection = false, Text = content };
             var menu = new MenuStrip();
             var file = new ToolStripMenuItem("File");
             var save = new ToolStripMenuItem("Save", null, delegate { Save(); }) { ShortcutKeys = Keys.Control | Keys.S };
@@ -4749,10 +4749,36 @@ int removed, kept, cut; List<string> moved;
             };
         }
 
-        void SetText(string t)
+        static string Nl(string t) { return t.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n"); }
+
+        // shows the whole corrected listing; the lines that are not in the old listing as they are (changed, new, renumbered, split) get a light green background
+        // and the window is scrolled to the first of them
+        int SetRepaired(string oldText, string newText)
         {
-            txt.Text = t.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n");
-            txt.Select(0, 0);
+            var left = new Dictionary<string, int>();
+            foreach (string s in Nl(oldText).Split(new[] { "\r\n" }, StringSplitOptions.None)) { int c; left.TryGetValue(s, out c); left[s] = c + 1; }
+            txt.Text = Nl(newText);
+            string[] lines = txt.Text.Replace("\r\n", "\n").Split('\n');                 // the rich text box has one character for a line end
+            txt.SuspendLayout();
+            txt.SelectAll(); txt.SelectionBackColor = txt.BackColor;                  // no old marks
+            int pos = 0, first = -1, count = 0;
+            foreach (string s in lines)
+            {
+                int c;
+                if (left.TryGetValue(s, out c) && c > 0) left[s] = c - 1;
+                else if (s.Trim().Length > 0)
+                {
+                    txt.Select(pos, s.Length); txt.SelectionBackColor = Color.FromArgb(198, 239, 206);
+                    if (first < 0) first = pos;
+                    count++;
+                }
+                pos += s.Length + 1;
+            }
+            txt.Select(first >= 0 ? first : 0, 0);
+            txt.ScrollToCaret();
+            txt.ResumeLayout();
+            txt.Refresh();
+            return count;
         }
 
         public void RunRepair() { DoRepair(); }
@@ -4766,10 +4792,11 @@ int removed, kept, cut; List<string> moved;
             };
             Cursor.Current = Cursors.WaitCursor;
             System.Threading.Thread.Sleep(1000);                  // the repair is artificially prolonged by 1 s
-            RepairResult r = BasicRepair.Repair(txt.Text, prof, o);
+            string before = Nl(txt.Text);
+            RepairResult r = BasicRepair.Repair(before, prof, o);
             Cursor.Current = Cursors.Default;
-            SetText(r.Text);
-            string msg = "Repair for " + prof.Name + " is done. The corrected listing is shown in the window.\r\n\r\n" + string.Join("\r\n", r.Report.ToArray());
+            int marked = SetRepaired(before, r.Text);
+            string msg = "Repair for " + prof.Name + " is done. The corrected listing is shown in the window (the whole listing; the " + marked + " corrected lines have a light green background).\r\n\r\n" + string.Join("\r\n", r.Report.ToArray());
             if (r.FaultsLeft > 0) msg += "\r\n\r\nFaults that remain (see Check Basic): " + r.FaultsLeft;
             MessageBox.Show(this, msg, "Repair", MessageBoxButtons.OK, r.FaultsLeft > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
         }
@@ -4778,7 +4805,7 @@ int removed, kept, cut; List<string> moved;
         {
             try
             {
-                File.WriteAllBytes(path, Latin.GetBytes(txt.Text));
+                File.WriteAllBytes(path, Latin.GetBytes(Nl(txt.Text)));
                 modified = false; Text = Title;
                 return true;
             }
