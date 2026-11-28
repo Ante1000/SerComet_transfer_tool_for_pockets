@@ -4786,8 +4786,9 @@ int removed, kept, cut; List<string> moved;
             this.prof = prof;
             Text = Title;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(900, 600);
+            ClientSize = new Size(730, 600);                                  // 19 % narrower than before (900); the left edge stays where it was (see Shown)
             MinimumSize = new Size(560, 320);
+            Shown += delegate { try { Left -= (900 - 730) / 2; if (Left < 0) Left = 0; } catch { } };       // narrowed from the right: the window was centred, so it moves left by half of the difference
             try { Icon = Icons.AppIcon(); } catch { }
             string content = Latin.GetString(File.ReadAllBytes(path)).Replace("\u001A", "");
             content = content.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n");
