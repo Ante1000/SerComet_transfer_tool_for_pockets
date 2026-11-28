@@ -4223,6 +4223,7 @@ int removed, kept, cut; List<string> moved;
                 bool rem, ha;
                 ln.Code = MaskCode(ln.Body, out rem, out ha);
                 ln.IsRem = rem; ln.HasApos = ha;
+                if (!p.AposRem && ln.Body.TrimStart().StartsWith("\"")) { ln.IsRem = true; ln.Code = ""; }       // PC-1500, PC-1350 ...: a line that begins with a quotation mark is a comment (the string is not closed)
                 lines.Add(ln);
             }
             add(3, "Machine: " + p.Name + ". " + lines.Count + " lines.");
@@ -4471,7 +4472,7 @@ int removed, kept, cut; List<string> moved;
                 add(3, "The keyword list of this machine is made from the token table of its ROM (and the older approximate list); an unknown word is only a warning.");
             if (p.Name.StartsWith("Sharp PC-1450")) add(3, "PC-1450..75: line numbers 1 to 65279 and the statements of the PC-14xx family (the words of the tokenizer tables of the PC-1450 / 1460 / 1470U / 1475, the list is the union of them: check the manual of your model).");
             if (p.Name.StartsWith("Casio")) add(3, "Casio: variable names up to 15 characters (FX-850P; longer ones are reported), small and capital letters are different variables, a name must not begin with a reserved word.");
-            if (p.KwOneChar) add(3, p.Name + ": the length of a line is 79 characters without the line number, a keyword counts as one character (the machine stores it as one token); only REM starts a comment (no apostrophe), NEXT needs its variable, there is no ELSE and only the first 2 characters of a variable name count (the BASIC comparison table of Marcus von Cube).");
+            if (p.KwOneChar) add(3, p.Name + ": the length of a line is 79 characters without the line number, a keyword counts as one character (the machine stores it as one token); a comment is REM or a line that begins with a quotation mark (no apostrophe), NEXT needs its variable, there is no ELSE and only the first 2 characters of a variable name count (the BASIC comparison table of Marcus von Cube).");
             if (p.Name.StartsWith("NEC PC-8201"))
             {
                 add(3, "NEC PC-8201 / TRS-80 Model 100: the same Microsoft BASIC, the profile accepts the words of both; the serial strings of OPEN / SAVE / LOAD differ (TRS-80 COM:78N1E, NEC COM:7N81XN).");
