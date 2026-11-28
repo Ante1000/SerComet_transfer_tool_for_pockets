@@ -3623,7 +3623,7 @@ int removed, kept, cut; List<string> moved;
             MaximizeBox = MinimizeBox = false;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(W, 488);
+            ClientSize = new Size(W, 520);
 
             Controls.Add(new PictureBox { Image = Icons.Comet(72), SizeMode = PictureBoxSizeMode.AutoSize, Left = (W - 72) / 2, Top = 16 });
             AddLine("SerComet " + AppInfo.Version, 100, new Font("Segoe UI", 16F, FontStyle.Bold), Color.FromArgb(30, 70, 120));
@@ -3642,9 +3642,11 @@ int removed, kept, cut; List<string> moved;
             mail.LinkClicked += OpenLink;
             Controls.Add(mail);
             tt.SetToolTip(mail, "Write an e-mail.");
-            AddLine("BASIC token tables: \"Das Systemhandbuch f\u00FCr den PC-1600\"", 388, new Font("Segoe UI", 8.5F), Color.Black);
-            AddLine("by David von Oheimb. Thank you!", 408, new Font("Segoe UI", 8.5F), Color.Black);
-            var ok = new Button { Text = "OK", Left = (W - 80) / 2, Top = 448, Width = 80, DialogResult = DialogResult.OK };
+            var small = new Font("Segoe UI", 7.5F);                       // the acknowledgements in a smaller font
+            AddLine("BASIC token tables: \"Das Systemhandbuch f\u00FCr den PC-1600\"", 388, small, Color.Black);
+            AddLine("by David von Oheimb. Thank you!", 406, small, Color.Black);
+            Controls.Add(new Label { Text = "The other tokenizers of the models were created from technical manuals and from the reverse analysis of the intermediate files and the audio recordings.", Left = 20, Top = 430, Width = W - 40, Height = 34, TextAlign = ContentAlignment.TopCenter, Font = small, ForeColor = Color.Black });
+            var ok = new Button { Text = "OK", Left = (W - 80) / 2, Top = 476, Width = 80, DialogResult = DialogResult.OK };
             Controls.Add(ok);
             AcceptButton = ok;
             tt.SetToolTip(ok, "Close this window.");
