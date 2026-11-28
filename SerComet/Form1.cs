@@ -563,7 +563,7 @@ namespace UartSlTest
                        "Sending Basic program to PC: SAVE \"COM0:6,N,8,1\" (6 means 4800 bps).\r\n" +
                        "Receiving from PC: LOAD \"COM0:6,N,8,1\". XON/XOFF should be enabled. After sending finishes press Break and type LIST.\r\n" +
                        "Data files: OPEN \"COM0:6,N,8,1,N,N,N,N,N\" AS #1; PRINT #1,..; INPUT #1,A$; LINE INPUT #1,A$; CLOSE.\r\n" +
-                       "WAV: the BASIC text is converted to two tape recordings (1200 baud): NAME_FX850.wav, the tokenized program (tokens of the FX-850P family, checked with the Pocket Tools bas850 / list850), and NAME_FX850_ASCII.wav, an ASCII file in the form of a real recording of SAVE \"CAS:name\",A (every line has its own 2 s leader, so it takes longer). Recordings of programs and of ASCII files are read back as BASIC text.";
+                       "WAV: the BASIC text is converted to a tape recording (1200 baud). Auto token on (default): NAME_FX850.wav, the tokenized program (tokens of the FX-850P family, checked with the Pocket Tools bas850 / list850). Auto token off: NAME_FX850_ASCII.wav, an ASCII file in the form of a real recording of SAVE \"CAS:name\",A (every line has its own 2 s leader, so it takes longer). Recordings of programs and of ASCII files are read back as BASIC text.";
             if (curModel == 4)
                 return "TRS-80 Model 100 / NEC PC-8201: DB-25 connector, RS-232C levels - use COM cable or RS232 to USB converter\r\n" +
                        "Sending Basic program to PC: SAVE \"COM:78N1E\" (TRS-80) or SAVE \"COM:7N81XN\" (PC-8201).\r\n" +
@@ -928,7 +928,7 @@ namespace UartSlTest
             bool softEdit = !rs232 && !radio1500.Checked;                  // Software UART of the PC-1600: the speed can be chosen
             numDelay.Enabled = comboEol.Enabled = comboFlow.Enabled = chkEof.Enabled = rs232;
             btnTerminal.Enabled = rs232 && port != null && port.IsOpen;                       // the Terminal needs an open port
-            chkAuto.Enabled = !rs232 || curModel == 6;          // Canon X07: "Auto token" = the tokenized stream for LOAD "COM:"
+            chkAuto.Enabled = !rs232 || curModel == 6 || curModel == 3;          // Canon X07: "Auto token" = the tokenized stream for LOAD "COM:"; Casio: the WAV is the tokenized program (on) or an ASCII file (off)
             comboBaud.Enabled = false;                                      // (so that filling the list does not change the saved values)
             FillBaud(rs232 ? TextBaudsFor(curModel) : SoftBauds);
             comboBaud.SelectedItem = rs232 ? savedBaud : softEdit ? savedSoftBaud : "4800";
@@ -2032,27 +2032,17 @@ namespace UartSlTest
                 byte[] imgC = CasioTok.Tokenize(src, out prC);
                 if (imgC == null) { LogWarn("WAV: tokenizer error: " + prC); return; }
                 string tnC = tape.Substring(0, Math.Min(8, tape.Length));
-                byte[] wC = TapeWav.EncodeCasio(tnC, imgC);
-                string outC = UniquePath2(Path.Combine(txtDir.Text, baseName + "_FX850.wav"));
+                bool asciiTape = !chkAuto.Checked;          // Auto token on: the tokenized program (default), off: an ASCII file as the machine saves it with SAVE "CAS:name",A
+                string prA = null;
+                List<string> linesA = asciiTape ? CasioTok.AsciiLines(src, out prA) : null;
+                if (asciiTape && linesA == null) { LogWarn("WAV: ASCII file error: " + prA); return; }
+                byte[] wC = asciiTape ? TapeWav.EncodeCasioAscii(tnC, linesA) : TapeWav.EncodeCasio(tnC, imgC);
+                string outC = UniquePath2(Path.Combine(txtDir.Text, baseName + (asciiTape ? "_FX850_ASCII.wav" : "_FX850.wav")));
                 File.WriteAllBytes(outC, wC);
                 TapeWav.WavInfo wiC; int woC, wlC; TapeWav.Parse(wC, out wiC, out woC, out wlC);
                 ConvWait();
-                Log("WAV written: " + Path.GetFileName(outC) + " (Casio FX-850P / 870P / 880P, the tokenized program, 1200 baud, tape name " + tnC + ", " + Math.Round(wiC.Seconds, 1).ToString(System.Globalization.CultureInfo.InvariantCulture) + " s). Load it from the tape (LOAD \"CAS:\").");
-                // the ASCII file: the same program as a text file (the form of a real recording of SAVE "CAS:name",A; every line has its own 2 s leader, so it is longer)
-                string outA = null;
-                string prA;
-                List<string> linesA = CasioTok.AsciiLines(src, out prA);
-                if (linesA != null)
-                {
-                    byte[] wA = TapeWav.EncodeCasioAscii(tnC, linesA);
-                    outA = UniquePath2(Path.Combine(txtDir.Text, baseName + "_FX850_ASCII.wav"));
-                    File.WriteAllBytes(outA, wA);
-                    TapeWav.WavInfo wiA; int woA, wlA; TapeWav.Parse(wA, out wiA, out woA, out wlA);
-                    Log("WAV written: " + Path.GetFileName(outA) + " (Casio FX-850P / 870P / 880P, the ASCII file, 1200 baud, tape name " + tnC + ", " + Math.Round(wiA.Seconds, 1).ToString(System.Globalization.CultureInfo.InvariantCulture) + " s). The format of a real recording; load it with LOAD \"CAS:\" and it is a text file.");
-                }
-                else LogWarn("WAV: no ASCII file written: " + prA);
-                RefreshFiles();
-                int ixC = lstFiles.Items.IndexOf(Path.GetFileName(outA ?? outC));
+                Log("WAV written: " + Path.GetFileName(outC) + " (Casio FX-850P / 870P / 880P, " + (asciiTape ? "an ASCII file (every line has its own 2 s leader)" : "the tokenized program") + ", 1200 baud, tape name " + tnC + ", " + Math.Round(wiC.Seconds, 1).ToString(System.Globalization.CultureInfo.InvariantCulture) + " s). Load it from the tape (LOAD \"CAS:\").");                RefreshFiles();
+                int ixC = lstFiles.Items.IndexOf(Path.GetFileName(outC));
                 if (ixC >= 0) lstFiles.SelectedIndex = ixC;
                 return;
             }
@@ -3663,9 +3653,7 @@ int removed, kept, cut; List<string> moved;
             Controls.Add(mail);
             tt.SetToolTip(mail, "Write an e-mail.");
             var small = new Font("Segoe UI", 7.5F);                       // the acknowledgements in a smaller font
-            AddLine("BASIC token tables: \"Das Systemhandbuch f\u00FCr den PC-1600\"", 388, small, Color.Black);
-            AddLine("by David von Oheimb. Thank you!", 406, small, Color.Black);
-            Controls.Add(new Label { Text = "The other tokenizers of the models were created from technical manuals and from the reverse analysis of the intermediate files and the audio recordings.", Left = 20, Top = 430, Width = W - 40, Height = 34, TextAlign = ContentAlignment.TopCenter, Font = small, ForeColor = Color.Black });
+            Controls.Add(new Label { Text = "BASIC token tables: \"Das Systemhandbuch f\u00FCr den PC-1600\"\nby David von Oheimb. Thank you!\nThe other tokenizers of the models were created from technical manuals and from the reverse analysis of the intermediate files and the audio recordings.", Left = 20, Top = 388, Width = W - 40, Height = 70, TextAlign = ContentAlignment.TopCenter, Font = small, ForeColor = Color.Black });
             var ok = new Button { Text = "OK", Left = (W - 80) / 2, Top = 476, Width = 80, DialogResult = DialogResult.OK };
             Controls.Add(ok);
             AcceptButton = ok;
