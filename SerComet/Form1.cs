@@ -479,7 +479,7 @@ namespace UartSlTest
             tips.SetToolTip(radio1600, "Target: Sharp PC-1600 (software serial Saver/Loader or its RS-232 port).");
             tips.SetToolTip(radioOther, "Target: other Sharp pocket computers with the 15-pin connector (TTL-UART SIO). Choose the model in the box beside it.");
             tips.SetToolTip(comboSharp, "The Sharp model (15-pin connector): PC-1350, PC-1360, PC-E500, PC-E500S, PC-1450..75 or Sharp other. It sets the folder, the notes in Info and the WAV converter. Active when the Sharp radio button is on.");
-            tips.SetToolTip(radioFx, "Casio FX-850P, FX-870P and similar.");
+            tips.SetToolTip(radioFx, "Casio FX-850P, FX-870P, FX-880P and similar.");
             tips.SetToolTip(radioX07, "Canon X07 (inverted TTL-UART logic: an inverting converter is needed, see Info).");
             tips.SetToolTip(radioTrs, "TRS-80 model 100, NEC-8201.");
             tips.SetToolTip(radioUart, "Other computers with UART interface TTL or RS-232.");
@@ -501,7 +501,7 @@ namespace UartSlTest
             tips.SetToolTip(btnRefreshFiles, "Re-read the folder and refresh the file list.");
             tips.SetToolTip(btnTerminal, "Open a terminal window (like TeraTerm): typed characters are sent, received data is shown. Text modes only.");
             tips.SetToolTip(comboEol, "Line end sent after every line of a text file: CR, CR+LF (TeraTerm style) or LF. Red = CR alone or LF alone is probably a wrong choice for the Sharp and Casio computers (they expect CR+LF); TRS-80 / NEC and other UART computers can use any of them.");
-            tips.SetToolTip(btnView, "WAV: PC-1500, PC-1600, PC-1350, PC-1360 and PC-E500 (the last three under Sharp (other)). A BASIC text file (.bas / .txt) is converted to a tape recording (.wav; the PC-1600 asks for MODE 0 = CE-1600P or MODE 1 = CE-150), a .wav recording is converted back to BASIC text.");
+            tips.SetToolTip(btnView, "WAV: PC-1500, PC-1600, PC-1350, PC-1360, PC-1450..75 and PC-E500 (the last four under Sharp (other)), Casio FX-850P / 870P / 880P and Canon X07. A BASIC text file (.bas / .txt) is converted to a tape recording (.wav; the PC-1600 asks for MODE 0 = CE-1600P or MODE 1 = CE-150), a .wav recording is converted back to BASIC text.");
             tips.SetToolTip(chkEof, "Add the end-of-file marker. Text modes: after the file (and the dummy line) send the end-of-file character 1Ah (Ctrl-Z) so that the Sharp finishes the reception (1Ah is the end-of-file code of an ASCII file). Switch it off if the Sharp reports an error.");
             tips.SetToolTip(btnAbort, "Clear Log: empties the log window. While a file is being sent or received the button is Abort: it stops the transmission at once and discards data waiting to be sent or received.");
             tips.SetToolTip(btnConvert, "Check Basic: a basic check of the selected listing (line numbers, targets of GOTO / GOSUB, line length, keywords ...), the same as Check Basic in the right mouse menu. The conversion of BASIC text to the intermediate code and back is in the right mouse menu (Convert to/from inter. code).");
@@ -546,7 +546,7 @@ namespace UartSlTest
             UpdateMode();
         }
 
-        static readonly string[] ModelCaptions = { "Sharp PC-1500", "Sharp PC-1600", "Sharp PC-1350", "Sharp PC-1360", "Sharp PC-E500", "Sharp PC-E500S", "Sharp PC-1450..75", "Sharp with UART I/F", "Casio FX-850P / FX-870P", "TRS-80 mod.100 / NEC PC-8201", "Other computer with UART", "Canon X-07" };
+        static readonly string[] ModelCaptions = { "Sharp PC-1500", "Sharp PC-1600", "Sharp PC-1350", "Sharp PC-1360", "Sharp PC-E500", "Sharp PC-E500S", "Sharp PC-1450..75", "Sharp with UART I/F", "Casio FX-850P / 870P / 880P", "TRS-80 mod.100 / NEC PC-8201", "Other computer with UART", "Canon X-07" };
 
         // the Info text: the same template for every computer: a description, "Sending Basic program to PC: ..." and "Receiving from PC: ..."
         string HintText()
@@ -558,11 +558,12 @@ namespace UartSlTest
                        "Receiving from PC: LOAD \"COM:\",4800 (Auto token on, the tokenized format, recommended; the mode \"B\" is the default, INIT is not needed).\r\n" +
                        "WAV: the tokenized program as a tape recording (CSAVE / CLOAD, 1200 baud FSK); a BASIC text file is converted to a recording and back.";
             if (curModel == 3)
-                return "Casio FX-850P / FX-870P: TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
-                       "May function with other Casio models as FX-840P, FX-880P, FX-890P (to be further tested).\r\n" +
+                return "Casio FX-850P / FX-870P / FX-880P (the FX-880P is an FX-850P with more memory): TTL levels 0 / +5 V (USB-TTL adapter, never RS-232 levels), 300 to 4800 bps.\r\n" +
+                       "May function with other Casio models as FX-840P, FX-890P (to be further tested).\r\n" +
                        "Sending Basic program to PC: SAVE \"COM0:6,N,8,1\" (6 means 4800 bps).\r\n" +
                        "Receiving from PC: LOAD \"COM0:6,N,8,1\". XON/XOFF should be enabled. After sending finishes press Break and type LIST.\r\n" +
-                       "Data files: OPEN \"COM0:6,N,8,1,N,N,N,N,N\" AS #1; PRINT #1,..; INPUT #1,A$; LINE INPUT #1,A$; CLOSE.";
+                       "Data files: OPEN \"COM0:6,N,8,1,N,N,N,N,N\" AS #1; PRINT #1,..; INPUT #1,A$; LINE INPUT #1,A$; CLOSE.\r\n" +
+                       "WAV: the BASIC text is converted to a tape recording of the tokenized program (1200 baud, tokens of the FX-850P family, checked with the Pocket Tools bas850 / list850) and recordings of programs and of ASCII files are read back as BASIC text.";
             if (curModel == 4)
                 return "TRS-80 Model 100 / NEC PC-8201: DB-25 connector, RS-232C levels - use COM cable or RS232 to USB converter\r\n" +
                        "Sending Basic program to PC: SAVE \"COM:78N1E\" (TRS-80) or SAVE \"COM:7N81XN\" (PC-8201).\r\n" +
@@ -1947,7 +1948,7 @@ namespace UartSlTest
             string name = (string)lstFiles.SelectedItem;
             string path = Path.Combine(txtDir.Text, name);
             string ext = Path.GetExtension(name).ToLowerInvariant();
-            if (curModel > 2 && curModel != 6) { Log("WAV: the converters are for the Sharp PC-1500, PC-1600, PC-1350, PC-1360, PC-E500, PC-E500S and the Canon X07 (choose the computer in the Target computer box)."); return; }
+            if (curModel > 3 && curModel != 6) { Log("WAV: the converters are for the Sharp PC-1500, PC-1600, PC-1350, PC-1360, PC-1450..75, PC-E500, PC-E500S, the Casio FX-850P / 870P / 880P and the Canon X07 (choose the computer in the Target computer box)."); return; }
             if (curProf == 7) { LogWarn("WAV: tokenization and tape format is not supported for this computer (Sharp other)."); return; }
             try
             {
@@ -2025,6 +2026,23 @@ namespace UartSlTest
             string baseName = Path.GetFileNameWithoutExtension(path);
             string tape = new string(baseName.ToUpperInvariant().Where(c => (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')).ToArray());
             if (tape.Length == 0) tape = "PROGRAM";
+            if (curModel == 3)
+            {
+                string prC;
+                byte[] imgC = CasioTok.Tokenize(src, out prC);
+                if (imgC == null) { LogWarn("WAV: tokenizer error: " + prC); return; }
+                string tnC = tape.Substring(0, Math.Min(8, tape.Length));
+                byte[] wC = TapeWav.EncodeCasio(tnC, imgC);
+                string outC = UniquePath2(Path.Combine(txtDir.Text, baseName + "_FX850.wav"));
+                File.WriteAllBytes(outC, wC);
+                TapeWav.WavInfo wiC; int woC, wlC; TapeWav.Parse(wC, out wiC, out woC, out wlC);
+                ConvWait();
+                Log("WAV written: " + Path.GetFileName(outC) + " (Casio FX-850P / 870P / 880P, the tokenized program, 1200 baud, tape name " + tnC + ", " + Math.Round(wiC.Seconds, 1).ToString(System.Globalization.CultureInfo.InvariantCulture) + " s). Load it from the tape (LOAD \"CAS:\").");
+                RefreshFiles();
+                int ixC = lstFiles.Items.IndexOf(Path.GetFileName(outC));
+                if (ixC >= 0) lstFiles.SelectedIndex = ixC;
+                return;
+            }
             if (curModel == 6)
             {
                 string pr6;
@@ -2103,6 +2121,29 @@ namespace UartSlTest
             byte[] wav = File.ReadAllBytes(path);
             string name = null, text = null, why0 = null, why1 = null;
             string how = null;
+            if (curModel == 3)
+            {
+                string nameC, warnC, prC;
+                bool asciiC;
+                byte[] progC;
+                try { progC = TapeWav.DecodeCasio(wav, out nameC, out asciiC, out warnC); }
+                catch (Exception ex) { LogWarn("WAV: the recording cannot be decoded (Casio: " + ex.Message + ")."); return; }
+                string textC = null;
+                prC = null;
+                if (asciiC) textC = Encoding.GetEncoding(28591).GetString(progC).Replace("\r\n", "\n").Replace('\r', '\n').Replace("\u001A", "").Replace("\n", "\r\n");
+                else textC = CasioTok.Detokenize(progC, out prC);
+                if (warnC != null) Log("WAV: " + warnC + ".");
+                if (prC != null) LogWarn("WAV: conversion problem: " + prC);
+                string baseC = SharpBase(Path.GetFileNameWithoutExtension(path));
+                string outCx = UniqueSharp(baseC, ".bas");
+                File.WriteAllBytes(outCx, Encoding.GetEncoding(28591).GetBytes(textC));
+                ConvWait();
+                Log("WAV decoded (Casio FX-850P / 870P / 880P" + (asciiC ? ", ASCII file" : ", tokenized program") + (string.IsNullOrEmpty(nameC) ? "" : ", tape name " + nameC) + ") -> " + Path.GetFileName(outCx) + ".");
+                RefreshFiles();
+                int ixCx = lstFiles.Items.IndexOf(Path.GetFileName(outCx));
+                if (ixCx >= 0) lstFiles.SelectedIndex = ixCx;
+                return;
+            }
             if (curModel == 6)
             {
                 string pr6, name6, warn6;
@@ -3978,7 +4019,7 @@ int removed, kept, cut; List<string> moved;
             Add("Sharp PC-1450..75", 1, 65279, 79, 2, false, false, false, false, Core + Sharp1450 + " " + string.Join(" ", SharpTok.Keywords(1460)) + " " + string.Join(" ", SharpTok.Keywords(1475)));
             Add("Sharp PC-E500", 1, 65279, 255, 0, true, true, false, false, Core + SharpE500 + " " + tE500);
             Add("Sharp PC-E500S", 1, 65279, 255, 0, true, true, false, false, Core + SharpE500 + " " + tE500 + " CLS LOCATE FRE");
-            Add("Casio FX-850P / FX-870P", 1, 65535, 255, 15, true, true, false, false, Core + Casio);
+            Add("Casio FX-850P / 870P / 880P", 1, 65535, 255, 15, true, true, false, false, Core + Casio + " " + string.Join(" ", CasioTok.Keywords()));
             Add("NEC PC-8201 / TRS-80 Model 100", 0, 65529, 255, 0, true, true, false, false, Core + Model100);
             Add("Other computer (general check)", 0, 65535, 0, 0, true, false, false, false, Core + Sharp1350 + Sharp1360 + SharpE500 + Casio + Model100);
             Add("Canon X07", 0, 9999, 255, 0, true, false, false, false, Core + " " + string.Join(" ", X07Tok.WordKeywords()));
@@ -5604,6 +5645,259 @@ int removed, kept, cut; List<string> moved;
         protected override void OnMouseWheel(MouseEventArgs e) { if (InputLock.Active) { var h = e as HandledMouseEventArgs; if (h != null) h.Handled = true; return; } base.OnMouseWheel(e); }
     }
 
+    // ====================================================================================================================
+    // Casio FX-850P / FX-870P / FX-880P (the FX-880P is an FX-850P with more memory): the BASIC program in the internal format of the computer (CSAVE / SAVE "CAS:" without ,A):
+    // lines [length 1 B (all that follows, with the end byte)][line number 2 B, low byte first][body][00]; the body: a space after the line number, 01 = colon, 02 = apostrophe,
+    // 03 lo hi = a line number (GOTO ...), a keyword = a prefix 04 .. 07 and a code (the tables of the Pocket Tools bas850 / list850 and of the FX-870P ROM disassembly).
+    // The tokenizer works as bas850 -t8 -l: spaces outside strings, REM and DATA are removed (except before TO, THEN and ELSE after a letter), a colon after the line number is skipped.
+    // ====================================================================================================================
+    public static class CasioTok
+    {
+        // word:code:prefix:flags  (flags 80 = a line number follows (binary), 40 = the rest of the line is not tokenized (REM, DATA), 20 = a colon is stored before it (ELSE));
+        // KILL, NAME, FILES and DSKF are the words of the FX-870P
+        const string Spec =
+            "XOR:C6:7:00;WRITE#:4E:4:00;VERIFY:60:4:00;VAR:B2:4:00;VALF:92:5:00;VAL:96:5:00;VAC:7A:4:00;USING:C2:7:00;TRON:5D:4:00;TROFF:5F:4:00;TO:C1:7:00;TIME$:AC:6:00;THEN:47:7:80;" +
+            "TAN:6D:5:00;TAB:B6:7:00;SYSTEM:52:4:00;SUMY2:55:5:00;SUMY:53:5:00;SUMXY:56:5:00;SUMX2:54:5:00;SUMX:52:5:00;STR$:A1:6:00;STOP:AE:4:00;STEP:C0:7:00;STAT:AD:4:00;SQR:7A:5:00" +
+            ";SIN:6B:5:00;SGN:7C:5:00;SET:AC:4:00;SDYN:5C:5:00;SDY:5A:5:00;SDXN:5B:5:00;SDX:59:5:00;SAVE:6C:4:00;RUN:6D:4:00;RSET:AA:4:00;ROUND:90:5:00;RND:91:5:00;RND:80:5:00;RIGHT$:" +
+            "9D:6:00;REV:B9:7:00;RETURN:4B:4:80;RESUME:4C:4:80;RESTORE:4D:4:80;REM:A9:4:40;REC:A7:5:00;READ:A8:4:00;RAN#:93:5:00;PUT:A5:4:00;PRINT:A3:4:00;POL:A8:5:00;POKE:63:4:00;POI" +
+            "NT:8F:5:00;PI:60:5:00;PEEK:86:5:00;PBLOAD:B3:4:00;PBGET:B4:4:00;PASS:53:4:00;OUT:99:4:00;OR:C5:7:00;OPEN:97:4:00;ON:9A:4:00;OFF:BF:7:00;NPR:AA:5:00;NOT:C3:7:00;NORM:BA:7:" +
+            "00;NEXT:82:4:00;NEW:6B:4:00;NCR:AB:5:00;MON:61:4:00;MODE:B0:4:00;MOD:C7:7:00;MID$:9C:6:00;MID:9A:6:00;MERGE:5A:4:00;MEANY:58:5:00;MEANX:57:5:00;LSET:93:4:00;LRB:5E:5:00;L" +
+            "RA:5D:5:00;LPRINT:A4:4:00;LOG:78:5:00;LOF:89:5:00;LOCATE:91:4:00;LOAD:59:4:00;LN:77:5:00;LLIST:58:4:80;LIST:57:4:80;LINE:90:4:00;LET:8F:4:00;LEN:95:5:00;LEFT$:9E:6:00;KEY" +
+            ":A9:6:00;INT:7D:5:00;INPUT:9B:6:00;INKEY$:A8:6:00;IF:8D:4:00;HYPTAN:73:5:00;HYPSIN:71:5:00;HYPCOS:72:5:00;HYPATN:76:5:00;HYPASN:74:5:00;HYPACS:75:5:00;HYP:AC:5:00;HEX$:A3" +
+            ":6:00;GOTO:49:4:80;GOSUB:4A:4:80;GET:8C:4:00;FRE:8D:5:00;FRAC:7F:5:00;FORMAT:8B:4:00;FOR:81:4:00;FIX:7E:5:00;FIELD:8A:4:00;FACT:67:5:00;EXP:79:5:00;ERROR:86:4:00;ERR:50:5" +
+            ":00;ERL:4F:5:00;ERASE:85:4:00;EOY:6A:5:00;EOX:69:5:00;EOF:8A:5:00;END:87:4:00;ELSE:48:7:A0;EDIT:6F:4:00;DRAWC:A2:4:00;DRAW:7D:4:00;DMS$:97:6:00;DIM:7C:4:00;DELETE:55:4:00" +
+            ";DEG:9C:5:00;DEFSEG:78:4:00;DEFM:77:4:00;DEF:76:4:00;DATE$:AB:6:00;DATA:80:4:40;CUR:63:5:00;CSR:B8:7:00;COS:6C:5:00;COR:5F:5:00;CNT:51:5:00;CLS:71:4:00;CLOSE:72:4:00;CLEA" +
+            "R:6A:4:00;CHR$:A0:6:00;CHAIN:69:4:00;CALL:62:4:00;CALCJMP:9F:4:00;CALC$:AD:6:00;BSAVE:56:4:00;BLOAD:A0:4:00;BEEP:70:4:00;ATN:70:5:00;ASN:6E:5:00;ASC:94:5:00;AS:BC:7:00;AP" +
+            "PEND:BD:7:00;ANGLE:6E:4:00;AND:C4:7:00;ALL:BB:7:00;ACS:6F:5:00;ABS:7B:5:00;KILL:8E:4:00;NAME:96:4:00;FILES:B5:4:00;DSKF:61:5:00";
+
+        // the text of the keywords by prefix 4 .. 7 and code 40H .. CFH (a space at the end: a space is shown before a name or a number that follows)
+        static readonly string[][] Text = new string[][]
+        {
+            ("||||||||| GOTO | GOSUB |RETURN|RESUME |RESTORE |WRITE#||||SYSTEM|PASS ||DELETE |BSAVE |LIST |LLIST |LOAD |MERGE |||TRON||TROFF|VERIFY |MON|CALL |POKE ||||||CHAIN |CLEAR |NEW |SAVE |RUN |ANGLE |EDIT |BEEP |CLS|CLOSE ||||DEF |DEFM |DEFSEG ||VAC||DIM |DRAW |||DATA |FOR |NEXT |||ERASE |ERROR |END|||FIELD |FORMAT|GET |IF |KILL |LET |LINE |LOCATE ||LSET |||NAME |OPEN ||OUT | ON |||||CALCJMP |BLOAD ||DRAWC |PRINT |LPRINT |PUT |||READ |REM |RSET ||SET |STAT|STOP||MODE ||VAR |PBLOAD |PBGET |FILES||||||||||||||||||||||||||").Split('|'),
+            ("|||||||||||||||ERL|ERR|CNT|SUMX|SUMY|SUMX2|SUMY2|SUMXY|MEANX|MEANY|SDX|SDY|SDXN|SDYN|LRA|LRB|COR|PI|DSKF||CUR ||||FACT ||EOX |EOY |SIN |COS |TAN |ASN |ACS |ATN |HYPSIN |HYPCOS |HYPTAN |HYPASN |HYPACS |HYPATN |LN |LOG |EXP |SQR |ABS |SGN |INT |FIX |FRAC |RND ||||||PEEK |||LOF |EOF |||FRE ||POINT |ROUND|RND|VALF|RAN#|ASC|LEN|VAL||||||DEG|||||||||||REC|POL||NPR|NCR|HYP|||||||||||||||||||||||||||||||||||").Split('|'),
+            ("|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||DMS$|||MID|INPUT |MID$|RIGHT$|LEFT$||CHR$|STR$||HEX$|||||INKEY$|KEY||DATE$|TIME$|CALC$||||||||||||||||||||||||||||||||||").Split('|'),
+            ("||||||| THEN | ELSE ||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||TAB ||CSR |REV |NORM |ALL | AS |APPEND ||OFF| STEP | TO |USING |NOT | AND | OR | XOR | MOD ||||||||").Split('|')
+        };
+
+        sealed class Tk { public string Word; public int Code, Prefix, Flags; }
+        static readonly List<Tk> Tokens = Build();
+
+        static List<Tk> Build()
+        {
+            var l = new List<Tk>();
+            foreach (string it in Spec.Split(';'))
+            {
+                string[] p = it.Split(':');
+                l.Add(new Tk { Word = p[0], Code = Convert.ToInt32(p[1], 16), Prefix = int.Parse(p[2]), Flags = Convert.ToInt32(p[3], 16) });
+            }
+            return l.OrderByDescending(k => k.Word.Length).ToList();            // the longest word first (RND of the prefix 5 with the code 91H stays before the one with 80H)
+        }
+
+        // the keywords (for Check Basic)
+        public static List<string> Keywords()
+        {
+            var l = new List<string>();
+            foreach (Tk k in Tokens) if (!l.Contains(k.Word)) l.Add(k.Word);
+            return l;
+        }
+
+        static bool IsAlpha(char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); }
+        static bool IsHex(char c) { return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'); }
+        static bool Same(string s, int i, string w) { return i + w.Length <= s.Length && string.Compare(s, i, w, 0, w.Length, StringComparison.OrdinalIgnoreCase) == 0; }
+
+        // spaces out (outside strings, REM, DATA and after an apostrophe), the escapes \\ and \XX (a character code)
+        static string Normalize(string rest)
+        {
+            var q = new StringBuilder();
+            bool inString = false, transparent = false;
+            int p = 0, n = rest.Length;
+            while (p < n)
+            {
+                int ql = q.Length;
+                if (!inString && !transparent && ((ql >= 1 && q[ql - 1] == '\'') || (ql >= 4 && Same(q.ToString(), ql - 4, "DATA")) || (ql >= 3 && Same(q.ToString(), ql - 3, "REM"))))
+                {
+                    transparent = true;
+                    q.Append(rest[p++]);
+                    continue;
+                }
+                while (!inString && !transparent && p < n && char.IsWhiteSpace(rest[p]))
+                {
+                    if (q.Length >= 1 && IsAlpha(q[q.Length - 1]) && (Same(rest, p, " TO") || Same(rest, p, " THEN") || Same(rest, p, " ELSE"))) break;
+                    p++;
+                }
+                if (p >= n) break;
+                if (rest[p] == '"') inString = !inString;
+                q.Append(rest[p++]);
+            }
+            string s = q.ToString();
+            var r = new StringBuilder();
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c != '\\') { r.Append(c); continue; }
+                i++;
+                if (i >= s.Length) break;
+                if (s[i] == '\\') { r.Append('\\'); continue; }
+                int v = 0, k = 0;
+                while (k < 2 && i + k < s.Length && IsHex(s[i + k])) { v = v * 16 + Convert.ToInt32(s[i + k].ToString(), 16); k++; }
+                if (k > 0 && v != 0xF0 && (v >= 0x10 || s[i] == '0')) { r.Append((char)v); i++; continue; }        // (as bas850: the character after the first digit goes too)
+                r.Append(s[i]);
+            }
+            return r.ToString();
+        }
+
+        // one line: [length][number lo][number hi][body][00]
+        static byte[] Encode(int no, string line)
+        {
+            var o = new List<byte> { 0, (byte)(no & 255), (byte)(no >> 8) };
+            int l = 3;
+            if (!line.StartsWith(" ")) { o.Add(0x20); l++; }
+            bool transparent = false, inString = false, binary = false;
+            int i = 0;
+            while (i < line.Length)
+            {
+                char c = line[i];
+                if (c == '"') inString = !inString;
+                if (!inString && !transparent)
+                {
+                    if (binary && !(c >= '0' && c <= '9') && c != ',' && c != ' ') binary = false;
+                    if (c == ':') { o.Add(0x01); l++; i++; continue; }
+                    if (c == '\'') { o.Add(0x02); l++; i++; transparent = true; continue; }
+                    if (c == '&' && i + 1 < line.Length && (line[i + 1] == 'H' || line[i + 1] == 'h'))
+                    {
+                        o.Add((byte)'&'); o.Add((byte)'H'); l += 2; i += 2;
+                        while (i < line.Length && IsHex(line[i])) { o.Add((byte)line[i]); l++; i++; }
+                        continue;
+                    }
+                    if (binary && c >= '0' && c <= '9')
+                    {
+                        long v = 0;
+                        while (i < line.Length && line[i] >= '0' && line[i] <= '9') { v = v * 10 + (line[i] - '0'); i++; if (v > 65535) v = 65535; }
+                        o.Add(0x03); o.Add((byte)(v & 255)); o.Add((byte)(v >> 8)); l += 3;
+                        continue;
+                    }
+                    if (IsAlpha(c))
+                    {
+                        Tk hit = null;
+                        foreach (Tk k in Tokens) if (Same(line, i, k.Word)) { hit = k; break; }
+                        if (hit != null)
+                        {
+                            if ((hit.Flags & 0x20) != 0) { o.Add(0x01); l++; }
+                            if ((hit.Flags & 0x40) != 0) transparent = true;
+                            if ((hit.Flags & 0x80) != 0) binary = true;
+                            i += hit.Word.Length;
+                            o.Add((byte)hit.Prefix); o.Add((byte)hit.Code); l += 2;
+                            continue;
+                        }
+                    }
+                }
+                o.Add((byte)c); l++; i++;
+            }
+            o.Add(0x00);
+            o[0] = (byte)l;
+            return l > 255 ? null : o.ToArray();
+        }
+
+        // BASIC text -> the lines of the program (as in the memory of the computer, without a header)
+        public static byte[] Tokenize(string text, out string problem)
+        {
+            problem = null;
+            var recs = new SortedDictionary<int, byte[]>();
+            foreach (string raw in text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+            {
+                string s = raw.TrimStart(' ').TrimEnd('\u001A');
+                int i = 0;
+                while (i < s.Length && s[i] >= '0' && s[i] <= '9') i++;
+                if (i == 0 || i > 9) continue;                                          // a line without a number is not a program line (as bas850)
+                int no = int.Parse(s.Substring(0, i));
+                if (no == 0) continue;
+                if (no > 65535) { problem = "line number too large: " + no; return null; }
+                string rest = s.Substring(i);
+                if (rest.StartsWith(":")) rest = rest.Substring(1);                     // a colon after the line number (10 :A=1) is not a part of the program
+                byte[] rec = Encode(no, Normalize(rest.TrimStart(' ')));
+                if (rec == null) { problem = "line " + no + " is too long (more than 255 bytes)"; return null; }
+                recs[no] = rec;
+            }
+            if (recs.Count == 0) { problem = "no program lines found"; return null; }
+            var all = new List<byte>();
+            foreach (var kv in recs) all.AddRange(kv.Value);
+            return all.ToArray();
+        }
+
+        // the lines of the program -> BASIC text (the listing of the computer: a space after a keyword only where a name or a number follows)
+        public static string Detokenize(byte[] prog, out string problem)
+        {
+            problem = null;
+            var sb = new StringBuilder();
+            int p = 0;
+            while (p < prog.Length && prog[p] != 0)
+            {
+                int ln = prog[p];
+                if (p + ln >= prog.Length) { problem = "the last line is cut"; break; }
+                int no = prog[p + 1] | (prog[p + 2] << 8);
+                var s = new StringBuilder();
+                bool insert = false, pending = false, quoted = false, qeol = false;
+                char last = '\0';
+                int prefix = 0, lsb = -1;
+                for (int k = p + 3; k < p + ln; k++)
+                {
+                    int c = prog[k];
+                    string t;
+                    if (prefix == 3)
+                    {
+                        if (lsb == -1) { lsb = c; continue; }
+                        t = (lsb + c * 256).ToString(); lsb = -1; prefix = 0;
+                    }
+                    else if (c == 0x01) { pending = true; continue; }
+                    else if (c == 0x02) { t = "'"; qeol = true; }
+                    else if (c == 0x03) { prefix = 3; lsb = -1; continue; }
+                    else if (c >= 4 && c <= 7) { prefix = c; continue; }
+                    else if (c == 0x20 && prefix == 0)
+                    {
+                        if (pending) { s.Append(':'); pending = false; }
+                        s.Append(' '); insert = false; last = ' ';
+                        continue;
+                    }
+                    else if (prefix != 0)
+                    {
+                        string w = c >= 0x40 && c <= 0xCF ? Text[prefix - 4][c - 0x40] : null;
+                        t = string.IsNullOrEmpty(w) ? "\\" + prefix.ToString("X2") + "\\" + c.ToString("X2") : w;
+                        prefix = 0;
+                    }
+                    else t = c == 0x5C ? "\\\\" : ((char)c).ToString();
+                    if (t.StartsWith(" ") && last == ' ') t = t.Substring(1);
+                    if (pending)
+                    {
+                        if (!t.StartsWith("ELSE") && !t.StartsWith(" ELSE")) s.Append(':');
+                        pending = false;
+                    }
+                    for (int j = 0; j < t.Length; j++)
+                    {
+                        char ch = t[j];
+                        if (ch == '"') { quoted = !quoted || qeol; insert = false; }
+                        if (quoted) { s.Append(ch); insert = false; }
+                        else
+                        {
+                            if (ch < ' ' || ch >= 0x80) s.Append('\\').Append(((int)ch).ToString("X2"));
+                            else if (ch == ' ' && j == t.Length - 1) insert = true;
+                            else
+                            {
+                                if (insert && ((ch >= '0' && ch <= '9') || ch >= 'A')) s.Append(' ');
+                                s.Append(ch);
+                                insert = false;
+                            }
+                        }
+                        last = ch;
+                    }
+                }
+                if (pending) s.Append(':');
+                sb.Append(no).Append(s.ToString()).Append("\r\n");
+                p += ln + 1;
+            }
+            return sb.ToString();
+        }
+    }
+
     // BASIC tokens (intermediate codes) of the Sharp PC-1350, PC-1360 and PC-E500(S): the table word = code is a fact about the ROM of these computers,
     // the tokenizer, the detokenizer and the tape routines are written from the formats (checked against recordings made by the computers).
     //   PC-1350: one byte tokens (ID 70H on the tape); PC-1360: two byte tokens FExx and line numbers after GOTO ... as 1F hi lo (ID 72H);
@@ -6596,6 +6890,144 @@ int removed, kept, cut; List<string> moved;
             }
             if (prog.Count == 0) throw new Exception("the recording has no BASIC line");
             return prog.ToArray();
+        }
+
+        // ================================================================ Casio FX-850P / FX-870P / FX-880P tape: 1200 baud FSK as the Canon X-07 (0 = one cycle of 1200 Hz,
+        // 1 = two cycles of 2400 Hz); a byte = a start bit (0), 8 data bits (LSB first), an even parity bit and 2 stop bits (1). A segment is 2 s of 2400 Hz, its bytes and a check sum
+        // byte (256 - the sum mod 256). The header segment: 'H', the file type 10H (a program), the name (8), the extension (3), the password (8 x FFH) and 12 parameter bytes (the length of
+        // the program at 6 and 7); the data segment: 'D', 10H, FFH and the lines of the program (the format of the Pocket Tools bas850 -t8 -f and wave850).
+        public static byte[] EncodeCasio(string name, byte[] prog)
+        {
+            var hdr = new List<byte> { (byte)'H', 0x10 };
+            byte[] nb = Encoding.GetEncoding(28591).GetBytes((name ?? "").ToUpperInvariant());
+            for (int k = 0; k < 8; k++) hdr.Add(k < nb.Length ? nb[k] : (byte)0x20);
+            hdr.Add((byte)'B'); hdr.Add((byte)'A'); hdr.Add((byte)'S');
+            for (int k = 0; k < 8; k++) hdr.Add(0xFF);
+            for (int k = 0; k < 12; k++) hdr.Add(0);
+            hdr[27] = (byte)(prog.Length & 255); hdr[28] = (byte)(prog.Length >> 8);
+            var dat = new List<byte> { (byte)'D', 0x10, 0xFF };
+            dat.AddRange(prog);
+            var bits = new List<int>();
+            Action<byte> put = bt =>
+            {
+                int par = 0;
+                bits.Add(0);
+                for (int k = 0; k < 8; k++) { int b = (bt >> k) & 1; bits.Add(b); par ^= b; }
+                bits.Add(par); bits.Add(1); bits.Add(1);
+            };
+            Action<List<byte>> segment = s =>
+            {
+                for (int k = 0; k < 2400; k++) bits.Add(1);                                // 2 s
+                int sum = 0;
+                foreach (byte b in s) { put(b); sum += b; }
+                put((byte)((256 - (sum & 255)) & 255));
+            };
+            segment(hdr); segment(dat);
+            for (int k = 0; k < 600; k++) bits.Add(1);                                    // 0.5 s
+            var edges = new List<double>();
+            double t = 0;
+            Action<double, int> tone = (f, cycles) => { double half = Fs / f / 2; for (int c = 0; c < cycles; c++) { t += half; edges.Add(t); t += half; edges.Add(t); } };
+            foreach (int b in bits) { if (b != 0) tone(2400, 2); else tone(1200, 1); }
+            int total = (int)t + 1;
+            var buf = new byte[total];
+            for (int i = 0; i < total; i++) buf[i] = 128;
+            double pos = 0; bool high = true;
+            foreach (double e in edges)
+            {
+                long a = Round(pos), z = Round(e);
+                byte v = high ? (byte)226 : (byte)30;
+                for (long i = a; i < z && i < total; i++) buf[i] = v;
+                pos = e; high = !high;
+            }
+            return WavFile(buf, (int)Fs);
+        }
+
+        // returns the lines of the program (file type 10H) or the bytes of the text of an ASCII file (type 30H, ascii = true); warn = a message when a check sum does not agree
+        public static byte[] DecodeCasio(byte[] wav, out string name, out bool ascii, out string warn)
+        {
+            warn = null; name = ""; ascii = false;
+            int rate;
+            byte[] d = Samples(wav, out rate);
+            var rise = new List<int>();
+            bool prev = d.Length > 0 && d[0] >= 128;
+            for (int i = 0; i < d.Length; i++) { bool s = d[i] >= 128; if (s && !prev) rise.Add(i); prev = s; }
+            // the first long run of 2400 Hz cycles (the leader; the noise before it is skipped)
+            int run = 0, from = -1;
+            for (int i = 1; i < rise.Count && from < 0; i++)
+            {
+                double us = (rise[i] - rise[i - 1]) * 1e6 / rate;
+                if (us <= 620) run++;
+                else { if (run >= 1200) from = i; run = 0; }
+            }
+            if (from < 0) throw new Exception("no Casio tape header (a long 2400 Hz tone) found");
+            var bits = new List<int>();
+            char cur = ' '; double acc = 0;
+            Action flush = () => { if (cur == 'H' || cur == 'L') { long n = Round(acc / (1e6 / 1200)); for (long k = 0; k < n; k++) bits.Add(cur == 'H' ? 1 : 0); } };
+            for (int i = from; i < rise.Count; i++)
+            {
+                double us = (rise[i] - rise[i - 1]) * 1e6 / rate;
+                char c = us > 1100 ? 'G' : us > 620 ? 'L' : 'H';
+                if (c == cur) acc += us; else { flush(); cur = c; acc = us; }
+            }
+            flush();
+            // the bytes: a start bit, 8 data bits, an even parity bit, 2 stop bits; a gap of at least 24 bits of 1 (the leader) separates the segments
+            var segs = new List<List<int>>();
+            var seg = new List<int>();
+            int ix = 0;
+            while (ix + 12 <= bits.Count)
+            {
+                if (bits[ix] != 0)
+                {
+                    int j = ix;
+                    while (j < bits.Count && bits[j] == 1) j++;
+                    if (j - ix >= 24 && seg.Count > 0) { segs.Add(seg); seg = new List<int>(); }
+                    ix = j;
+                    continue;
+                }
+                int v = 0, par = 0;
+                for (int k = 0; k < 8; k++) { int b = bits[ix + 1 + k]; v |= b << k; par ^= b; }
+                if (bits[ix + 9] != par || bits[ix + 10] != 1 || bits[ix + 11] != 1) { ix++; continue; }       // not a byte: look further
+                seg.Add(v); ix += 12;
+            }
+            if (seg.Count > 0) segs.Add(seg);
+            if (segs.Count == 0 || segs[0].Count < 34 || segs[0][0] != 'H') throw new Exception("no header segment of a Casio tape file found");
+            Func<List<int>, bool> sumOk = s => { int x = 0; foreach (int b in s) x += b; return (x & 255) == 0; };
+            List<int> h = segs[0];
+            if (!sumOk(h)) warn = "check sum error in the header";
+            var nm = new StringBuilder();
+            for (int k = 2; k < 10; k++) if (h[k] > 32) nm.Append((char)h[k]);
+            name = nm.ToString();
+            int type = h[1];
+            var res = new List<byte>();
+            if (type == 0x10)
+            {
+                int len = h[27] | (h[28] << 8);
+                List<int> ds = null;
+                for (int s = 1; s < segs.Count && ds == null; s++) if (segs[s].Count > 3 && segs[s][0] == 'D') ds = segs[s];
+                if (ds == null) throw new Exception("no data segment in the recording");
+                if (!sumOk(ds) && warn == null) warn = "check sum error in the program";
+                int have = ds.Count - 3 - 1;
+                if (have < len) { if (warn == null) warn = "the recording ends inside the program (the last lines are lost)"; len = Math.Max(0, have); }
+                for (int k = 0; k < len; k++) res.Add((byte)ds[3 + k]);
+                if (res.Count == 0) throw new Exception("the recording has no BASIC program");
+                return res.ToArray();
+            }
+            if (type == 0x30)
+            {
+                ascii = true;
+                for (int s = 1; s < segs.Count; s++)
+                {
+                    List<int> ds = segs[s];
+                    if (ds.Count < 6 || ds[0] != 'D') continue;
+                    if (!sumOk(ds) && warn == null) warn = "check sum error in the text";
+                    int l = ds[3] | (ds[4] << 8);
+                    for (int k = 0; k < l && 5 + k < ds.Count - 1; k++) res.Add((byte)ds[5 + k]);
+                    if (ds[2] != 0) break;                                         // the end of the file
+                }
+                if (res.Count == 0) throw new Exception("the recording has no text");
+                return res.ToArray();
+            }
+            throw new Exception("the file type " + type.ToString("X2") + " of the recording is not supported (programs 10H and ASCII text 30H are)");
         }
 
         // returns the program image (without the end marker); warn = a message when a check sum does not agree
