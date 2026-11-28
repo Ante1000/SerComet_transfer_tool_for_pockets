@@ -563,7 +563,7 @@ namespace UartSlTest
                        "Sending Basic program to PC: SAVE \"COM0:6,N,8,1\" (6 means 4800 bps).\r\n" +
                        "Receiving from PC: LOAD \"COM0:6,N,8,1\". XON/XOFF should be enabled. After sending finishes press Break and type LIST.\r\n" +
                        "Data files: OPEN \"COM0:6,N,8,1,N,N,N,N,N\" AS #1; PRINT #1,..; INPUT #1,A$; LINE INPUT #1,A$; CLOSE.\r\n" +
-                       "WAV: the BASIC text is converted to a tape recording of the tokenized program (1200 baud, tokens of the FX-850P family, checked with the Pocket Tools bas850 / list850) and recordings of programs and of ASCII files are read back as BASIC text.";
+                       "WAV: the BASIC text is converted to two tape recordings (1200 baud): NAME_FX850.wav, the tokenized program (tokens of the FX-850P family, checked with the Pocket Tools bas850 / list850), and NAME_FX850_ASCII.wav, an ASCII file in the form of a real recording of SAVE \"CAS:name\",A (every line has its own 2 s leader, so it takes longer). Recordings of programs and of ASCII files are read back as BASIC text.";
             if (curModel == 4)
                 return "TRS-80 Model 100 / NEC PC-8201: DB-25 connector, RS-232C levels - use COM cable or RS232 to USB converter\r\n" +
                        "Sending Basic program to PC: SAVE \"COM:78N1E\" (TRS-80) or SAVE \"COM:7N81XN\" (PC-8201).\r\n" +
@@ -2038,8 +2038,21 @@ namespace UartSlTest
                 TapeWav.WavInfo wiC; int woC, wlC; TapeWav.Parse(wC, out wiC, out woC, out wlC);
                 ConvWait();
                 Log("WAV written: " + Path.GetFileName(outC) + " (Casio FX-850P / 870P / 880P, the tokenized program, 1200 baud, tape name " + tnC + ", " + Math.Round(wiC.Seconds, 1).ToString(System.Globalization.CultureInfo.InvariantCulture) + " s). Load it from the tape (LOAD \"CAS:\").");
+                // the ASCII file: the same program as a text file (the form of a real recording of SAVE "CAS:name",A; every line has its own 2 s leader, so it is longer)
+                string outA = null;
+                string prA;
+                List<string> linesA = CasioTok.AsciiLines(src, out prA);
+                if (linesA != null)
+                {
+                    byte[] wA = TapeWav.EncodeCasioAscii(tnC, linesA);
+                    outA = UniquePath2(Path.Combine(txtDir.Text, baseName + "_FX850_ASCII.wav"));
+                    File.WriteAllBytes(outA, wA);
+                    TapeWav.WavInfo wiA; int woA, wlA; TapeWav.Parse(wA, out wiA, out woA, out wlA);
+                    Log("WAV written: " + Path.GetFileName(outA) + " (Casio FX-850P / 870P / 880P, the ASCII file, 1200 baud, tape name " + tnC + ", " + Math.Round(wiA.Seconds, 1).ToString(System.Globalization.CultureInfo.InvariantCulture) + " s). The format of a real recording; load it with LOAD \"CAS:\" and it is a text file.");
+                }
+                else LogWarn("WAV: no ASCII file written: " + prA);
                 RefreshFiles();
-                int ixC = lstFiles.Items.IndexOf(Path.GetFileName(outC));
+                int ixC = lstFiles.Items.IndexOf(Path.GetFileName(outA ?? outC));
                 if (ixC >= 0) lstFiles.SelectedIndex = ixC;
                 return;
             }
@@ -2130,7 +2143,14 @@ namespace UartSlTest
                 catch (Exception ex) { LogWarn("WAV: the recording cannot be decoded (Casio: " + ex.Message + ")."); return; }
                 string textC = null;
                 prC = null;
-                if (asciiC) textC = Encoding.GetEncoding(28591).GetString(progC).Replace("\r\n", "\n").Replace('\r', '\n').Replace("\u001A", "").Replace("\n", "\r\n");
+                if (asciiC)
+                {
+                    // the lines of an ASCII file are the line number directly followed by the text (1'HAMMING, 10GOTO6): a space after the number makes the listing readable
+                    var al = new List<string>();
+                    foreach (string x in Encoding.GetEncoding(28591).GetString(progC).Replace("\r\n", "\n").Replace('\r', '\n').Replace("\u001A", "").Split('\n'))
+                        if (x.Trim().Length > 0) al.Add(Regex.Replace(x, "^(\\d+)(?=\\S)", "$1 "));
+                    textC = string.Join("\r\n", al.ToArray()) + "\r\n";
+                }
                 else textC = CasioTok.Detokenize(progC, out prC);
                 if (warnC != null) Log("WAV: " + warnC + ".");
                 if (prC != null) LogWarn("WAV: conversion problem: " + prC);
@@ -3969,6 +3989,12 @@ int removed, kept, cut; List<string> moved;
         public string Name;
         public int MinLine, MaxLine, MaxLen, MaxVar;     // allowed line numbers, longest line (characters), longest variable name (0 = any)
         public bool LowerOk, NeedThen, Tokenizer1500, Tokenizer1600;
+        public bool AposRem = true;           // an apostrophe starts a comment (the BASIC comparison table: not on the PC-1500, PC-1350 ... PC-14xx, there only REM)
+        public bool ElseOk = true;            // IF ... THEN ... ELSE exists (not on the PC-1500, PC-1350 / 1360, PC-14xx)
+        public bool KwOneChar;                // a keyword counts as one character in the line length (the Sharp pocket computers)
+        public bool NextVar;                  // NEXT needs its variable (the Sharp pocket computers)
+        public int SoftLen;                   // a length the editor of the machine accepts (a longer line is only a warning), 0 = none
+        public int SigVar;                    // the number of characters of a variable name that count (the machine truncates longer names), 0 = unknown
         public HashSet<string> Kw = new HashSet<string>();
         public List<string> KwSorted;
         public override string ToString() { return Name; }
@@ -4019,12 +4045,21 @@ int removed, kept, cut; List<string> moved;
             Add("Sharp PC-1350", 1, 65279, 79, 2, false, false, false, false, Core + Sharp1350 + " " + t1350);
             Add("Sharp PC-1360 and 1360K", 1, 65279, 79, 2, false, false, false, false, Core + Sharp1350 + Sharp1360 + " " + t1360);
             Add("Sharp PC-1450..75", 1, 65279, 79, 2, false, false, false, false, Core + Sharp1450 + " " + string.Join(" ", SharpTok.Keywords(1460)) + " " + string.Join(" ", SharpTok.Keywords(1475)));
-            Add("Sharp PC-E500", 1, 65279, 255, 0, true, true, false, false, Core + SharpE500 + " " + tE500);
-            Add("Sharp PC-E500S", 1, 65279, 255, 0, true, true, false, false, Core + SharpE500 + " " + tE500 + " CLS LOCATE FRE");
+            Add("Sharp PC-E500", 1, 65279, 255, 32, true, false, false, false, Core + SharpE500 + " INPUT$ " + tE500);
+            Add("Sharp PC-E500S", 1, 65279, 255, 32, true, false, false, false, Core + SharpE500 + " INPUT$ " + tE500 + " CLS LOCATE FRE");
             Add("Casio FX-850P / 870P / 880P", 1, 65535, 255, 15, true, true, false, false, Core + Casio + " " + string.Join(" ", CasioTok.Keywords()));
-            Add("NEC PC-8201 / TRS-80 Model 100", 0, 65529, 255, 0, true, true, false, false, Core + Model100);
+            Add("NEC PC-8201 / TRS-80 Model 100", 0, 65529, 254, 0, true, true, false, false, Core + Model100);
             Add("Other computer (general check)", 0, 65535, 0, 0, true, false, false, false, Core + Sharp1350 + Sharp1360 + SharpE500 + Casio + Model100);
-            Add("Canon X07", 0, 9999, 255, 0, true, false, false, false, Core + " " + string.Join(" ", X07Tok.WordKeywords()));
+            Add("Canon X07", 0, 65529, 255, 0, true, false, false, false, Core + " " + string.Join(" ", X07Tok.WordKeywords()));
+            // the BASIC comparison table (Marcus von Cube) and the manuals: what is not the same on every machine
+            Func<string, CheckProfile> pr = n => profiles.Find(x => x.Name == n);
+            foreach (string n in new[] { "Sharp PC-1500(A)", "Sharp PC-1350", "Sharp PC-1360 and 1360K", "Sharp PC-1450..75" }) { pr(n).KwOneChar = true; pr(n).SigVar = 2; }
+            foreach (string n in new[] { "Sharp PC-1500(A)", "Sharp PC-1350", "Sharp PC-1360 and 1360K", "Sharp PC-1450..75" }) { pr(n).AposRem = false; pr(n).NextVar = true; }
+            foreach (string n in new[] { "Sharp PC-1500(A)", "Sharp PC-1350", "Sharp PC-1360 and 1360K", "Sharp PC-1450..75" }) pr(n).ElseOk = false;
+            pr("Sharp PC-E500").SigVar = 32; pr("Sharp PC-E500S").SigVar = 32;
+            pr("Casio FX-850P / 870P / 880P").SigVar = 15;
+            pr("NEC PC-8201 / TRS-80 Model 100").SigVar = 2;
+            pr("Canon X07").SigVar = 2; pr("Canon X07").SoftLen = 80;
         }
 
         // profile of the target computer of SerComet: 0 PC-1500, 1 PC-1600, 2 other Sharp, 3 Casio, 4 TRS-80 / NEC, 5 other UART
@@ -4039,43 +4074,78 @@ int removed, kept, cut; List<string> moved;
         static readonly Regex RxTarget = new Regex("(?:GOTO|GOSUB|THEN|ELSE|RESTORE|RUN)\\s*(\\d+(?:\\s*,\\s*\\d+)*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         static readonly Regex RxNumbered = new Regex("^\\s*(\\d+)\\s?(.*)$", RegexOptions.Compiled);
 
-        sealed class Line { public int Number = -1; public int Index; public string Raw, Body, Code; public bool IsRem; }
+        sealed class Line { public int Number = -1; public int Index; public string Raw, Body, Code; public bool IsRem, HasApos; }
 
-        // the code of a statement line without strings, REM / DATA texts and hexadecimal numbers
-        static string MaskCode(string body, out bool isRem)
+        // the code of a statement line without strings, REM / DATA texts, comments and hexadecimal numbers; hasApos: the line has a comment with an apostrophe
+        // (it is cut off in every case; the machines without this comment (PC-1500, PC-1350 ... PC-14xx) get a fault for it)
+        static string MaskCode(string body, out bool isRem, out bool hasApos)
         {
-            isRem = false;
+            isRem = false; hasApos = false;
             string t = body.TrimStart();
-            if (t.StartsWith("'") || Regex.IsMatch(t, "^REM", RegexOptions.IgnoreCase)) { isRem = true; return ""; }
+            if (Regex.IsMatch(t, "^REM", RegexOptions.IgnoreCase)) { isRem = true; return ""; }
+            if (t.StartsWith("'")) { isRem = true; hasApos = true; return ""; }
             string s = RxStr.Replace(body, "\"\"");
-            Match m = Regex.Match(s, "(?:^|:)\\s*(?:REM|DATA|')", RegexOptions.IgnoreCase);
+            Match m = Regex.Match(s, "(?:^|:)\\s*(?:REM|DATA)", RegexOptions.IgnoreCase);
             if (m.Success) s = s.Substring(0, m.Index + (s[m.Index] == ':' ? 1 : 0));
+            int ap = s.IndexOf('\'');
+            if (ap >= 0) { hasApos = true; s = s.Substring(0, ap); }          // an apostrophe ends the statement: the rest is a comment
             return RxHex.Replace(s, "0");
         }
 
         // can the word be split into keywords and variable names? (the keywords found are collected)
         // Microsoft style names (long variable names: PC-E500, Casio, TRS-80 / NEC, Canon X07): at every position the longest keyword wins, the rest are variable names and numbers
         // (FORI=1TO5, QTHEN80, TO30STEP2); a variable name longer than MaxVar (when there is a limit) makes the word unknown
-        static bool SplitMs(string w, CheckProfile p, List<string> found)
+        static bool SplitMs(string w, CheckProfile p, List<string> found, List<string> vars, int maxVar)
         {
-            int pos = 0, varLen = 0;
+            int pos = 0, varLen = 0, vstart = -1;
             while (pos < w.Length)
             {
                 string kw = null;
                 foreach (string k in p.KwSorted)
                     if (pos + k.Length <= w.Length && string.CompareOrdinal(w, pos, k, 0, k.Length) == 0) { kw = k; break; }
-                if (kw != null) { found.Add(kw); pos += kw.Length; varLen = 0; continue; }
+                if (kw != null)
+                {
+                    if (vars != null && vstart >= 0) vars.Add(w.Substring(vstart, pos - vstart));
+                    vstart = -1;
+                    found.Add(kw); pos += kw.Length; varLen = 0; continue;
+                }
                 char c = w[pos];
+                if (vstart < 0 && char.IsLetter(c)) vstart = pos;
                 if (c != '$' && !char.IsDigit(c)) varLen++; else if (char.IsDigit(c) && varLen > 0) varLen++;
-                if (p.MaxVar > 0 && varLen > p.MaxVar) return false;
+                if (maxVar > 0 && varLen > maxVar) return false;
                 pos++;
             }
+            if (vars != null && vstart >= 0) vars.Add(w.Substring(vstart));
             return true;
+        }
+
+        // the characters of a line that the machine counts: a keyword is one character on the Sharp pocket computers (the BASIC comparison table)
+        public static int KwSavings(string body, CheckProfile p)
+        {
+            if (!p.KwOneChar) return 0;
+            bool rem, ha;
+            string code = MaskCode(body, out rem, out ha);
+            if (rem) return Regex.IsMatch(body.TrimStart(), "^REM", RegexOptions.IgnoreCase) ? 2 : 0;          // REM is one character, its text is counted as it is
+            int sum = 0;
+            foreach (Match m in RxWord.Matches(code))
+            {
+                var found = new List<string>();
+                if (!Split(m.Value.ToUpperInvariant(), 0, p, found, new Dictionary<int, bool>(), false)) continue;
+                foreach (string k in found) sum += k.Length - 1;
+            }
+            return sum;
+        }
+
+        // the length of a line as the machine counts it (without the line number)
+        public static int EffLen(string body, CheckProfile p)
+        {
+            string b = body.TrimEnd();
+            return b.Length - KwSavings(b, p);
         }
 
         static bool Split(string w, int pos, CheckProfile p, List<string> found, Dictionary<int, bool> failed, bool lastVar)
         {
-            if (pos == 0 && !lastVar && (p.MaxVar == 0 || p.MaxVar > 2)) return SplitMs(w, p, found);
+            if (pos == 0 && !lastVar && (p.MaxVar == 0 || p.MaxVar > 2)) return SplitMs(w, p, found, null, p.MaxVar);
             if (pos >= w.Length) return true;
             int key = pos * 2 + (lastVar ? 1 : 0);
             if (failed.ContainsKey(key)) return false;
@@ -4162,9 +4232,9 @@ int removed, kept, cut; List<string> moved;
                 Match m = RxNumbered.Match(raw);
                 if (m.Success && m.Groups[1].Value.Length < 10) { ln.Number = int.Parse(m.Groups[1].Value); ln.Body = m.Groups[2].Value; }
                 else { ln.Body = raw; unnumbered.Add(idx); }
-                bool rem;
-                ln.Code = MaskCode(ln.Body, out rem);
-                ln.IsRem = rem;
+                bool rem, ha;
+                ln.Code = MaskCode(ln.Body, out rem, out ha);
+                ln.IsRem = rem; ln.HasApos = ha;
                 lines.Add(ln);
             }
             add(3, "Machine: " + p.Name + ". " + lines.Count + " lines.");
@@ -4223,13 +4293,23 @@ int removed, kept, cut; List<string> moved;
             else if (p.LowerOk) add(0, "Small and capital letters: lowercase letters in " + lower.Count + " lines (allowed on this machine)");
             else { add(1, "Capital letters in the program text: Fail (lowercase letters outside strings in " + lower.Count + " lines, e.g. " + Lines(lower, 4) + "; SerComet converts them to capitals, a typed-in program needs capitals)"); warnings++; }
 
-            // 7. line length
+            // 7. line length (on the Sharp pocket computers a keyword counts as one character, without the line number)
             if (p.MaxLen > 0)
             {
                 var longL = new List<int>();
-                foreach (Line l in lines) if ((l.Number >= 0 ? l.Body : l.Raw).TrimEnd().Length > p.MaxLen) longL.Add(l.Number >= 0 ? l.Number : -l.Index);       // the line number is not counted
-                if (longL.Count == 0) add(0, "Line length within " + p.MaxLen + " characters (without the line number): OK");
-                else { add(2, "Line length within " + p.MaxLen + " characters (without the line number): Fail (lines " + Lines(longL, 8) + ")"); faults++; }
+                foreach (Line l in lines)
+                {
+                    if (EffLen(l.Number >= 0 ? l.Body : l.Raw, p) > p.MaxLen) longL.Add(l.Number >= 0 ? l.Number : -l.Index);
+                }
+                string what = "Line length within " + p.MaxLen + " characters (" + (p.KwOneChar ? "a keyword counts as one character, " : "") + "without the line number)";
+                if (longL.Count == 0) add(0, what + ": OK");
+                else { add(2, what + ": Fail (lines " + Lines(longL, 8) + ")"); faults++; }
+            }
+            if (p.SoftLen > 0)
+            {
+                var softL = new List<int>();
+                foreach (Line l in lines) if ((l.Number >= 0 ? l.Body : l.Raw).TrimEnd().Length > p.SoftLen) softL.Add(l.Number >= 0 ? l.Number : -l.Index);
+                if (softL.Count > 0) { add(1, "Lines longer than " + p.SoftLen + " characters (an editor restriction of this machine; a longer line is edited with LIST@ and the ON/BREAK key): lines " + Lines(softL, 8)); warnings++; }
             }
 
             // 8. quotation marks and parentheses
@@ -4251,19 +4331,51 @@ int removed, kept, cut; List<string> moved;
 
             // 9. words: statements, functions, variables
             var unknown = new List<string>(); var counts = new Dictionary<string, int>();
-            var longVar = new List<string>();
+            var longNames = new List<string>(); var elseL = new List<int>();
+            var varGroups = new Dictionary<string, List<string>>();        // the variable names by the characters that count: names of a group are the same variable
+            bool ms = p.MaxVar == 0 || p.MaxVar > 2;
+            Action<string> noteVar = nm =>
+            {
+                string u = nm.ToUpperInvariant();
+                bool str = u.EndsWith("$");
+                string b = str ? u.Substring(0, u.Length - 1) : u;
+                if (b.Length == 0 || !char.IsLetter(b[0])) return;
+                string key = (p.SigVar > 0 && b.Length > p.SigVar ? b.Substring(0, p.SigVar) : b) + (str ? "$" : "");
+                List<string> g;
+                if (!varGroups.TryGetValue(key, out g)) { g = new List<string>(); varGroups[key] = g; }
+                if (!g.Contains(u)) g.Add(u);
+            };
             foreach (Line l in lines)
             {
                 foreach (Match m in RxWord.Matches(l.Code))
                 {
                     string w = m.Value.ToUpperInvariant();
-                    if (w.Length == 1 || (w.Length == 2 && w[1] == '$')) continue;
-                    var found = new List<string>();
-                    if (Split(w, 0, p, found, new Dictionary<int, bool>(), false))
-                    { foreach (string k in found) { int c; counts.TryGetValue(k, out c); counts[k] = c + 1; } }
-                    else if (!unknown.Contains(w + " (" + (l.Number >= 0 ? l.Number.ToString() : "?") + ")") && unknown.Count < 200) unknown.Add(w + " (" + (l.Number >= 0 ? l.Number.ToString() : "?") + ")");
+                    if (w.Length == 1 || (w.Length == 2 && w[1] == '$')) { noteVar(w); continue; }
+                    if (m.Index > 0 && Regex.IsMatch(w, "^E[0-9]+$") && (char.IsDigit(l.Code[m.Index - 1]) || l.Code[m.Index - 1] == '.')) continue;         // the exponent of a number (1E4), not a variable
+                    var found = new List<string>(); var vars = new List<string>();
+                    bool ok = ms ? SplitMs(w, p, found, vars, p.MaxVar) : Split(w, 0, p, found, new Dictionary<int, bool>(), false);
+                    if (ok)
+                    {
+                        if (!p.ElseOk && found.Contains("ELSE")) { int en = l.Number >= 0 ? l.Number : -l.Index; if (!elseL.Contains(en)) elseL.Add(en); }
+                        foreach (string k in found) { int c; counts.TryGetValue(k, out c); counts[k] = c + 1; }
+                        if (!ms && found.Count == 0) vars.Add(w);
+                        foreach (string v in vars) noteVar(v);
+                        continue;
+                    }
+                    if (!ms && p.MaxVar > 0)
+                    {
+                        // the machine takes only the first characters of a longer variable name (it is truncated); a keyword inside the name is still not accepted
+                        var f2 = new List<string>(); var v2 = new List<string>();
+                        if (SplitMs(w, p, f2, v2, 0) && f2.Count == 0)
+                        {
+                            if (!longNames.Contains(w)) longNames.Add(w);
+                            foreach (string v in v2) noteVar(v);
+                            continue;
+                        }
+                    }
+                    if (!unknown.Contains(w + " (" + (l.Number >= 0 ? l.Number.ToString() : "?") + ")") && unknown.Count < 200) unknown.Add(w + " (" + (l.Number >= 0 ? l.Number.ToString() : "?") + ")");
                 }
-                if (p.MaxVar == 0 || p.MaxVar > 2) CheckStatements(l, p, unknown);       // long variable names: any word could be a variable, so look at the statement words
+                if (ms) CheckStatements(l, p, unknown);                  // long variable names: any word could be a variable, so look at the statement words
             }
             if (unknown.Count == 0) add(0, "All statements and functions are known on this machine: OK");
             else
@@ -4271,6 +4383,34 @@ int removed, kept, cut; List<string> moved;
                 string kind = p.Tokenizer1500 || p.Tokenizer1600 ? "not a keyword or a variable name of this machine" : "not in the keyword list of this machine (the list is approximate)";
                 add(p.Tokenizer1500 || p.Tokenizer1600 ? 2 : 1, "All statements and functions are known on this machine: Fail (" + kind + ": " + string.Join(", ", unknown.GetRange(0, Math.Min(8, unknown.Count)).ToArray()) + (unknown.Count > 8 ? " ..." : "") + ")");
                 if (p.Tokenizer1500 || p.Tokenizer1600) faults++; else warnings++;
+            }
+            if (longNames.Count > 0)
+            {
+                add(1, "Variable names longer than " + p.MaxVar + " characters: the machine uses only the first " + p.MaxVar + " (" + string.Join(", ", longNames.GetRange(0, Math.Min(8, longNames.Count)).ToArray()) + (longNames.Count > 8 ? " ..." : "") + ")");
+                warnings++;
+            }
+            var same = new List<string>();
+            foreach (var kv in varGroups) if (kv.Value.Count > 1 && p.SigVar > 0) same.Add(string.Join(" = ", kv.Value.ToArray()));
+            if (same.Count > 0)
+            {
+                add(1, "Different variable names are the same variable (only the first " + p.SigVar + " characters count): " + string.Join("; ", same.GetRange(0, Math.Min(6, same.Count)).ToArray()) + (same.Count > 6 ? " ..." : ""));
+                warnings++;
+            }
+            if (!p.ElseOk)
+            {
+                if (elseL.Count > 0) { add(2, "ELSE is not available on this machine (IF ... THEN ... ELSE): Fail (lines " + Lines(elseL, 8) + ")"); faults++; }
+            }
+            if (!p.AposRem)
+            {
+                var aposL = new List<int>();
+                foreach (Line l in lines) if (l.HasApos) aposL.Add(l.Number >= 0 ? l.Number : -l.Index);
+                if (aposL.Count > 0) { add(2, "A comment with an apostrophe (') is not available on this machine (only REM): Fail (lines " + Lines(aposL, 8) + ")"); faults++; }
+            }
+            if (p.NextVar)
+            {
+                var nextL = new List<int>();
+                foreach (Line l in lines) if (Regex.IsMatch(l.Code, "(?<![A-Za-z0-9])NEXT(?![A-Za-z0-9]|\\s*[A-Za-z])", RegexOptions.IgnoreCase)) nextL.Add(l.Number >= 0 ? l.Number : -l.Index);
+                if (nextL.Count > 0) { add(2, "NEXT needs the variable of its loop on this machine: Fail (lines " + Lines(nextL, 8) + ")"); faults++; }
             }
 
             // 10. structure: FOR / NEXT, GOSUB / RETURN, READ / DATA, IF without THEN (every statement is looked at separately)
@@ -4343,6 +4483,7 @@ int removed, kept, cut; List<string> moved;
                 add(3, "The keyword list of this machine is made from the token table of its ROM (and the older approximate list); an unknown word is only a warning.");
             if (p.Name.StartsWith("Sharp PC-1450")) add(3, "PC-1450..75: line numbers 1 to 65279 and the statements of the PC-14xx family (the words of the tokenizer tables of the PC-1450 / 1460 / 1470U / 1475, the list is the union of them: check the manual of your model).");
             if (p.Name.StartsWith("Casio")) add(3, "Casio: variable names up to 15 characters (FX-850P; longer ones are reported), small and capital letters are different variables, a name must not begin with a reserved word.");
+            if (p.KwOneChar) add(3, p.Name + ": the length of a line is 79 characters without the line number, a keyword counts as one character (the machine stores it as one token); only REM starts a comment (no apostrophe), NEXT needs its variable, there is no ELSE and only the first 2 characters of a variable name count (the BASIC comparison table of Marcus von Cube).");
             if (p.Name.StartsWith("NEC PC-8201"))
             {
                 add(3, "NEC PC-8201 / TRS-80 Model 100: the same Microsoft BASIC, the profile accepts the words of both; the serial strings of OPEN / SAVE / LOAD differ (TRS-80 COM:78N1E, NEC COM:7N81XN).");
@@ -4708,7 +4849,7 @@ int removed, kept, cut; List<string> moved;
                 {
                     L l = ls[i];
                     if (!IsRem(l.Body)) continue;
-                    if (!((p.MaxLen > 0 && l.Body.Length > p.MaxLen) || HasBadChar(l.Body))) continue;
+                    if (!((p.MaxLen > 0 && BasicCheck.EffLen(l.Body, p) > p.MaxLen) || HasBadChar(l.Body))) continue;
                     if (l.Num >= 0 && refs.Contains(l.Num)) { kept++; continue; }
                     ls.RemoveAt(i); n++;
                 }
@@ -4785,10 +4926,14 @@ int removed, kept, cut; List<string> moved;
                 for (int i = 0; i < ls.Count; i++)
                 {
                     L l = ls[i];
-                    if (l.Body.Length <= p.MaxLen) continue;
-                    if (IsRem(l.Body)) { l.Body = l.Body.Substring(0, p.MaxLen).TrimEnd(); l.Dirty = true; cutRem++; continue; }
+                    if (BasicCheck.EffLen(l.Body, p) <= p.MaxLen) continue;
+                    if (IsRem(l.Body))
+                    {
+                        int keep = p.MaxLen + (p.KwOneChar && l.Body.TrimStart().StartsWith("REM", StringComparison.OrdinalIgnoreCase) ? 2 : 0);          // REM is one character on the Sharp machines
+                        l.Body = l.Body.Substring(0, Math.Min(keep, l.Body.Length)).TrimEnd(); l.Dirty = true; cutRem++; continue;
+                    }
                     string c = Compact(l.Body);
-                    if (c.Length <= p.MaxLen) { l.Body = c; l.Dirty = true; compact++; continue; }
+                    if (BasicCheck.EffLen(c, p) <= p.MaxLen) { l.Body = c; l.Dirty = true; compact++; continue; }
                     List<string> parts = SplitData(c, p.MaxLen) ?? SplitLine(c, p.MaxLen);
                     int next = int.MaxValue;
                     for (int k = i + 1; k < ls.Count; k++) if (ls[k].Num >= 0) { next = ls[k].Num; break; }
@@ -5826,6 +5971,31 @@ int removed, kept, cut; List<string> moved;
             return all.ToArray();
         }
 
+        // BASIC text -> the lines of an ASCII file (the form that the machine saves with SAVE "CAS:name",A): the line number and the text without the spaces that do not count,
+        // as the lines of the real recording (1'HAMMING-KOODI, 7IF((V$="L")OR(V$="l"))THENGOTO15), in the order of the line numbers
+        public static List<string> AsciiLines(string text, out string problem)
+        {
+            problem = null;
+            var recs = new SortedDictionary<int, string>();
+            foreach (string raw in text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+            {
+                string s = raw.TrimStart(' ').TrimEnd('\u001A');
+                int i = 0;
+                while (i < s.Length && s[i] >= '0' && s[i] <= '9') i++;
+                if (i == 0 || i > 9) continue;
+                int no = int.Parse(s.Substring(0, i));
+                if (no == 0) continue;
+                if (no > 65535) { problem = "line number too large: " + no; return null; }
+                string rest = s.Substring(i);
+                if (rest.StartsWith(":")) rest = rest.Substring(1);
+                string line = no.ToString() + Normalize(rest.TrimStart(' '));
+                if (line.Length > 254) { problem = "line " + no + " is too long (more than 255 bytes)"; return null; }
+                recs[no] = line;
+            }
+            if (recs.Count == 0) { problem = "no program lines found"; return null; }
+            return new List<string>(recs.Values);
+        }
+
         // the lines of the program -> BASIC text (the listing of the computer: a space after a keyword only where a name or a number follows)
         public static string Detokenize(byte[] prog, out string problem)
         {
@@ -6207,7 +6377,7 @@ int removed, kept, cut; List<string> moved;
     public static class X07Tok
     {
         const int Start = 0x0553;
-        const int MaxLine = 9999, MaxBody = 255;
+        const int MaxLine = 65529, MaxBody = 255;
 
         public static readonly string[] Names = ("END FOR NEXT DATA INPUT DIM READ LET GOTO RUN IF RESTORE GOSUB RETURN REM STOP ELSE TR MOTOR DEFSTR DEFINT DEFSNG DEFDBL LINE ERROR RESUME OUT ON LPRINT DEFFN POKE PRINT " +
             "CONT LIST LLIST CLEAR CIRCLE CONSOLE CLS COLOR EXEC LOCATE PSET PRESET OFF SLEEP DIR DELETE FSET PAINT LOAD SAVE INIT ERASE BEEP CLOAD CSAVE NEW TAB( TO FN USING ERL ERR " +
@@ -6898,33 +7068,36 @@ int removed, kept, cut; List<string> moved;
         // 1 = two cycles of 2400 Hz); a byte = a start bit (0), 8 data bits (LSB first), an even parity bit and 2 stop bits (1). A segment is 2 s of 2400 Hz, its bytes and a check sum
         // byte (256 - the sum mod 256). The header segment: 'H', the file type 10H (a program), the name (8), the extension (3), the password (8 x FFH) and 12 parameter bytes (the length of
         // the program at 6 and 7); the data segment: 'D', 10H, FFH and the lines of the program (the format of the Pocket Tools bas850 -t8 -f and wave850).
-        public static byte[] EncodeCasio(string name, byte[] prog)
+        static void CasioPut(List<int> bits, byte bt)
         {
-            var hdr = new List<byte> { (byte)'H', 0x10 };
+            int par = 0;
+            bits.Add(0);
+            for (int k = 0; k < 8; k++) { int b = (bt >> k) & 1; bits.Add(b); par ^= b; }
+            bits.Add(par); bits.Add(1); bits.Add(1);
+        }
+
+        // a segment: 2 s of 2400 Hz, the bytes and the check sum byte (256 - the sum mod 256)
+        static void CasioSegment(List<int> bits, List<byte> s)
+        {
+            for (int k = 0; k < 2400; k++) bits.Add(1);
+            int sum = 0;
+            foreach (byte b in s) { CasioPut(bits, b); sum += b; }
+            CasioPut(bits, (byte)((256 - (sum & 255)) & 255));
+        }
+
+        static List<byte> CasioHeader(string name, byte type, string ext)
+        {
+            var hdr = new List<byte> { (byte)'H', type };
             byte[] nb = Encoding.GetEncoding(28591).GetBytes((name ?? "").ToUpperInvariant());
             for (int k = 0; k < 8; k++) hdr.Add(k < nb.Length ? nb[k] : (byte)0x20);
-            hdr.Add((byte)'B'); hdr.Add((byte)'A'); hdr.Add((byte)'S');
+            foreach (char c in ext) hdr.Add((byte)c);
             for (int k = 0; k < 8; k++) hdr.Add(0xFF);
             for (int k = 0; k < 12; k++) hdr.Add(0);
-            hdr[27] = (byte)(prog.Length & 255); hdr[28] = (byte)(prog.Length >> 8);
-            var dat = new List<byte> { (byte)'D', 0x10, 0xFF };
-            dat.AddRange(prog);
-            var bits = new List<int>();
-            Action<byte> put = bt =>
-            {
-                int par = 0;
-                bits.Add(0);
-                for (int k = 0; k < 8; k++) { int b = (bt >> k) & 1; bits.Add(b); par ^= b; }
-                bits.Add(par); bits.Add(1); bits.Add(1);
-            };
-            Action<List<byte>> segment = s =>
-            {
-                for (int k = 0; k < 2400; k++) bits.Add(1);                                // 2 s
-                int sum = 0;
-                foreach (byte b in s) { put(b); sum += b; }
-                put((byte)((256 - (sum & 255)) & 255));
-            };
-            segment(hdr); segment(dat);
+            return hdr;
+        }
+
+        static byte[] CasioBitsToWav(List<int> bits)
+        {
             for (int k = 0; k < 600; k++) bits.Add(1);                                    // 0.5 s
             var edges = new List<double>();
             double t = 0;
@@ -6942,6 +7115,35 @@ int removed, kept, cut; List<string> moved;
                 pos = e; high = !high;
             }
             return WavFile(buf, (int)Fs);
+        }
+
+        // the tokenized program (file type 10H)
+        public static byte[] EncodeCasio(string name, byte[] prog)
+        {
+            var hdr = CasioHeader(name, 0x10, "BAS");
+            hdr[27] = (byte)(prog.Length & 255); hdr[28] = (byte)(prog.Length >> 8);
+            var dat = new List<byte> { (byte)'D', 0x10, 0xFF };
+            dat.AddRange(prog);
+            var bits = new List<int>();
+            CasioSegment(bits, hdr); CasioSegment(bits, dat);
+            return CasioBitsToWav(bits);
+        }
+
+        // an ASCII file (type 30H, as the recording of SAVE "CAS:name",A): the header (extension TXT, the other parameter bytes 0) and one segment for every line:
+        // 'D', 30H, 00H, the length of the text (2 bytes: the characters and the CR), the text; the last segment has FFH instead of 00H and a CR only
+        public static byte[] EncodeCasioAscii(string name, List<string> lines)
+        {
+            var bits = new List<int>();
+            CasioSegment(bits, CasioHeader(name, 0x30, "TXT"));
+            foreach (string ln in lines)
+            {
+                byte[] tx = Encoding.GetEncoding(28591).GetBytes(ln);
+                var d = new List<byte> { (byte)'D', 0x30, 0x00, (byte)((tx.Length + 1) & 255), (byte)((tx.Length + 1) >> 8) };
+                d.AddRange(tx); d.Add(0x0D);
+                CasioSegment(bits, d);
+            }
+            CasioSegment(bits, new List<byte> { (byte)'D', 0x30, 0xFF, 0x01, 0x00, 0x0D });
+            return CasioBitsToWav(bits);
         }
 
         // returns the lines of the program (file type 10H) or the bytes of the text of an ASCII file (type 30H, ascii = true); warn = a message when a check sum does not agree
