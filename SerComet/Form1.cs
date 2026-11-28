@@ -594,7 +594,8 @@ namespace UartSlTest
                        "Receiving from PC: OPEN \"9600,N,8,1,A,L,&H1A,N,N\" : CLOSE, then LOAD (SerComet: Send). Text transfer (.bas).\r\n" +
                        "WAV: BASIC text is written as an ASCII tape file (SAVE \"CAS:\"); recordings of SAVE \"CAS:\" and CSAVE are read back as BASIC text.";
             if (curModel == 2 && curProf == 6)
-                return "Sharp PC-1450 to PC-1475 (15-pin connector, TTL-UART SIO via a USB/COM adapter). Tokenization and tape format is not supported.\r\n" +
+                return "Sharp PC-1450, PC-1460, PC-1470U and PC-1475 (15-pin connector, TTL-UART SIO via a USB/COM adapter).\r\n" +
+                       "WAV: BASIC text is converted to a tape recording for CLOAD (the PC-1450 and PC-1460 with the tokens of the PC-1350 family, the PC-1470U and PC-1475 with the tokens of the PC-1360; SerComet asks which computer) and recordings of CSAVE are read back as BASIC text.\r\n" +
                        "Sending Basic program to PC: SAVE to the serial device of the computer (see its manual); the received text is saved as .bas.\r\n" +
                        "Receiving from PC: LOAD from the serial device (SerComet: Send). Text transfer (.bas).";
             if (curModel == 2)
@@ -1947,7 +1948,7 @@ namespace UartSlTest
             string path = Path.Combine(txtDir.Text, name);
             string ext = Path.GetExtension(name).ToLowerInvariant();
             if (curModel > 2 && curModel != 6) { Log("WAV: the converters are for the Sharp PC-1500, PC-1600, PC-1350, PC-1360, PC-E500, PC-E500S and the Canon X07 (choose the computer in the Target computer box)."); return; }
-            if (curProf == 6 || curProf == 7) { LogWarn("WAV: tokenization and tape format is not supported for this computer (PC-1450..75 / other)."); return; }
+            if (curProf == 7) { LogWarn("WAV: tokenization and tape format is not supported for this computer (Sharp other)."); return; }
             try
             {
                 if (ext == ".wav") WavToBasic(path);
@@ -1955,6 +1956,38 @@ namespace UartSlTest
                 else Log("WAV: select a BASIC text file (.bas / .txt) or a .wav recording.");
             }
             catch (Exception ex) { LogWarn("WAV error: " + ex.Message); }
+        }
+
+        // PC-1450..75: which computer is the tape for (the tokens and the tape ID differ): returns 1450, 1460, 1475 or 0 (Cancel)
+        int Ask14xx(string file)
+        {
+            int result = 0;
+            using (var f = new Form())
+            {
+                f.Text = "WAV: " + file;
+                f.FormBorderStyle = FormBorderStyle.FixedDialog; f.MaximizeBox = false; f.MinimizeBox = false; f.ShowInTaskbar = false;
+                f.StartPosition = FormStartPosition.CenterParent;
+                f.ClientSize = new Size(470, 196);
+                var lbl = new Label
+                {
+                    Left = 14, Top = 12, Width = 442, Height = 126, AutoSize = false,
+                    Text = "For which computer is the tape?\r\n\r\n" +
+                           "PC-1450 - tokens of one byte (the PC-1350 table), tape ID 70H.\r\n" +
+                           "PC-1460 - one byte tokens and the added words as two byte tokens (EFxx), tape ID 70H.\r\n" +
+                           "PC-1470U / PC-1475 - two byte tokens FExx and binary line numbers, tape ID 72H (as the PC-1360)."
+                };
+                var b0 = new Button { Text = "PC-1450", Left = 14, Top = 152, Width = 100, Height = 28 };
+                var b1 = new Button { Text = "PC-1460", Left = 124, Top = 152, Width = 100, Height = 28 };
+                var b2 = new Button { Text = "PC-1470U / 75", Left = 234, Top = 152, Width = 110, Height = 28 };
+                var bc = new Button { Text = "Cancel", Left = 356, Top = 152, Width = 100, Height = 28, DialogResult = DialogResult.Cancel };
+                b0.Click += delegate { result = 1450; f.DialogResult = DialogResult.OK; };
+                b1.Click += delegate { result = 1460; f.DialogResult = DialogResult.OK; };
+                b2.Click += delegate { result = 1475; f.DialogResult = DialogResult.OK; };
+                f.Controls.AddRange(new Control[] { lbl, b0, b1, b2, bc });
+                f.CancelButton = bc;
+                f.ShowDialog(this);
+            }
+            return result;
         }
 
         // PC-1600: MODE 0 / MODE 1 / Cancel (returns 0, 1 or -1)
@@ -2011,7 +2044,8 @@ namespace UartSlTest
             }
             if (curModel == 2)
             {
-                int pc = curProf == 2 ? 1350 : curProf == 3 ? 1360 : 500;         // the model is chosen in the Target computer box
+                int pc = curProf == 2 ? 1350 : curProf == 3 ? 1360 : curProf == 6 ? Ask14xx(baseName) : 500;         // the model is chosen in the Target computer box (the PC-14xx: in a question)
+                if (pc == 0) return;
                 byte[] w2;
                 string suffix2;
                 if (pc == 500)
@@ -2024,7 +2058,7 @@ namespace UartSlTest
                     string problem2;
                     byte[] img2 = SharpTok.Tokenize(src, pc, out problem2);
                     if (img2 == null) { LogWarn("WAV: tokenizer error: " + problem2); return; }
-                    w2 = TapeWav.Encode1350(tape.Substring(0, Math.Min(7, tape.Length)), img2, pc == 1350 ? 0x70 : 0x72);
+                    w2 = TapeWav.Encode1350(tape.Substring(0, Math.Min(7, tape.Length)), img2, SharpTok.IsExt(pc) ? 0x72 : 0x70);
                     suffix2 = "_PC" + pc;
                 }
                 string out2 = UniquePath2(Path.Combine(txtDir.Text, baseName + suffix2 + ".wav"));
@@ -2091,6 +2125,17 @@ namespace UartSlTest
             if (curModel == 2)
             {
                 string warn2;
+                if (curProf == 6) try          // PC-1450 / 1460 (tape ID 70H) and PC-1470U / 1475 (ID 72H): the ID of the recording decides the tokens
+                {
+                    int idb6;
+                    byte[] prog6 = TapeWav.Decode1350(wav, out name, out idb6, out warn2);
+                    string pr6;
+                    text = SharpTok.Detokenize(prog6, idb6 == 0x70 ? 1460 : 1475, out pr6);
+                    how = idb6 == 0x70 ? "PC-1450 / PC-1460" : "PC-1470U / PC-1475";
+                    if (warn2 != null) Log("WAV: " + warn2 + ".");
+                    if (pr6 != null) LogWarn("WAV: conversion problem: " + pr6);
+                }
+                catch (Exception ex) { why0 = ex.Message; }
                 if (curProf <= 3) try          // PC-1350 / PC-1360: the model in the Target computer box decides which tape format is read
                 {
                     int idb;
@@ -2103,7 +2148,7 @@ namespace UartSlTest
                     if (pr2 != null) LogWarn("WAV: conversion problem: " + pr2);
                 }
                 catch (Exception ex) { why0 = ex.Message; }
-                if (text == null && curProf >= 4)
+                if (text == null && (curProf == 4 || curProf == 5))
                 {
                     try
                     {
@@ -3930,7 +3975,7 @@ int removed, kept, cut; List<string> moved;
             Add("Sharp PC-1600", 1, 65279, 80, 2, true, false, false, true, k1600);
             Add("Sharp PC-1350", 1, 65279, 79, 2, false, false, false, false, Core + Sharp1350 + " " + t1350);
             Add("Sharp PC-1360 and 1360K", 1, 65279, 79, 2, false, false, false, false, Core + Sharp1350 + Sharp1360 + " " + t1360);
-            Add("Sharp PC-1450..75", 1, 65279, 79, 2, false, false, false, false, Core + Sharp1450);
+            Add("Sharp PC-1450..75", 1, 65279, 79, 2, false, false, false, false, Core + Sharp1450 + " " + string.Join(" ", SharpTok.Keywords(1460)) + " " + string.Join(" ", SharpTok.Keywords(1475)));
             Add("Sharp PC-E500", 1, 65279, 255, 0, true, true, false, false, Core + SharpE500 + " " + tE500);
             Add("Sharp PC-E500S", 1, 65279, 255, 0, true, true, false, false, Core + SharpE500 + " " + tE500 + " CLS LOCATE FRE");
             Add("Casio FX-850P / FX-870P", 1, 65535, 255, 15, true, true, false, false, Core + Casio);
@@ -4253,7 +4298,7 @@ int removed, kept, cut; List<string> moved;
             if (p.Name.StartsWith("Sharp PC-1360")) add(3, "PC-1360: the PC-1350 statements plus the file and disk statements (OPEN, SAVE, LOAD ...).");
             if (p.Name.StartsWith("Sharp PC-1350") || p.Name.StartsWith("Sharp PC-1360") || p.Name.StartsWith("Sharp PC-E500"))
                 add(3, "The keyword list of this machine is made from the token table of its ROM (and the older approximate list); an unknown word is only a warning.");
-            if (p.Name.StartsWith("Sharp PC-1450")) add(3, "PC-1450..75: line numbers 1 to 65279 and the statements of the PC-14xx family (no files, no RENUM); the keyword list is approximate, check the manual of your model.");
+            if (p.Name.StartsWith("Sharp PC-1450")) add(3, "PC-1450..75: line numbers 1 to 65279 and the statements of the PC-14xx family (the words of the tokenizer tables of the PC-1450 / 1460 / 1470U / 1475, the list is the union of them: check the manual of your model).");
             if (p.Name.StartsWith("Casio")) add(3, "Casio: variable names up to 15 characters (FX-850P; longer ones are reported), small and capital letters are different variables, a name must not begin with a reserved word.");
             if (p.Name.StartsWith("NEC PC-8201"))
             {
@@ -4354,7 +4399,7 @@ int removed, kept, cut; List<string> moved;
     // ---- Repair of a BASIC listing for the rules of the chosen machine (the editor window: Edit/Repair)
     public sealed class RepairOptions
     {
-        public bool RemoveEmpty, DelBadRem, ReplaceChars, Shorten, FixCase, NumberLines, SortLines, DedupLines;
+        public bool RemoveEmpty, DelBadRem, ReplaceChars, Shorten, FixCase, NumberLines, SortLines, DedupLines, RemoveColons;
     }
 
     public sealed class RepairResult
@@ -4536,6 +4581,32 @@ int removed, kept, cut; List<string> moved;
             return parts;
         }
 
+        // incorrect colons: the colon after the line number (10 :A=1, 10: A=1), a doubled colon (an empty statement) and a colon at the end of the line;
+        // not in strings, REM and DATA texts; a line of the PC-E500 / Casio labels (*LABEL) is left as it is
+        static string FixColons(string body)
+        {
+            string t = body.TrimStart();
+            if (t.StartsWith("*")) return body;
+            while (t.StartsWith(":")) t = t.Substring(1).TrimStart();
+            if (t.Length == 0) return t;
+            bool[] code = CodeMask(t);
+            var sb = new StringBuilder();
+            for (int i = 0; i < t.Length; i++)
+            {
+                char c = t[i];
+                if (c == ':' && code[i])
+                {
+                    int j = i + 1;
+                    while (j < t.Length && t[j] == ' ') j++;
+                    if (j >= t.Length) continue;                                  // a colon at the end of the line
+                    if (t[j] == ':' && code[j]) continue;                         // a doubled colon: the first one goes
+                }
+                sb.Append(c);
+            }
+            string r = sb.ToString().Trim();
+            return r == body.Trim() ? body : r;                                   // nothing changed: the line stays as it was
+        }
+
         static string Join(List<L> ls)
         {
             var sb = new StringBuilder();
@@ -4571,7 +4642,7 @@ int removed, kept, cut; List<string> moved;
         {
             var res = new RepairResult();
             int empty;
-            if (!(o.RemoveEmpty || o.DelBadRem || o.ReplaceChars || o.Shorten || o.FixCase || o.NumberLines || o.SortLines || o.DedupLines))
+            if (!(o.RemoveEmpty || o.DelBadRem || o.ReplaceChars || o.Shorten || o.FixCase || o.NumberLines || o.SortLines || o.DedupLines || o.RemoveColons))
             {
                 res.Text = text;
                 res.Report.Add("No option is checked: nothing was changed.");
@@ -4608,6 +4679,14 @@ int removed, kept, cut; List<string> moved;
                 n = 0;
                 foreach (L l in ls) { string a = Ascii(l.Body); if (a != l.Body) { l.Body = a; l.Dirty = true; n++; } }
                 if (n > 0) res.Report.Add("Lines with replaced characters (accents -> letters, tab -> space, others -> ?): " + n);
+            }
+
+            // 2b. incorrect colons
+            if (o.RemoveColons)
+            {
+                n = 0;
+                foreach (L l in ls) { if (l.Blank) continue; string a = FixColons(l.Body); if (a != l.Body) { l.Body = a; l.Dirty = true; n++; } }
+                if (n > 0) res.Report.Add("Lines with incorrect colons corrected (after the line number, doubled, at the end of the line): " + n);
             }
 
             // 3. capital letters in the commands
@@ -4697,7 +4776,7 @@ int removed, kept, cut; List<string> moved;
         readonly RichTextBox txt;          // a rich text box: after a repair the corrected lines have a light green background
         readonly CheckProfile prof;
         bool modified;
-        CheckBox cbEmpty, cbDelRem, cbChars, cbShort, cbCase, cbNumber, cbSort, cbDedup;
+        CheckBox cbEmpty, cbDelRem, cbColons, cbChars, cbShort, cbCase, cbNumber, cbSort, cbDedup;
         static readonly Encoding Latin = Encoding.GetEncoding(28591);
         string Title { get { return "Edit/Repair: " + Path.GetFileName(path) + " (" + prof.Name + ")"; } }
 
@@ -4721,7 +4800,9 @@ int removed, kept, cut; List<string> moved;
             menu.Items.Add(file);
 
             // the bar with the repair options
-            var flow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = true, Padding = new Padding(6, 4, 6, 4), BackColor = Color.FromArgb(240, 240, 244) };
+            // the options in a grid of three columns (so that the check boxes of a column stand under each other)
+            var flow = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 3, Padding = new Padding(6, 4, 6, 4), BackColor = Color.FromArgb(240, 240, 244) };
+            for (int ci = 0; ci < 3; ci++) flow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             var bar = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 2, RowCount = 1, BackColor = Color.FromArgb(240, 240, 244) };
             bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -4733,12 +4814,14 @@ int removed, kept, cut; List<string> moved;
                 flow.Controls.Add(c);
                 return c;
             };
+            // three columns: the check boxes of a column stand exactly under each other
             cbEmpty = cb("Remove empty lines and trailing spaces", true, "Delete the empty lines and the spaces at the ends of the lines. With no option checked Repair changes nothing.");
             cbDelRem = cb("Delete bad REM lines", false, "Delete the REM (or ') lines that are too long for the machine or have characters that are not allowed. A REM line that a GOTO / GOSUB points to stays.");
+            cbColons = cb("Remove incorrect colons", false, "Remove the colon after the line number (10 :A=1), a doubled colon and a colon at the end of the line (not in strings, REM and DATA texts).");
             cbChars = cb("Replace non allowed characters", true, "Accented letters become letters (a, e, l ...), a tab becomes a space, the other characters become a question mark.");
-            cbShort = cb("Shorten lines", true, "Try to shorten the lines that are longer than the machine accepts: remove unneeded spaces, cut a REM text, split DATA and statements (at a colon, never after an IF) into two or more lines when the line numbers are free.");
-            cbCase = cb("Correct lower-case letters in commands", true, "Commands in capital letters (on machines that do not accept small letters all the code).");
             cbNumber = cb("Number lines without a number", true, "A line without a number gets the next free number after the previous line.");
+            cbShort = cb("Shorten lines", false, "Try to shorten the lines that are longer than the machine accepts: remove unneeded spaces, cut a REM text, split DATA and statements (at a colon, never after an IF) into two or more lines when the line numbers are free.");
+            cbCase = cb("Correct lower-case letters in commands", true, "Commands in capital letters (on machines that do not accept small letters all the code).");
             cbSort = cb("Sort lines by number", true, "Put the lines in the order of the line numbers (as the computer does).");
             cbDedup = cb("Remove repeated line numbers", true, "Of lines with the same number only the last one is kept (as the computer does when they are entered).");
             var repair = new Button { Text = "Repair", AutoSize = true, Anchor = AnchorStyles.Right, Margin = new Padding(3, 3, 20, 3), Padding = new Padding(8, 1, 8, 1) };       // at the right edge of the window (20 px from it), centred vertically in the grey bar
@@ -4797,7 +4880,7 @@ int removed, kept, cut; List<string> moved;
             var o = new RepairOptions
             {
                 RemoveEmpty = cbEmpty.Checked, DelBadRem = cbDelRem.Checked, ReplaceChars = cbChars.Checked, Shorten = cbShort.Checked,
-                FixCase = cbCase.Checked, NumberLines = cbNumber.Checked, SortLines = cbSort.Checked, DedupLines = cbDedup.Checked
+                FixCase = cbCase.Checked, NumberLines = cbNumber.Checked, SortLines = cbSort.Checked, DedupLines = cbDedup.Checked, RemoveColons = cbColons.Checked
             };
             Cursor.Current = Cursors.WaitCursor;
             System.Threading.Thread.Sleep(1000);                  // the repair is artificially prolonged by 1 s
@@ -5553,10 +5636,28 @@ int removed, kept, cut; List<string> moved;
             }
         }
 
-        static Table t1350, t1360, tE500;
+        // PC-1460 (like the PC-1403, 1425 ... 1445): the one byte tokens of the PC-1350 and, for the added words, two byte tokens EFxx (checked against the Pocket Tools bas2img)
+        const string S1460X = "APPEND=EFE1;AS=EFE2;BDS=EF8C;BIN=EF84;COPY=EFB6;CONVERT=EFB7;CSI=EF5A;COLOR=EFC9;CIRCLE=EFCC;CROTATE=EFCB;CSIZE=EFC8;DSKF=EF81;DELETE=EFA9;EOF=EF80;ERASE=EFC0;FILES=EFB0;FDS=EF9B;" +
+            "GRAPH=EFC6;GLCURSOR=EFC4;INIT=EFB2;INP=EF90;KILL=EFB3;LOF=EF82;LOC=EF83;LFILES=EFB1;LTEXT=EFC5;LF=EFC7;LLINE=EFC2;NAME=EFB4;NCR=EF86;NPR=EF87;NDS=EF98;OUT=EFC1;OUTPUT=EFE0;OCT=EF85;PAINT=EFCD;" +
+            "PND=EF88;PTD=EF89;PXD=EF8A;PFD=EF8B;PDS=EF8D;RENUM=EFA8;RLINE=EFC3;SET=EFB5;SORGN=EFCA;TDS=EF99;XDS=EF9A;XOR=EFA1";
+
+        // the table without some words (the PC-1475 has no GCURSOR, LINE, POINT, PRESET and PSET)
+        static string Without(string spec, params string[] words)
+        {
+            var keep = new List<string>();
+            foreach (string item in spec.Split(';')) if (Array.IndexOf(words, item.Substring(0, item.LastIndexOf('='))) < 0) keep.Add(item);
+            return string.Join(";", keep.ToArray());
+        }
+
+        // the PC-1450 (one byte tokens, tape ID 70H like the PC-1350), PC-1460 (one byte and EFxx tokens, ID 70H), PC-1470U / PC-1475 (FExx tokens like the PC-1360, ID 72H)
+        public static bool IsExt(int pc) { return pc == 1360 || pc == 1470 || pc == 1475 || pc == 500; }
+
+        static Table t1350, t1360, tE500, t1460, t1475;
         static Table Get(int pc)
         {
-            if (pc == 1350) return t1350 ?? (t1350 = new Table(S1350));
+            if (pc == 1350 || pc == 1450) return t1350 ?? (t1350 = new Table(S1350));
+            if (pc == 1460) return t1460 ?? (t1460 = new Table(S1350 + ";" + S1460X));
+            if (pc == 1470 || pc == 1475) return t1475 ?? (t1475 = new Table(Without(S1360, "GCURSOR", "LINE", "POINT", "PRESET", "PSET")));
             if (pc == 1360) return t1360 ?? (t1360 = new Table(S1360));
             return tE500 ?? (tE500 = new Table(SE500, "LOCATE"));
         }
@@ -5649,12 +5750,12 @@ int removed, kept, cut; List<string> moved;
             return o;
         }
 
-        // pc = 1350 or 1360: the BASIC text -> the program image (lines [number 2 B][length][tokens ... 0D]) without the end marker
+        // pc = 1350, 1360, 1450, 1460, 1470 or 1475: the BASIC text -> the program image (lines [number 2 B][length][tokens ... 0D]) without the end marker
         public static byte[] Tokenize(string text, int pc, out string problem)
         {
             problem = null;
             Table t = Get(pc);
-            bool two = pc != 1350;
+            bool two = IsExt(pc);
             var lines = new SortedDictionary<int, byte[]>();
             foreach (string raw in text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
             {
@@ -5665,7 +5766,9 @@ int removed, kept, cut; List<string> moved;
                 int no;
                 if (i == 0 || !int.TryParse(s.Substring(0, i), out no)) { problem = "no line number: " + (s.Length > 30 ? s.Substring(0, 30) : s); return null; }
                 if (no < 1 || no > 65279) { problem = "line number out of range: " + no; return null; }
-                List<byte> b = Line(s.Substring(i).TrimStart(), t, two);
+                string rest = s.Substring(i).TrimStart();
+                if (pc != 500 && rest.StartsWith(":")) rest = rest.Substring(1).TrimStart();         // a colon after the line number (10 :A=1, 10: A=1) is not a part of the program: the computer shows it by itself
+                List<byte> b = Line(rest, t, two);
                 b.Add(0x0D);
                 if (b.Count > 255) { problem = "line " + no + " is too long (" + b.Count + " bytes)"; return null; }
                 var l = new List<byte> { (byte)(no >> 8), (byte)no, (byte)b.Count };
@@ -5682,7 +5785,7 @@ int removed, kept, cut; List<string> moved;
         {
             problem = null;
             Table t = Get(pc);
-            bool two = pc != 1350;
+            bool two = IsExt(pc);
             var sb = new StringBuilder();
             int p = 0;
             while (p + 3 <= img.Length && img[p] != 0xFF)
@@ -5702,6 +5805,7 @@ int removed, kept, cut; List<string> moved;
                     if (two && b == 0x1F && i + 2 < end) { s.Append(img[i + 1] * 256 + img[i + 2]); i += 3; continue; }
                     int v = -1;
                     if (two) { if (i + 1 < end && b >= 0xE0) { int c2 = (b << 8) | img[i + 1]; if (t.Name.ContainsKey(c2)) { v = c2; i += 2; } } }
+                    else if (pc == 1460 && b == 0xEF && i + 1 < end && t.Name.ContainsKey((b << 8) | img[i + 1])) { v = (b << 8) | img[i + 1]; i += 2; }
                     else if (t.Name.ContainsKey(b)) { v = b; i++; }
                     if (v >= 0)
                     {
